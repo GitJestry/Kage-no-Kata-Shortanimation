@@ -1,52 +1,39 @@
-# Input Decision
+# Interaction Design
 
-The input model is intentionally open during the first implementation phase. The runtime should convert every UI variant into a shared `CutRequest` concept so that animation, bamboo simulation, and effects do not depend on the final input surface.
+## Decision
 
-## Candidate A: Angle Input
+The presentation uses a mouse-drawn cut. An ImGui panel exposes angle and target height for repeatable tests.
 
-The user selects a cut angle and optional target height on the bamboo.
+## Input Flow
 
-Advantages:
+1. `AwaitCutInput` activates the bamboo target.
+2. Mouse press, movement, and release record screen positions and timestamps.
+3. A smoothing pass produces stable start and end points.
+4. Camera rays project both points onto a bamboo-local interaction plane.
+5. Target bounds, line length, and reachable angle determine validity.
+6. A valid `CutRequest` starts the strike; an invalid line appears red and returns control to `AwaitCutInput`.
 
-- Easier to validate.
-- Fast to implement.
-- Clear mapping to animation clips and cut outcomes.
-- Predictable for grading and debugging.
+```cpp
+struct CutRequest {
+    glm::vec2 screenStart;
+    glm::vec2 screenEnd;
+    glm::vec3 localStart;
+    glm::vec3 localEnd;
+    float angleRadians;
+    float targetHeight;
+    float drawSpeed;
+    float strength;
+    int direction;
+    bool valid;
+};
+```
 
-Risks:
+The angle blends `StrikeLeft`, `StrikeHorizontal`, and `StrikeRight`. Target height selects a bamboo joint. Drawing speed and line length determine strength. Direction controls the strike impulse.
 
-- Less expressive.
-- May feel like parameter selection instead of interaction.
+Every strike clip contains a normalized impact marker. Animator, bamboo physics, particle emitters, and audio consume the marker on the same simulation step.
 
-## Candidate B: Mouse-Drawn Lines
+## Acceptance
 
-The user draws one or more cut lines over the bamboo.
-
-Advantages:
-
-- Stronger connection between gesture and sword movement.
-- Supports multiple attempted cuts.
-- Fits the storyboard drawing of marked bamboo targets.
-
-Risks:
-
-- Requires careful filtering and hit validation.
-- Needs robust handling for imprecise or off-target input.
-- More UI and math work before the scene feels reliable.
-
-## Shared Internal Parameters
-
-The chosen input should produce:
-
-- Bamboo target identifier.
-- Start and end point in screen space or target-local space.
-- Cut angle.
-- Target height.
-- Direction vector.
-- Validity score.
-- Strength estimate.
-- Optional sequence index for multiple cuts.
-
-## Recommended First Step
-
-Implement an angle-and-height debug input first. Keep the data model compatible with mouse-drawn lines. Add mouse input once the bamboo target projection, hit testing, and debug visualization are stable.
+- Three distinct lines produce three recognizable strike motions.
+- The debug overlay matches the generated angle, height, and strength.
+- Repeated input produces repeatable animation and physics parameters.

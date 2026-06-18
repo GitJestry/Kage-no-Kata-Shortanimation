@@ -1,55 +1,42 @@
-# Kage no Kata - Der letzte Schnitt
+# Kage no Kata - The Final Cut
 
-University of Bonn computer graphics animation project by Julian Meyer and Faouzi Homsani.
+Interactive computer animation project at the University of Bonn by Julian Meyer and Faouzi Homsani.
 
-`Kage no Kata - Der letzte Schnitt` is a short interactive CG film about the last heir of a Shinobi sword school. The scene begins in a quiet mountain landscape: a small warm hut, green terrain, distant snowy peaks, and a character carrying the weight of family memory. The interaction centers on a bamboo cutting exercise. User input controls the cut, and the result drives animation selection, bamboo response, particles, sound, and visual feedback.
+The film follows the last heir of a Shinobi sword school during a morning training ritual. The user draws a cut across a bamboo target. Angle, height, direction, and drawing speed drive the sword animation, fracture response, particles, and sound.
 
-![Storyboard sketch](assets/storyboard/storyboard-1.png)
+![Hand-drawn storyboard](assets/storyboard/storyboard-1.png)
 
-## Technical Direction
+## Production Model
 
-The project is written in C++23 and built with CMake. Rendering and window/application setup use the university-provided OpenGL adapter framework from `julcst/gltemplate` version `1.7b` through CMake `FetchContent`.
+Blender provides meshes, UVs, materials, armatures, skin weights, and named animation clips. The C++ application imports glTF 2.0 data, samples keyframes, blends poses, performs GPU skinning, and connects animation with interaction, physics, particles, audio, and rendering.
 
-The project must run on macOS and Windows. Source code should stay platform independent unless a platform-specific branch is clearly isolated behind a small interface. Assets are produced in Blender, then imported into the runtime format chosen for the scene pipeline. Expected authored assets include the hut, bamboo, character, sword, terrain elements, and supporting props.
+The runtime targets OpenGL 4.1 on macOS and Windows. The university framework `julcst/gltemplate` v1.7b provides the window, OpenGL context, and GPU resource wrappers.
 
-## Core Interaction
-
-The exact input model is still open. Two candidates are documented in [docs/INPUT_DECISION.md](docs/INPUT_DECISION.md):
-
-- Angle input: the user selects cut angle and optional target height.
-- Mouse-drawn lines: the user draws one or more cuts over the bamboo target.
-
-Both variants should feed the same internal cut request: target height, direction, angle, strike validity, and strength estimate. This keeps the animation, collision, and bamboo response systems independent from the final UI decision.
-
-## Initial Build
+## Build
 
 ```bash
 cmake -S . -B build
-cmake --build build
+cmake --build build --config Release
 ```
 
-On Windows, use a generator matching the installed compiler, for example Visual Studio or Ninja. On macOS, Xcode or Ninja are both suitable.
+CMake fetches the pinned framework version. Visual Studio or Ninja build the project on Windows; Xcode, Make, or Ninja build the same sources on macOS.
 
-## Repository Layout
+## Documentation
 
-```text
-assets/
-  audio/            Sound effects, ambience, and mix notes.
-  models/           Runtime-ready exported meshes.
-  reference/        Concept PDFs and non-runtime references.
-  source_blender/   Blender source files.
-  storyboard/       Rendered storyboard images for documentation.
-  textures/         Runtime-ready texture assets.
-docs/
-  ASSET_PIPELINE.md
-  CONCEPT.md
-  INPUT_DECISION.md
-  TECHNICAL_PLAN.md
-  TODO.md
-src/
-  main.cpp
-```
+- [Story and visual concept](docs/CONCEPT.md)
+- [Runtime architecture](docs/TECHNICAL_PLAN.md)
+- [Blender and asset pipeline](docs/ASSET_PIPELINE.md)
+- [Interaction design](docs/INPUT_DECISION.md)
+- [Requirements, scoring, and ownership](docs/PROJECT_REQUIREMENTS.md)
+- [Four-week schedule](docs/TODO.md)
 
-## Current State
+## References
 
-This is the initial repository structure. It contains the concept documentation, build skeleton, reference assets, and implementation roadmap. No scene systems are implemented yet.
+- [Project concept](assets/reference/Kage_no_Kata_Konzept.pdf)
+- [Storyboard PDF](assets/reference/Kage_no_Kata_Storyboard.pdf)
+- [Official project brief](assets/reference/cgintro-animation-project-info.pdf)
+- [Official assessment sheet](assets/reference/cgintro-bewertungsbogen.pdf)
+
+## Current Milestone
+
+The repository contains the agreed architecture, asset contract, feature scope, and delivery schedule. The first runtime milestone loads a GLB test character and plays one skinned animation clip.

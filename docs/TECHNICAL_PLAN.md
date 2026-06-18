@@ -1,77 +1,81 @@
-# Technical Plan
+# Runtime Architecture
 
-## Runtime Stack
+## Foundation
 
-- Language: C++23.
-- Build: CMake 3.26 or newer.
-- Graphics foundation: university OpenGL adapter framework from `julcst/gltemplate` v1.7b.
-- Asset authoring: Blender.
-- Target platforms: macOS and Windows.
+- C++23 and CMake 3.26+
+- `julcst/gltemplate` v1.7b
+- OpenGL 4.1 on macOS and Windows
+- Blender-authored glTF 2.0 `.glb` assets
+- `tinygltf` for parsing and `miniaudio` for playback, pending course approval
 
-## Portability Rules
+## Data Flow
 
-- Use standard C++ and framework APIs for file paths, timing, input, rendering setup, and resource loading where possible.
-- Keep platform branches small and isolated.
-- Avoid OS-specific path separators in code.
-- Store runtime assets with relative paths from a known project asset root.
-- Do not rely on shell scripts for the main build path.
-- Verify CMake configure and build on both macOS and Windows before final delivery.
+```mermaid
+flowchart LR
+    B["Blender assets"] --> G["GLB loader"]
+    G --> M["GPU meshes"]
+    G --> A["Skeleton and clips"]
+    I["Mouse line"] --> C["CutRequest"]
+    C --> A
+    A --> S["GPU skinning"]
+    A --> E["Impact event"]
+    E --> P["Bamboo physics"]
+    E --> Q["Particles"]
+    E --> U["Audio"]
+    M --> R["Scene render"]
+    S --> R
+    P --> R
+    Q --> R
+    R --> F["Temporal sampling and grain"]
+```
 
-## Planned Systems
+## Runtime Systems
 
-### Scene Bootstrap
+### Assets and Animation
 
-Create application initialization, camera setup, asset root lookup, render loop, and deterministic scene reset. The first scene should load a simple bamboo proxy before full character work begins.
+`GltfAssetLoader` imports vertex attributes, indices, node hierarchy, inverse bind matrices, and animation channels. `Animator` linearly samples translation and scale, applies quaternion slerp to rotation, and cross-fades complete poses. The state sequence is:
 
-### Asset Loading
+`Idle -> LookAtPicture -> Kneel -> Draw -> AwaitCutInput -> Strike -> Recover`
 
-Import Blender-authored models into a runtime-friendly format. Track source `.blend` files separately from exported meshes and textures. Keep scale, orientation, and naming consistent across hut, bamboo, character, sword, and terrain props.
+Global joint transforms and inverse bind matrices produce up to 128 skinning matrices in a uniform buffer. `SkinnedVertex` stores position, normal, UV, four joint indices, and four weights.
 
-### Input System
+### Bamboo Physics
 
-Capture cut intent and convert it into a shared cut request. The final UI can be angle-based or mouse-line-based, but downstream systems should receive the same normalized data.
+Each bamboo segment stores mass, inertia, pose, linear velocity, and angular velocity. Joints connect the stalk. An impact releases the selected joint and applies a directional impulse. Semi-implicit Euler integration, damping, and ground contact update the fall.
 
-### Animation
+### Procedural Terrain
 
-Build a compact state flow:
+Seeded fBm generates a height grid. Central differences calculate normals. Height and slope rules place grass, rocks, and bamboo through instanced rendering.
 
-1. Idle near hut.
-2. Family-picture pause.
-3. Kneel.
-4. Draw sword.
-5. Wind-up.
-6. Cut.
-7. End pose.
+### Particles and Audio
 
-Use a small number of clean poses and blend between them. The first milestone can use placeholder transforms before rigged character animation is integrated.
+A fixed particle pool simulates dust, fibres, and splinters with gravity, drag, wind, and lifetime. Instanced billboards render dust and fibres; mesh instances render splinters. Animation and scene events trigger wind, footsteps, sword, and bamboo samples.
 
-### Bamboo Response
+### Film Rendering
 
-Represent bamboo as segmented geometry with predefined cut zones. A valid cut computes depth, break direction, and fall behavior. The first version can use deterministic rules before adding richer physics.
+The scene renders into floating-point color and depth targets. The film renderer evaluates eight times across each 30 FPS shutter interval and averages the subframes. The preview uses one sample. A final pass adds time-varying film grain.
 
-### Particles and Effects
+Offline output supports `3840x2160`, fixed start and end frames, and numbered PNG files. A documented FFmpeg command encodes the MPEG4 submission.
 
-Trigger short-lived particles at the cut point: bamboo fibers, dust, and splinters. Add motion blur or a sword trail only after the core strike is readable.
+## Portability
 
-### Audio
+- `std::filesystem` builds resource paths.
+- CMake lists every source and runtime resource.
+- Shaders target `410 core`.
+- Dependencies use pinned versions.
+- Release tests run from the repository and packaged submission folder on both platforms.
 
-Layer wind ambience, footsteps, sword draw, impact, bamboo fracture, and subtle environmental sound. Audio should respond to cut quality.
+## Acceptance
 
-## Milestones
+- A multi-action GLB loads its mesh, skeleton, and clips.
+- Cross-fades maintain a continuous body pose.
+- Three mouse angles produce distinct strikes.
+- Equal seeds reproduce terrain and placement.
+- Equal `CutRequest` values reproduce bamboo motion.
+- Impact, particles, and audio share one simulation step.
+- Offline rendering produces 2160p30 frames with eight temporal samples.
+- Debug views expose skeletons, cut parameters, physics bodies, particle counts, and sample times.
 
-1. Build skeleton and empty application.
-2. Load terrain, hut, bamboo proxy, and camera.
-3. Add debug cut input and visual target overlay.
-4. Implement bamboo cut evaluation.
-5. Add simple character pose flow.
-6. Replace proxies with Blender exports.
-7. Add particles, audio, motion blur, and film grain.
-8. Polish timing, color, and final presentation.
+## Course Confirmation
 
-## Risk Management
-
-- Schwertanimation: keep the move set small and readable.
-- Bamboo physics: start with segmented deterministic behavior.
-- Input: validate against the bamboo target before triggering animation.
-- Particles: cap count and lifetime.
-- Scope: protect the MVP before adding cinematic extras.
+The team confirms `tinygltf` as a file parser, `miniaudio` as a playback backend, and segmented bamboo as the physical simulation feature. A course restriction on parsers activates a custom Blender Python exporter for versioned mesh, skeleton, and clip data.

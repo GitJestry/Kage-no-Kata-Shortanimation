@@ -1,45 +1,45 @@
-# TODO
+# Four-Week Schedule
 
-## Project Setup
+## Week 1: Import and Skinning
 
-- Confirm the final repository name with the submission requirements.
-- Verify the CMake skeleton on macOS.
-- Verify the CMake skeleton on Windows.
-- Decide the runtime mesh format supported by the framework.
+- [ ] Record course approval for parser, audio backend, and bamboo simulation.
+- [ ] Verify the CMake build on macOS and Windows.
+- [ ] Export a GLB test character with two actions.
+- [ ] Load static and skinned vertex data.
+- [ ] Evaluate the joint hierarchy and inverse bind matrices.
+- [ ] Render one clip with the skinning shader and bone buffer.
+- [ ] Capture the milestone and import metrics for the report.
 
-## MVP
+Acceptance: the test character displays a stable bind pose and one complete clip.
 
-- Create a window and render loop with the university framework.
-- Add camera controls or fixed cinematic camera positions.
-- Load a bamboo proxy.
-- Add debug cut angle and height input.
-- Convert input into a normalized cut request.
-- Evaluate cut validity against the bamboo target.
-- Visualize accepted and rejected cuts.
-- Add deterministic bamboo cut outcomes.
+## Week 2: Interaction and Physics
 
-## Scene Content
+- [ ] Implement keyframe sampling, slerp, and cross-fades.
+- [ ] Export and blend the three synchronized strike actions.
+- [ ] Project the mouse line and produce a debug `CutRequest`.
+- [ ] Implement bamboo bodies, joints, impulse, integration, and ground contact.
+- [ ] Synchronize animation and physics through the impact marker.
 
-- Import hut model.
-- Import bamboo model.
-- Import sword model.
-- Import character model.
-- Add mountain and terrain composition.
-- Add family picture prop.
+Acceptance: three mouse lines produce three repeatable strikes and bamboo responses.
 
-## Animation and Effects
+## Week 3: Environment and Effects
 
-- Implement character state flow.
-- Add animation blending.
-- Add cut-triggered bamboo movement.
-- Add bamboo fibers, dust, and splinter particles.
-- Add sword trail or motion blur.
-- Add ambient and impact audio.
-- Add subtle film grain.
+- [ ] Generate fBm terrain and normals.
+- [ ] Place vegetation from seed, height, and slope.
+- [ ] Implement the particle pool and three emitter types.
+- [ ] Integrate scene and impact audio.
+- [ ] Implement temporal subframe accumulation and film grain.
+- [ ] Integrate the final character, clothing, sword, gate, hut, and bamboo.
 
-## Polish
+Acceptance: the complete training scene presents every planned runtime feature.
 
-- Balance pacing from hut to training area.
-- Tune colors for warm hut, green landscape, snowy peaks, black clothing, and yellow ribbon.
-- Profile particle count and asset loading.
-- Prepare final presentation build.
+## Week 4: Delivery
+
+- [ ] Freeze the feature set and resolve prioritized defects.
+- [ ] Finalize camera movement and scene timing.
+- [ ] Render the 2160p30 PNG sequence with eight subframes.
+- [ ] Encode the MPEG4 film.
+- [ ] Test packaged Release builds on macOS and Windows.
+- [ ] Complete the illustrated report, reflection, making-of, and presentation.
+
+Acceptance: both platform builds start from the submission package, and every deliverable presents clear technical and personal contributions.

@@ -1,40 +1,27 @@
-# Concept
+# Story and Visual Concept
 
-## Title
+## Premise
 
-`Kage no Kata - Der letzte Schnitt`
+`Kage no Kata - The Final Cut` follows the last heir of a Shinobi sword school. A user-defined bamboo cut turns a quiet training ritual into a short interactive film.
 
-## Team
+## Story Beats
 
-- Julian Meyer
-- Faouzi Homsani
+1. A camera move establishes the green valley, snowy peaks, and family hut.
+2. The character leaves the hut and pauses at a family portrait.
+3. He reaches the training area and kneels before the bamboo.
+4. The user draws a cut across the target.
+5. The character draws his sword and performs the selected strike.
+6. The bamboo reacts to angle and strength; particles and sound mark the impact.
+7. The character settles into a controlled final pose.
 
-## Core Idea
+## Visual Language
 
-The film follows the last heir of an old Shinobi sword school during a morning training ritual. The scene is quiet and focused: a remote hut, a green mountain landscape, distant snowy peaks, bamboo, and one character preparing for a precise sword cut.
+| Element | Meaning | Treatment |
+| --- | --- | --- |
+| Black clothing | Discipline and grief | Dark values and a clear silhouette |
+| Warm hut | Family and origin | Warm light and wood materials |
+| Green landscape | Calm and life | Procedural terrain and vegetation |
+| Snowy peaks | Distance and weight | Cool background light and deep staging |
+| Yellow ribbon | Memory of his sister | Focused color accent on the sword sheath |
 
-The user influences the cut at the bamboo target. The selected cut parameters affect the sword technique, animation timing, cut depth, bamboo fracture, particles, sound, and final pose.
-
-## Story Flow
-
-1. Establish a calm mountain landscape with the hut as the visual anchor.
-2. The character leaves the hut in the early morning.
-3. He looks briefly at a family picture.
-4. He kneels near the training area.
-5. The user defines the cut.
-6. The character draws the sword and performs the strike.
-7. The bamboo reacts according to cut quality and impact.
-
-The film stays mostly silent. Family loss, discipline, and memory are shown through costume, props, landscape, and pacing.
-
-## Visual Motifs
-
-- Black clothing: discipline, grief, secrecy.
-- Warm hut: origin, family, memory.
-- Green landscape: calm life around an isolated figure.
-- Snowy peaks: distance, coldness, weight.
-- Yellow ribbon on the sword sheath: personal memory and visual contrast.
-
-## Target Mood
-
-Measured, cinematic, restrained. The project should feel like a short interactive scene with one strong gesture rather than a broad action sequence.
+The slow opening establishes restraint. Runtime rigging connects the reflective poses to the interactive strike. Bamboo physics, particles, temporal motion blur, and sound give the single fast action its impact.

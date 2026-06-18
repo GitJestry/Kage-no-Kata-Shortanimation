@@ -1,50 +1,53 @@
-# Asset Pipeline
+# Blender and Asset Pipeline
 
-## Source Assets
+## Handoff
 
-Blender source files belong in `assets/source_blender/`. Runtime exports belong in `assets/models/`, `assets/textures/`, and related folders.
+Blender authors geometry, UVs, materials, armatures, skin weights, and animation clips. The C++ runtime creates GPU resources, evaluates skeletons, blends poses, and drives simulation.
 
-Recommended naming:
+- `assets/source_blender/`: `.blend` source files.
+- `assets/models/`: runtime `.glb` exports.
+- `assets/textures/`: external runtime textures.
+- `assets/audio/`: ambience and event samples.
+- `assets/reference/`: concepts, storyboard, and course material.
 
-- `character_shinobi.blend`
-- `character_shinobi_rigged.blend`
-- `prop_bamboo_segmented.blend`
-- `prop_sword.blend`
-- `environment_hut.blend`
-- `environment_mountains.blend`
+GLB/glTF 2.0 carries meshes, materials, textures, node hierarchies, skins, and named animations.
 
-## Export Guidelines
+## Shared Conventions
 
-- Use meters or a documented shared unit scale.
-- Apply transforms before export when the asset is final.
-- Keep forward/up axes consistent across all exports.
-- Use separate materials for surfaces that need distinct shader treatment.
-- Keep collision or cut-helper geometry clearly named.
-- Store texture sources separately from compressed runtime textures if compression is added later.
+- Blender unit scale: `1.0`, measured in metres.
+- Character reference height: approximately `1.75 m`.
+- Axis conversion: Blender glTF export with Y Up.
+- File names: lowercase with underscores.
+- Skinning: four normalized bone weights per vertex.
+- Animation sampling: 30 FPS.
+- Materials: Principled BSDF values and image textures.
 
-## Bamboo Requirements
+Use `glTF Binary (.glb)`, animation mode `Actions`, enabled skinning, four bone influences, and deformation bones only.
 
-The bamboo model should expose cut-relevant structure:
+## Character Actions
 
-- Segment boundaries.
-- Preferred break zones.
-- Optional helper markers for target height.
-- Separate pieces if deterministic fracture is used.
+| Action | Purpose |
+| --- | --- |
+| `Idle` | Resting pose |
+| `LookAtPicture` | Family portrait beat |
+| `Kneel` | Move into training position |
+| `Draw` | Draw the sword |
+| `StrikeLeft` | Left diagonal strike |
+| `StrikeHorizontal` | Horizontal strike |
+| `StrikeRight` | Right diagonal strike |
+| `Recover` | Controlled final pose |
 
-## Character Requirements
+The three strike clips share duration, starting pose, and impact time. This alignment supports runtime angle blending. Character, clothing, and yellow ribbon use one armature.
 
-The character should prioritize a small set of expressive poses over a large unfinished rig:
+## Environment Assets
 
-- Standing near hut.
-- Looking at family picture.
-- Kneeling.
-- Sword draw.
-- Wind-up.
-- Strike.
-- End pose.
+The bamboo export contains named rigid segments and joint points. Runtime physics assigns mass, inertia, and constraints. The hut, gate, sword, and family portrait load as static GLB assets. C++ generates terrain and places vegetation from height, slope, and seed.
 
-The yellow ribbon on the sword sheath should remain visible in close-up framing.
+## Export Check
 
-## Runtime Policy
-
-Keep large source files out of build output. The application should load only exported runtime assets.
+- Scale and axes match the reference character.
+- Meshes contain UVs, normals, and complete material assignments.
+- Skin weights sum to one and use up to four joints.
+- GLB animation names and time ranges match the action table.
+- Strike impact markers share one normalized time.
+- Texture and model licenses are recorded.
