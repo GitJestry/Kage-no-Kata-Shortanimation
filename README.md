@@ -25,6 +25,9 @@ CMake fetches the pinned framework version. Visual Studio or Ninja build the pro
 
 - [Story and visual concept](docs/CONCEPT.md)
 - [Runtime architecture](docs/TECHNICAL_PLAN.md)
+- [Code style](docs/CODE_STYLE.md)
+- [Platform independence](docs/PLATFORM_INDEPENDENCE.md)
+- [Development log and milestone evidence](docs/DEVELOPMENT_LOG.md)
 - [Blender and asset pipeline](docs/ASSET_PIPELINE.md)
 - [Interaction design](docs/INPUT_DECISION.md)
 - [Requirements, scoring, and ownership](docs/PROJECT_REQUIREMENTS.md)

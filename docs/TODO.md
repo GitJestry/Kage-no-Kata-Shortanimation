@@ -2,6 +2,8 @@
 
 ## Week 1: Import and Skinning
 
+- [x] Define the shared C++ and OpenGL code style.
+- [x] Define the macOS and Windows portability contract.
 - [ ] Record course approval for parser, audio backend, and bamboo simulation.
 - [ ] Verify the CMake build on macOS and Windows.
 - [ ] Export a GLB test character with two actions.

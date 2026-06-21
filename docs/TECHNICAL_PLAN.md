@@ -59,11 +59,10 @@ Offline output supports `3840x2160`, fixed start and end frames, and numbered PN
 
 ## Portability
 
-- `std::filesystem` builds resource paths.
-- CMake lists every source and runtime resource.
-- Shaders target `410 core`.
-- Dependencies use pinned versions.
-- Release tests run from the repository and packaged submission folder on both platforms.
+The [Platform Independence](PLATFORM_INDEPENDENCE.md) contract defines shared
+macOS and Windows behavior and verification. Implementation follows the
+repository [Code Style](CODE_STYLE.md), including the OpenGL 4.1 bind-to-edit API
+restriction.
 
 ## Acceptance
 
