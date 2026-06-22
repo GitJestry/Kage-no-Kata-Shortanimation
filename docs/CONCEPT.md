@@ -10,9 +10,9 @@
 2. The character leaves the hut and pauses at a family portrait.
 3. He reaches the training area and kneels before the bamboo.
 4. The user draws a cut across the target.
-5. The character draws his sword and performs the selected strike.
+5. The character reaches his ready pose and performs a strike generated from the cut.
 6. The bamboo reacts to angle and strength; particles and sound mark the impact.
-7. The character settles into a controlled final pose.
+7. The character recovers to the ready pose for another cut.
 
 ## Visual Language
 
@@ -24,4 +24,6 @@
 | Snowy peaks | Distance and weight | Cool background light and deep staging |
 | Yellow ribbon | Memory of his sister | Focused color accent on the sword sheath |
 
-The slow opening establishes restraint. Runtime rigging connects the reflective poses to the interactive strike. Bamboo physics, particles, temporal motion blur, and sound give the single fast action its impact.
+The slow opening establishes restraint. Runtime rigging connects the reflective
+poses to responsive action. Bamboo physics, particles, temporal motion blur, and
+sound provide its impact.

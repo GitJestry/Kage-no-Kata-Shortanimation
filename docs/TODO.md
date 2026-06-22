@@ -4,7 +4,7 @@
 
 - [x] Define the shared C++ and OpenGL code style.
 - [x] Define the macOS and Windows portability contract.
-- [ ] Record course approval for parser, audio backend, and bamboo simulation.
+- [x] Record course approval for parser, audio backend, and bamboo simulation.
 - [ ] Verify the CMake build on macOS and Windows.
 - [ ] Export a GLB test character with two actions.
 - [ ] Load static and skinned vertex data.
@@ -17,12 +17,14 @@ Acceptance: the test character displays a stable bind pose and one complete clip
 ## Week 2: Interaction and Physics
 
 - [ ] Implement keyframe sampling, slerp, and cross-fades.
-- [ ] Export and blend the three synchronized strike actions.
 - [ ] Project the mouse line and produce a debug `CutRequest`.
+- [ ] Generate a wind-up, contact, follow-through, and recovery sword path.
+- [ ] Apply torso and two-hand IK with planted feet.
 - [ ] Implement bamboo bodies, joints, impulse, integration, and ground contact.
-- [ ] Synchronize animation and physics through the impact marker.
+- [ ] Synchronize animation and physics through the generated contact event.
 
-Acceptance: three mouse lines produce three repeatable strikes and bamboo responses.
+Acceptance: each cut generates a matching strike and bamboo response, followed
+by recovery and renewed input.
 
 ## Week 3: Environment and Effects
 

@@ -32,12 +32,11 @@ Use `glTF Binary (.glb)`, animation mode `Actions`, enabled skinning, four bone 
 | `LookAtPicture` | Family portrait beat |
 | `Kneel` | Move into training position |
 | `Draw` | Draw the sword |
-| `StrikeLeft` | Left diagonal strike |
-| `StrikeHorizontal` | Horizontal strike |
-| `StrikeRight` | Right diagonal strike |
-| `Recover` | Controlled final pose |
+| `Ready` | Stable starting and ending pose for procedural strikes |
 
-The three strike clips share duration, starting pose, and impact time. This alignment supports runtime angle blending. Character, clothing, and yellow ribbon use one armature.
+The runtime generates each strike and recovery from the requested cut using
+parametric sword motion and IK. Character, clothing, and yellow ribbon use one
+armature.
 
 ## Environment Assets
 
@@ -49,5 +48,5 @@ The bamboo export contains named rigid segments and joint points. Runtime physic
 - Meshes contain UVs, normals, and complete material assignments.
 - Skin weights sum to one and use up to four joints.
 - GLB animation names and time ranges match the action table.
-- Strike impact markers share one normalized time.
+- The `Ready` pose keeps both hands on the hilt and both feet planted.
 - Texture and model licenses are recorded.

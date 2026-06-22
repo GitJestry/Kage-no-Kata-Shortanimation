@@ -6,7 +6,7 @@
 - `julcst/gltemplate` v1.7b
 - OpenGL 4.1 on macOS and Windows
 - Blender-authored glTF 2.0 `.glb` assets
-- `tinygltf` for parsing and `miniaudio` for playback, pending course approval
+- Approved `tinygltf` parsing and `miniaudio` playback
 
 ## Data Flow
 
@@ -14,11 +14,12 @@
 flowchart LR
     B["Blender assets"] --> G["GLB loader"]
     G --> M["GPU meshes"]
-    G --> A["Skeleton and clips"]
+    G --> A["Skeleton and authored clips"]
     I["Mouse line"] --> C["CutRequest"]
-    C --> A
-    A --> S["GPU skinning"]
-    A --> E["Impact event"]
+    C --> K["Strike planner and IK"]
+    A --> K
+    K --> S["GPU skinning"]
+    K --> E["Impact event"]
     E --> P["Bamboo physics"]
     E --> Q["Particles"]
     E --> U["Audio"]
@@ -33,9 +34,14 @@ flowchart LR
 
 ### Assets and Animation
 
-`GltfAssetLoader` imports vertex attributes, indices, node hierarchy, inverse bind matrices, and animation channels. `Animator` linearly samples translation and scale, applies quaternion slerp to rotation, and cross-fades complete poses. The state sequence is:
+`GltfAssetLoader` imports vertex attributes, indices, node hierarchy, inverse
+bind matrices, and animation channels. `Animator` linearly samples translation
+and scale, applies quaternion slerp to rotation, and blends the authored sequence
+through `Ready`. `ProceduralStrikePlanner` and runtime IK generate each requested
+strike according to the [Interaction Design](INPUT_DECISION.md). The state
+sequence is:
 
-`Idle -> LookAtPicture -> Kneel -> Draw -> AwaitCutInput -> Strike -> Recover`
+`Idle -> LookAtPicture -> Kneel -> Draw -> Ready -> AwaitCutInput -> WindUp -> Strike -> FollowThrough -> Recover -> AwaitCutInput`
 
 Global joint transforms and inverse bind matrices produce up to 128 skinning matrices in a uniform buffer. `SkinnedVertex` stores position, normal, UV, four joint indices, and four weights.
 
@@ -68,7 +74,7 @@ restriction.
 
 - A multi-action GLB loads its mesh, skeleton, and clips.
 - Cross-fades maintain a continuous body pose.
-- Three mouse angles produce distinct strikes.
+- Procedural strikes pass the [interaction acceptance](INPUT_DECISION.md#acceptance).
 - Equal seeds reproduce terrain and placement.
 - Equal `CutRequest` values reproduce bamboo motion.
 - Impact, particles, and audio share one simulation step.
@@ -77,4 +83,5 @@ restriction.
 
 ## Course Confirmation
 
-The team confirms `tinygltf` as a file parser, `miniaudio` as a playback backend, and segmented bamboo as the physical simulation feature. A course restriction on parsers activates a custom Blender Python exporter for versioned mesh, skeleton, and clip data.
+The course approves `tinygltf` as a file parser, `miniaudio` as a playback
+backend, and segmented bamboo as the physical simulation feature.
