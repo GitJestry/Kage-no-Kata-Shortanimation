@@ -5,7 +5,9 @@
 - [x] Define the shared C++ and OpenGL code style.
 - [x] Define the macOS and Windows portability contract.
 - [x] Record course approval for parser, audio backend, and bamboo simulation.
-- [ ] Verify the CMake build on macOS and Windows.
+- [x] Configure and build Debug and Release on macOS.
+- [x] Launch the OpenGL 4.1 application baseline on macOS.
+- [ ] Configure, build, and launch the application baseline on Windows.
 - [ ] Export a GLB test character with two actions.
 - [ ] Load static and skinned vertex data.
 - [ ] Evaluate the joint hierarchy and inverse bind matrices.

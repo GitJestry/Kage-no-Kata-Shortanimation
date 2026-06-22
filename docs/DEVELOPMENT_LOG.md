@@ -27,6 +27,28 @@ tasks are attempted or completed.
 
 ## Entries
 
+### 2026-06-22: Portable application baseline
+
+- Commit: Pending
+- Responsible developer: Julian Meyer
+- Configuration and compiler: CMake 4.2.1, C++23, AppleClang 21.0.0,
+  arm64 macOS, Debug and Release
+- Integrated result: The framework-backed application opens a 1280 x 720
+  window, runs a VSync render loop, clears the framebuffer, displays runtime
+  diagnostics through ImGui, and handles Escape as a close request.
+- Verification procedure: Configured fresh Debug and Release build trees,
+  downloaded every declared dependency with SHA-256 verification, built both
+  configurations, and ran the Debug executable for a sustained smoke test.
+- Evidence and metrics: Both builds completed without compiler diagnostics. The
+  runtime reported Apple M4, OpenGL 4.1 Metal 90.5, and GLSL 4.10.
+- macOS status: Configure, Debug build, Release build, context creation, and
+  render-loop smoke test pass.
+- Windows status: Configure, build, and runtime verification remain pending.
+- Known limitations: The baseline renders only a clear frame and diagnostics;
+  Windows runtime evidence requires the target machine.
+- Next integrated step: Export the two-action GLB test character and define its
+  import validation data before implementing static vertex loading.
+
 ### 2026-06-21: Engineering standards baseline
 
 - Commit: Pending

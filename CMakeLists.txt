@@ -6,14 +6,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(SRC
+  src/app/main_app.cpp
   src/main.cpp
 )
 
 include(FetchContent)
+find_package(Git REQUIRED)
 FetchContent_Declare(
   framework
   URL https://github.com/julcst/gltemplate/archive/v1.7b.tar.gz
+  URL_HASH SHA256=78c8b4f4e192943be35c6cb672365c02832f35e63dd10ca1be6a28a9e01e8362
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  PATCH_COMMAND
+    "${GIT_EXECUTABLE}" apply --whitespace=nowarn
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/gltemplate-v1.7b.patch"
 )
 FetchContent_MakeAvailable(framework)
 
