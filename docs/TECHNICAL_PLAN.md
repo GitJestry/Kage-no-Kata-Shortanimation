@@ -3,7 +3,7 @@
 ## Foundation
 
 - C++23 and CMake 3.26+
-- `julcst/gltemplate` v1.7b
+- `julcst/gltemplate` v1.7b behind the [framework boundary](FRAMEWORK_BOUNDARY.md)
 - OpenGL 4.1 on macOS and Windows
 - Blender-authored glTF 2.0 `.glb` assets
 - Approved `tinygltf` parsing and `miniaudio` playback

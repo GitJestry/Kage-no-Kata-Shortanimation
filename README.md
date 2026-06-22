@@ -10,7 +10,9 @@ The film follows the last heir of a Shinobi sword school during a morning traini
 
 Blender provides meshes, UVs, materials, armatures, skin weights, and named animation clips. The C++ application imports glTF 2.0 data, samples keyframes, blends poses, performs GPU skinning, and connects animation with interaction, physics, particles, audio, and rendering.
 
-The runtime targets OpenGL 4.1 on macOS and Windows. The university framework `julcst/gltemplate` v1.7b provides the window, OpenGL context, and GPU resource wrappers.
+The runtime targets OpenGL 4.1 on macOS and Windows. The university framework
+`julcst/gltemplate` v1.7b provides window, context, input, and ImGui integration;
+project-owned types implement the rendering and runtime systems.
 
 ## Build
 
@@ -25,6 +27,7 @@ CMake fetches the pinned framework version. Visual Studio or Ninja build the pro
 
 - [Story and visual concept](docs/CONCEPT.md)
 - [Runtime architecture](docs/TECHNICAL_PLAN.md)
+- [University framework boundary](docs/FRAMEWORK_BOUNDARY.md)
 - [Code style](docs/CODE_STYLE.md)
 - [Platform independence](docs/PLATFORM_INDEPENDENCE.md)
 - [Development log and milestone evidence](docs/DEVELOPMENT_LOG.md)

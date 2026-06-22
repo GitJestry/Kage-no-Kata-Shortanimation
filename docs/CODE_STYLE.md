@@ -21,6 +21,16 @@ Files use UTF-8, Unix line endings, and a final newline. Header files use
 `#pragma once`. Includes are ordered from the matching project header, through
 other project headers and third-party headers, to standard-library headers.
 
+## Namespaces
+
+Project-owned C++ code uses the root namespace `kage`. Larger systems use one
+descriptive domain namespace such as `kage::app`, `kage::render`,
+`kage::animation`, or `kage::physics`. Class names remain concise inside that
+scope: `kage::render::GpuMesh` instead of `KageGpuMesh`.
+
+Framework and third-party names retain their original ownership. `using namespace`
+directives remain local to implementation files.
+
 ## Design Rules
 
 - Function names are clear, descriptive, and communicate side effects.
