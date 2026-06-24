@@ -85,9 +85,9 @@ GPU objects are destroyed while the framework context remains current.
 ## Compatibility and Reproducibility
 
 The framework archive remains pinned to v1.7b with a SHA-256 hash. FetchContent
-applies `cmake/patches/gltemplate-v1.7b.patch`, which selects the shared OpenGL
-4.1 path and fixes dependency revisions. The patch is reviewed whenever the
-framework revision changes.
+uses `cmake/PatchGltemplate.cmake` to select the shared OpenGL 4.1 path and fix
+dependency revisions. The CMake patch step is reviewed whenever the framework
+revision changes.
 
 Release inputs use exact dependency revisions. Build configuration records the
 framework archive hash and avoids silent substitution with system packages.

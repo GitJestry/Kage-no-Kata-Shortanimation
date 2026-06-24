@@ -17,17 +17,20 @@ set(SRC
 )
 
 include(FetchContent)
-find_package(Git REQUIRED)
-FetchContent_Declare(
+include(cmake/PatchGltemplate.cmake)
+
+set(FRAMEWORK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/framework-src")
+set(FRAMEWORK_BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/framework-build")
+FetchContent_Populate(
   framework
   URL https://github.com/julcst/gltemplate/archive/v1.7b.tar.gz
   URL_HASH SHA256=78c8b4f4e192943be35c6cb672365c02832f35e63dd10ca1be6a28a9e01e8362
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  PATCH_COMMAND
-    "${GIT_EXECUTABLE}" apply --whitespace=nowarn
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/gltemplate-v1.7b.patch"
+  SOURCE_DIR "${FRAMEWORK_SOURCE_DIR}"
+  BINARY_DIR "${FRAMEWORK_BINARY_DIR}"
 )
-FetchContent_MakeAvailable(framework)
+kage_patch_gltemplate("${FRAMEWORK_SOURCE_DIR}")
+add_subdirectory("${FRAMEWORK_SOURCE_DIR}" "${FRAMEWORK_BINARY_DIR}")
 
 set(TINYGLTF_BUILD_LOADER_EXAMPLE OFF CACHE BOOL "" FORCE)
 set(TINYGLTF_BUILD_GL_EXAMPLES OFF CACHE BOOL "" FORCE)
