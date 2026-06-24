@@ -27,6 +27,41 @@ tasks are attempted or completed.
 
 ## Entries
 
+### 2026-06-24: Static GLB import and rendering
+
+- Commit: `9c47682`, `86fa392`, `fff8f71`, `f27e31c`, `19703cf`,
+  `508508c`
+- Responsible developer: Julian Meyer
+- Configuration and compiler: CMake 4.2.1, C++23, AppleClang 21.0.0
+  (`clang-2100.1.1.101`), arm64 macOS, Debug and Release
+- Integrated result: The runtime loads `sword.glb` and `torii_gate.glb` from
+  copied executable-relative assets, reports import diagnostics in ImGui,
+  uploads static primitives through project-owned OpenGL RAII objects, and
+  renders a selectable untextured GLB mesh with depth testing.
+- Verification procedure: Configured and built Debug in `build-week1-debug`,
+  configured and built Release in `build-week1-release-patched`, launched the
+  Release executable from its build output directory, confirmed copied model
+  assets, and searched source code for forbidden DSA calls with
+  `rg -n "glNamed|glVertexArray|glProgramUniform" src`.
+- Evidence and metrics:
+
+  | Asset | Scene | Meshes | Primitives | Vertices | Indices | Triangles | Materials | Bounds size |
+  | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+  | `sword.glb` | `Scene` | 9 | 9 | 4,356 | 12,108 | 4,036 | 6 | 0.076 x 0.078 x 1.163 |
+  | `torii_gate.glb` | `Scene` | 6 | 6 | 1,244 | 2,232 | 744 | 4 | 11.044 x 7.538 x 1.354 |
+
+  Runtime startup reported Apple M4, OpenGL 4.1 Metal 90.5, and GLSL 4.10.
+- macOS status: Configure, Debug build, Release build, executable-relative
+  asset copy, GLB import, static mesh upload, and Release startup pass.
+- Windows status: Configure, build, and runtime verification remain pending on
+  a Windows machine.
+- Known limitations: This milestone covers static GLB rendering. Texture
+  sampling, skinned vertices, inverse bind matrices, animation clips, and the
+  two-action character asset remain separate Week 1 tasks.
+- Next integrated step: Extend the same loader and render path to the
+  two-action character GLB once the asset is available, starting with bind-pose
+  skeleton and inverse bind matrix validation.
+
 ### 2026-06-22: Portable application baseline
 
 - Commit: Pending

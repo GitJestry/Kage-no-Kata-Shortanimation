@@ -9,7 +9,8 @@
 - [x] Launch the OpenGL 4.1 application baseline on macOS.
 - [ ] Configure, build, and launch the application baseline on Windows.
 - [ ] Export a GLB test character with two actions.
-- [ ] Load static and skinned vertex data.
+- [x] Load and render static GLB mesh data.
+- [ ] Load skinned vertex data.
 - [ ] Evaluate the joint hierarchy and inverse bind matrices.
 - [ ] Render one clip with the skinning shader and bone buffer.
 - [ ] Capture the milestone and import metrics for the report.
