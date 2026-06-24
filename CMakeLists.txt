@@ -10,6 +10,9 @@ set(SRC
   src/app/main_app.cpp
   src/main.cpp
   src/platform/runtime_paths.cpp
+  src/render/gpu_buffer.cpp
+  src/render/shader_program.cpp
+  src/render/vertex_array.cpp
 )
 
 include(FetchContent)
