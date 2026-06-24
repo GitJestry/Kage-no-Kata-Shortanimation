@@ -6,6 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(SRC
+  src/assets/gltf_asset_loader.cpp
   src/app/main_app.cpp
   src/main.cpp
   src/platform/runtime_paths.cpp
