@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/runtime_paths.hpp"
+
 #include <framework/app.hpp>
 
 namespace kage::app {
@@ -13,6 +15,9 @@ class MainApp final : public App {
   void buildImGui() override;
   void keyCallback(Key parKey, Action parAction,
                    Modifier parModifier) override;
+
+ private:
+  platform::RuntimePaths m_runtime_paths;
 };
 
 }  // namespace kage::app

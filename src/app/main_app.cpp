@@ -3,6 +3,8 @@
 #include <glad/gl.h>
 #include <imgui.h>
 
+#include <filesystem>
+
 namespace {
 
 constexpr unsigned int WINDOW_WIDTH = 1280;
@@ -13,11 +15,21 @@ constexpr float CLEAR_COLOR_BLUE = 0.055f;
 constexpr float CLEAR_COLOR_ALPHA = 1.0f;
 constexpr float MILLISECONDS_PER_SECOND = 1000.0f;
 
+void showPathStatus(const char* parLabel,
+                    const std::filesystem::path& parPath) {
+  const bool path_exists = std::filesystem::exists(parPath);
+  const std::string path_string = parPath.string();
+  ImGui::Text("%s: %s", parLabel, path_exists ? "found" : "missing");
+  ImGui::TextWrapped("%s", path_string.c_str());
+}
+
 }  // namespace
 
 namespace kage::app {
 
-MainApp::MainApp() : App(WINDOW_WIDTH, WINDOW_HEIGHT) {
+MainApp::MainApp()
+    : App(WINDOW_WIDTH, WINDOW_HEIGHT),
+      m_runtime_paths(platform::RuntimePaths::fromExecutable()) {
   setTitle("Kage no Kata - The Final Cut");
   setVSync(true);
 }
@@ -35,6 +47,11 @@ void MainApp::buildImGui() {
   ImGui::Text("Framebuffer: %.0f x %.0f", resolution.x, resolution.y);
   ImGui::Text("Frame time: %.3f ms", delta * MILLISECONDS_PER_SECOND);
   ImGui::Text("Frame: %u", frames);
+  ImGui::Separator();
+  ImGui::TextUnformatted("Runtime assets");
+  showPathStatus("Sword GLB", m_runtime_paths.getModelPath("sword.glb"));
+  showPathStatus("Torii gate GLB",
+                 m_runtime_paths.getModelPath("torii_gate.glb"));
   ImGui::TextUnformatted("Press Escape to close.");
   ImGui::End();
 }

@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(SRC
   src/app/main_app.cpp
   src/main.cpp
+  src/platform/runtime_paths.cpp
 )
 
 include(FetchContent)
