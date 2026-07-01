@@ -8,12 +8,15 @@
 - [x] Configure and build Debug and Release on macOS.
 - [x] Launch the OpenGL 4.1 application baseline on macOS.
 - [ ] Configure, build, and launch the application baseline on Windows.
-- [ ] Export a GLB test character with two actions.
+- [x] Hydrate the samurai GLB and Blender source through Git LFS.
+- [x] Validate the samurai GLB for skin, joints, weights, inverse bind
+  matrices, and one animation clip.
+- [ ] Export a GLB test character with two authored actions.
 - [x] Load and render static GLB mesh data.
-- [ ] Load skinned vertex data.
-- [ ] Evaluate the joint hierarchy and inverse bind matrices.
+- [x] Load skinned vertex data.
+- [x] Evaluate the joint hierarchy and inverse bind matrices.
 - [ ] Render one clip with the skinning shader and bone buffer.
-- [ ] Capture the milestone and import metrics for the report.
+- [x] Capture the milestone and import metrics for the report.
 
 Acceptance: the test character displays a stable bind pose and one complete clip.
 

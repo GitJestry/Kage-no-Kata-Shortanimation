@@ -10,7 +10,12 @@ Blender authors geometry, UVs, materials, armatures, skin weights, and animation
 - `assets/audio/`: ambience and event samples.
 - `assets/reference/`: concepts, storyboard, and course material.
 
-GLB/glTF 2.0 carries meshes, materials, textures, node hierarchies, skins, and named animations.
+Large `.glb` and `.blend` files are handled through Git LFS. Always run
+`git lfs pull` after pulling a branch that changes models or Blender sources.
+
+GLB/glTF 2.0 carries meshes, materials, textures, node hierarchies, skins,
+inverse bind matrices, named animations, and named marker nodes exported from
+Blender empties.
 
 ## Shared Conventions
 
@@ -22,7 +27,10 @@ GLB/glTF 2.0 carries meshes, materials, textures, node hierarchies, skins, and n
 - Animation sampling: 30 FPS.
 - Materials: Principled BSDF values and image textures.
 
-Use `glTF Binary (.glb)`, animation mode `Actions`, enabled skinning, four bone influences, and deformation bones only.
+Use `glTF Binary (.glb)`, animation mode `Actions`, enabled skinning, four bone
+influences, and deformation bones only. Constraint or attachment points should
+be authored as named empties or marker nodes outside the deforming joint set so
+the importer can expose them as runtime markers.
 
 ## Character Actions
 
@@ -40,7 +48,10 @@ armature.
 
 ## Environment Assets
 
-The bamboo export contains named rigid segments and joint points. Runtime physics assigns mass, inertia, and constraints. The hut, gate, sword, and family portrait load as static GLB assets. C++ generates terrain and places vegetation from height, slope, and seed.
+The bamboo export contains named rigid segments and joint points. Runtime
+physics assigns mass, inertia, and constraints from imported marker and node
+data. The hut, gate, sword, and family portrait load as static GLB assets. C++
+generates terrain and places vegetation from height, slope, and seed.
 
 ## Export Check
 
@@ -48,5 +59,13 @@ The bamboo export contains named rigid segments and joint points. Runtime physic
 - Meshes contain UVs, normals, and complete material assignments.
 - Skin weights sum to one and use up to four joints.
 - GLB animation names and time ranges match the action table.
+- Constraint, attachment, and bamboo joint markers use stable descriptive names.
 - The `Ready` pose keeps both hands on the hilt and both feet planted.
 - Texture and model licenses are recorded.
+
+## Shared World File
+
+Imported assets become editable entities inside
+`projects/kage_no_kata_world.kage.json`. Save this file through the editor when
+world placement, scene names, transforms, lights, sky, or floor settings belong
+in the shared branch. `.kage_local/` remains machine-local.

@@ -16,17 +16,39 @@ project-owned types implement the rendering and runtime systems.
 
 ## Build
 
+Large assets use Git LFS:
+
+```bash
+git lfs install
+git lfs pull
+```
+
 ```bash
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-CMake fetches the pinned framework version. Visual Studio or Ninja build the project on Windows; Xcode, Make, or Ninja build the same sources on macOS.
+CMake fetches the pinned framework version. Visual Studio or Ninja builds on
+Windows; Xcode, Make, or Ninja builds on macOS.
+
+Run from the project root:
+
+```bash
+build/kage_no_kata
+```
+
+Import checks:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
 
 ## Documentation
 
 - [Story and visual concept](docs/CONCEPT.md)
-- [Runtime architecture](docs/TECHNICAL_PLAN.md)
+- [Engine architecture](docs/ARCHITECTURE.md)
+- [Editor workflow](docs/EDITOR_WORKFLOW.md)
+- [Runtime architecture and future systems](docs/TECHNICAL_PLAN.md)
 - [University framework boundary](docs/FRAMEWORK_BOUNDARY.md)
 - [Code style](docs/CODE_STYLE.md)
 - [Platform independence](docs/PLATFORM_INDEPENDENCE.md)
@@ -45,4 +67,7 @@ CMake fetches the pinned framework version. Visual Studio or Ninja build the pro
 
 ## Current Milestone
 
-The repository contains the agreed architecture, asset contract, feature scope, and delivery schedule. The first runtime milestone loads a GLB test character and plays one skinned animation clip.
+The editor loads Blender GLBs, validates the samurai rig, places entities,
+edits transforms, and saves the tracked world at
+`projects/kage_no_kata_world.kage.json`. Local editor state stays in
+`.kage_local/`.

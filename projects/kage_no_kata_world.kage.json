@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "active_scene": 0,
+  "render": {
+    "sky": 1,
+    "floor_grid_visible": true,
+    "floor_grid_radius": 80,
+    "material_debug_mode": 0,
+    "gizmo_axis_space": 0
+  },
+  "scenes": [
+    {
+      "name": "Kage no Kata World",
+      "editor_camera": 0,
+      "primary_light": 1,
+      "entities": [
+        {
+          "id": 0,
+          "name": "Editor Camera",
+          "transform": {
+            "position": [4.0, 2.6, 6.0],
+            "rotation": [
+              0.9491625,
+              -0.12294588,
+              0.2873833,
+              0.03722502
+            ],
+            "scale": [1.0, 1.0, 1.0]
+          },
+          "camera": {
+            "active": true,
+            "fov": 50.0,
+            "near": 0.03,
+            "far": 500.0
+          }
+        },
+        {
+          "id": 1,
+          "name": "Point Light",
+          "transform": {
+            "position": [3.0, 4.0, 3.0],
+            "rotation": [1.0, 0.0, 0.0, 0.0],
+            "scale": [1.0, 1.0, 1.0]
+          },
+          "point_light": {
+            "enabled": true,
+            "color": [1.0, 0.86, 0.56],
+            "intensity": 3.0,
+            "range": 9.0
+          }
+        },
+        {
+          "id": 2,
+          "name": "Torii gate 1",
+          "transform": {
+            "position": [0.0, 0.0, 0.0],
+            "rotation": [1.0, 0.0, 0.0, 0.0],
+            "scale": [1.0, 1.0, 1.0]
+          },
+          "mesh": {
+            "asset_index": 1,
+            "opacity": 1.0,
+            "visible": true
+          }
+        },
+        {
+          "id": 3,
+          "name": "Sword 1",
+          "transform": {
+            "position": [-1.4, 0.0, 0.0],
+            "rotation": [1.0, 0.0, 0.0, 0.0],
+            "scale": [1.0, 1.0, 1.0]
+          },
+          "mesh": {
+            "asset_index": 0,
+            "opacity": 1.0,
+            "visible": true
+          }
+        }
+      ]
+    }
+  ]
+}

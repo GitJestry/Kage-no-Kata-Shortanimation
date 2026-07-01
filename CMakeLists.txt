@@ -6,14 +6,37 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(SRC
+  src/assets/asset_registry.cpp
   src/assets/gltf_asset_loader.cpp
+  src/assets/model_validation.cpp
+  src/animation/animator.cpp
   src/app/main_app.cpp
+  src/camera/camera.cpp
+  src/camera/camera_system.cpp
+  src/camera/fly_camera_controller.cpp
+  src/editor/editor_ui.cpp
+  src/editor/gizmo_controller.cpp
+  src/editor/placement_controller.cpp
+  src/editor/selection_controller.cpp
+  src/editor/world_editor.cpp
+  src/engine/editor_camera_bridge.cpp
+  src/engine/engine_core.cpp
+  src/engine/project_serializer.cpp
+  src/lighting/lighting_system.cpp
   src/main.cpp
   src/platform/runtime_paths.cpp
   src/render/gpu_buffer.cpp
   src/render/gpu_mesh.cpp
+  src/render/line_renderer.cpp
+  src/render/mesh_resource_cache.cpp
   src/render/shader_program.cpp
+  src/render/solid_gizmo_renderer.cpp
+  src/render/static_mesh_renderer.cpp
+  src/render/texture_2d.cpp
   src/render/vertex_array.cpp
+  src/render/world_renderer.cpp
+  src/scene/scene_manager.cpp
+  src/scene/world.cpp
 )
 
 include(FetchContent)
@@ -50,6 +73,16 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf)
 
+add_executable(asset_import_check
+  tests/asset_import_check.cpp
+  src/animation/animator.cpp
+  src/assets/gltf_asset_loader.cpp
+  src/assets/model_validation.cpp
+)
+target_compile_features(asset_import_check PRIVATE cxx_std_23)
+target_include_directories(asset_import_check PRIVATE src)
+target_link_libraries(asset_import_check PRIVATE tinygltf glm)
+
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
 else()
@@ -76,6 +109,8 @@ foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)
   add_custom_command(
     TARGET ${PROJECT_NAME}
     POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
+      "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
       "${CMAKE_CURRENT_SOURCE_DIR}/assets/${ASSET_DIRECTORY}"
       "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
@@ -87,6 +122,24 @@ endforeach()
 install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION .
   BUNDLE DESTINATION .
+)
+
+enable_testing()
+add_test(
+  NAME asset_import_sword
+  COMMAND asset_import_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/sword.glb"
+)
+add_test(
+  NAME asset_import_torii_gate
+  COMMAND asset_import_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/torii_gate.glb"
+)
+add_test(
+  NAME asset_import_samurai_rig
+  COMMAND asset_import_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
+    --require-rig
 )
 
 foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)

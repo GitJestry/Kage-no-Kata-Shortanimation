@@ -65,12 +65,14 @@ ShaderProgram::ShaderProgram(std::string_view parVertexSource,
 }
 
 ShaderProgram::ShaderProgram(ShaderProgram&& parOther) noexcept
-    : m_handle(std::exchange(parOther.m_handle, 0)) {}
+    : m_handle(std::exchange(parOther.m_handle, 0)),
+      m_uniform_locations(std::move(parOther.m_uniform_locations)) {}
 
 ShaderProgram& ShaderProgram::operator=(ShaderProgram&& parOther) noexcept {
   if (this != &parOther) {
     release();
     m_handle = std::exchange(parOther.m_handle, 0);
+    m_uniform_locations = std::move(parOther.m_uniform_locations);
   }
 
   return *this;
@@ -84,10 +86,17 @@ void ShaderProgram::create(std::string_view parVertexSource,
                            std::string_view parFragmentSource) {
   release();
 
-  const GLuint vertex_shader =
-      compileShader(GL_VERTEX_SHADER, parVertexSource);
-  const GLuint fragment_shader =
-      compileShader(GL_FRAGMENT_SHADER, parFragmentSource);
+  GLuint vertex_shader = 0;
+  GLuint fragment_shader = 0;
+  try {
+    vertex_shader = compileShader(GL_VERTEX_SHADER, parVertexSource);
+    fragment_shader = compileShader(GL_FRAGMENT_SHADER, parFragmentSource);
+  } catch (...) {
+    if (vertex_shader != 0) {
+      glDeleteShader(vertex_shader);
+    }
+    throw;
+  }
 
   m_handle = glCreateProgram();
   if (m_handle == 0) {
@@ -113,6 +122,8 @@ void ShaderProgram::create(std::string_view parVertexSource,
     release();
     throw std::runtime_error("Failed to link OpenGL shader program: " + log);
   }
+
+  m_uniform_locations.clear();
 }
 
 void ShaderProgram::use() const {
@@ -128,6 +139,7 @@ void ShaderProgram::release() {
     glDeleteProgram(m_handle);
     m_handle = 0;
   }
+  m_uniform_locations.clear();
 }
 
 void ShaderProgram::setMat4(const char* parName,
@@ -136,10 +148,29 @@ void ShaderProgram::setMat4(const char* parName,
                      glm::value_ptr(parValue));
 }
 
+void ShaderProgram::setFloat(const char* parName, float parValue) const {
+  glUniform1f(getUniformLocation(parName), parValue);
+}
+
+void ShaderProgram::setInt(const char* parName, int parValue) const {
+  glUniform1i(getUniformLocation(parName), parValue);
+}
+
+void ShaderProgram::setVec2(const char* parName,
+                            const glm::vec2& parValue) const {
+  glUniform2f(getUniformLocation(parName), parValue.x, parValue.y);
+}
+
 void ShaderProgram::setVec3(const char* parName,
                             const glm::vec3& parValue) const {
   glUniform3f(getUniformLocation(parName), parValue.x, parValue.y,
               parValue.z);
+}
+
+void ShaderProgram::setVec4(const char* parName,
+                            const glm::vec4& parValue) const {
+  glUniform4f(getUniformLocation(parName), parValue.x, parValue.y, parValue.z,
+              parValue.w);
 }
 
 GLuint ShaderProgram::getHandle() const {
@@ -155,7 +186,15 @@ GLint ShaderProgram::getUniformLocation(const char* parName) const {
     throw std::runtime_error("Cannot query an empty OpenGL shader program");
   }
 
-  return glGetUniformLocation(m_handle, parName);
+  const std::string uniform_name(parName);
+  const auto cached_location = m_uniform_locations.find(uniform_name);
+  if (cached_location != m_uniform_locations.end()) {
+    return cached_location->second;
+  }
+
+  const GLint location = glGetUniformLocation(m_handle, parName);
+  m_uniform_locations.emplace(std::move(uniform_name), location);
+  return location;
 }
 
 }  // namespace kage::render

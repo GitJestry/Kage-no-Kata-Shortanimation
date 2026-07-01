@@ -27,7 +27,37 @@ tasks are attempted or completed.
 
 ## Entries
 
-### 2026-06-24: Static GLB import and rendering
+### 2026-07-01: Editor architecture cleanup and samurai rig validation
+
+- Commit: Pending
+- Responsible developer: Julian Meyer
+- Configuration and compiler: CMake 4.2.1, C++23, AppleClang 21.0.0,
+  arm64 macOS, Debug
+- Integrated result: The Week 1 editor stores tracked world data in
+  `projects/kage_no_kata_world.kage.json` and local session data in
+  `.kage_local/`. Persistence moved from `EngineCore` to
+  `ProjectSerializer`; shared projection math moved to
+  `math::screen_projection`; the empty runtime module was removed.
+- Verification procedure: Built `build`, launched `build/kage_no_kata`, ran
+  `ctest --test-dir build --output-on-failure`, checked whitespace with
+  `git diff --check` and `git diff --cached --check`, searched production
+  source for forbidden OpenGL DSA calls, and verified Git LFS asset tracking
+  with `git lfs ls-files`.
+- Evidence and metrics: `asset_import_samurai_rig` passed. Direct import check
+  reported `samurai.glb`: 84 primitives, 126,600 vertices, 1 skin, 49 joints,
+  and 1 animation. `EngineCore` went from 1,363 to 976 lines.
+- macOS status: Build, startup smoke test, static GLB imports, samurai rig
+  validation, LFS tracking, shared project file loading, and local session
+  persistence pass.
+- Windows status: Configure, build, runtime launch, and LFS hydration remain
+  pending on a Windows machine.
+- Known limitations: The samurai GLB imports and validates rig data, but GPU
+  skinned rendering, clip playback in the viewport, cross-fades, IK, and final
+  film camera timing are not complete.
+- Next integrated step: Add the skinned mesh GPU path and render the samurai in
+  bind pose plus the first sampled animation clip.
+
+### 2026-06-24: GLB runtime import and scene foundation
 
 - Commit: `9c47682`, `86fa392`, `fff8f71`, `f27e31c`, `19703cf`,
   `508508c`
@@ -35,13 +65,15 @@ tasks are attempted or completed.
 - Configuration and compiler: CMake 4.2.1, C++23, AppleClang 21.0.0
   (`clang-2100.1.1.101`), arm64 macOS, Debug and Release
 - Integrated result: The runtime loads `sword.glb` and `torii_gate.glb` from
-  copied executable-relative assets, reports import diagnostics in ImGui,
-  uploads static primitives through project-owned OpenGL RAII objects, and
-  renders a selectable untextured GLB mesh with depth testing.
-- Verification procedure: Configured and built Debug in `build-week1-debug`,
-  configured and built Release in `build-week1-release-patched`, launched the
-  Release executable from its build output directory, confirmed copied model
-  assets, and searched source code for forbidden DSA calls with
+  copied executable-relative assets, imports GLB document data for nodes, static
+  primitives, materials, textures, skins, inverse bind matrices, animation
+  channels, and Blender marker nodes, then creates selectable scene entities
+  rendered through project-owned OpenGL RAII objects.
+- Verification procedure: Configured and built Debug and Release in `build`,
+  launched the executable from its build output directory, confirmed copied
+  model assets, verified the app-owned render loop delegates to the runtime
+  scene manager, world, camera, lighting, and editor interface, and searched
+  source code for forbidden DSA calls with
   `rg -n "glNamed|glVertexArray|glProgramUniform" src`.
 - Evidence and metrics:
 
@@ -52,15 +84,22 @@ tasks are attempted or completed.
 
   Runtime startup reported Apple M4, OpenGL 4.1 Metal 90.5, and GLSL 4.10.
 - macOS status: Configure, Debug build, Release build, executable-relative
-  asset copy, GLB import, static mesh upload, and Release startup pass.
+  asset copy, GLB document import, static mesh upload, scene entity creation,
+  staged entity placement, scene selection, quaternion fly/orbit camera control,
+  mouse-look navigation, left-panel editor controls, floor/grid visualization,
+  entity light controls, material texture rendering, lighting uniforms, and
+  Release startup pass.
 - Windows status: Configure, build, and runtime verification remain pending on
   a Windows machine.
-- Known limitations: This milestone covers static GLB rendering. Texture
-  sampling, skinned vertices, inverse bind matrices, animation clips, and the
+- Known limitations: This milestone imports rigging and animation document data,
+  but bind-pose evaluation, clip playback, GPU skinning, cross-fades, IK, and the
   two-action character asset remain separate Week 1 tasks.
-- Next integrated step: Extend the same loader and render path to the
-  two-action character GLB once the asset is available, starting with bind-pose
-  skeleton and inverse bind matrix validation.
+- Samurai branch finding: `origin/test-samurai-rig` contains Git LFS pointer
+  files for `samurai.glb` and `samurai.blend`; the actual binary payload is not
+  available until Git LFS is installed and the files are hydrated.
+- Next integrated step: Evaluate imported node hierarchies into skeleton poses,
+  upload skinning matrices, and render the two-action character GLB in bind pose
+  and one sampled clip.
 
 ### 2026-06-22: Portable application baseline
 

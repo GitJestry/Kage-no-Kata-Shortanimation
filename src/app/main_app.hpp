@@ -1,18 +1,14 @@
 #pragma once
 
-#include "assets/gltf_asset_loader.hpp"
-#include "platform/runtime_paths.hpp"
-#include "render/gpu_buffer.hpp"
-#include "render/gpu_mesh.hpp"
-#include "render/shader_program.hpp"
-#include "render/vertex_array.hpp"
+#include "editor/world_editor.hpp"
+#include "engine/engine_core.hpp"
+#include "input/input_events.hpp"
 
 #include <framework/app.hpp>
 
-#include <filesystem>
-#include <optional>
+#include <glm/glm.hpp>
+
 #include <string>
-#include <vector>
 
 namespace kage::app {
 
@@ -25,34 +21,28 @@ class MainApp final : public App {
   void buildImGui() override;
   void keyCallback(Key parKey, Action parAction,
                    Modifier parModifier) override;
+  void clickCallback(Button parButton, Action parAction,
+                     Modifier parModifier) override;
+  void moveCallback(const glm::vec2& parMovement, bool parLeftButton,
+                    bool parRightButton, bool parMiddleButton) override;
+  void scrollCallback(float parXAmount, float parYAmount) override;
 
  private:
-  struct LoadedAsset final {
-    std::string label;
-    std::filesystem::path path;
-    glm::vec3 material_color{1.0f};
-    std::optional<assets::StaticModel> model;
-    std::optional<render::GpuMesh> gpu_mesh;
-    std::string error;
-  };
+  [[nodiscard]] input::EditorInputSnapshot collectInputSnapshot();
+  [[nodiscard]] bool isKeyPressed(Key parKey) const;
+  [[nodiscard]] bool isMouseButtonPressed(Button parButton) const;
 
-  void loadStaticAsset(std::string parLabel, std::filesystem::path parPath,
-                       const glm::vec3& parMaterialColor);
-  void initializeTestTriangle();
-  void initializeStaticMeshShader();
-  void drawTestTriangle() const;
-  void drawSelectedAsset() const;
-  [[nodiscard]] glm::mat4 buildViewProjection(
-      const assets::AssetBounds& parBounds) const;
-  [[nodiscard]] const LoadedAsset* getSelectedAsset() const;
-
-  platform::RuntimePaths m_runtime_paths;
-  std::vector<LoadedAsset> m_assets;
-  render::ShaderProgram m_test_triangle_shader;
-  render::GpuBuffer m_test_triangle_vertex_buffer;
-  render::VertexArray m_test_triangle_vertex_array;
-  render::ShaderProgram m_static_mesh_shader;
-  int m_selected_asset_index = 0;
+  engine::EngineCore m_engine;
+  editor::WorldEditor m_editor;
+  glm::vec2 m_last_ui_cursor{0.0f};
+  bool m_last_left_mouse_down = false;
+  bool m_last_right_mouse_down = false;
+  bool m_last_middle_mouse_down = false;
+  bool m_last_escape_down = false;
+  bool m_last_delete_down = false;
+  bool m_last_tab_down = false;
+  float m_scroll_y = 0.0f;
+  std::string m_imgui_ini_path;
 };
 
 }  // namespace kage::app

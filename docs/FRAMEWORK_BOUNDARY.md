@@ -77,10 +77,22 @@ Rendering types are introduced when an integrated milestone requires them:
 | `kage::render::ShaderProgram` | Compile, link, bind, cache locations, and update uniforms. |
 | `kage::render::Texture2D` | Own texture storage, sampling state, and image upload. |
 | `kage::render::RenderTarget` | Own framebuffer attachments and validate completeness. |
-| `kage::render::GpuMesh` | Own vertex/index storage and draw static or skinned glTF primitive ranges. |
+| `kage::render::GpuMesh` | Own vertex/index storage and draw uploaded primitive ranges. |
+| `kage::engine::EngineCore` | Coordinate assets, scenes, camera, lighting, persistence, and rendering without owning editor UI behavior. |
+| `kage::assets::AssetRegistry` | Own parsed GLB/model documents, asset library entries, and import/material diagnostics. |
+| `kage::render::MeshResourceCache` | Upload and cache GPU mesh and texture resources from parsed asset data. |
+| `kage::scene::SceneManager` | Own named scenes, active scene state, selected entity, and editor camera/light entity ids. |
+| `kage::render::WorldRenderer` | Render static meshes, the editor grid, placement ghosts, light/camera handles, and selection visualization. |
+| `kage::scene::World` | Store runtime entities and transform/static mesh components. |
+| `kage::camera::CameraSystem` | Control fly, orbit, and future film-path camera modes over one camera state. |
+| `kage::lighting::LightingSystem` | Provide scene light state consumed by renderers. |
 
 Each type uses OpenGL 4.1 bind-to-edit functions and move-only RAII ownership.
 GPU objects are destroyed while the framework context remains current.
+
+glTF base-color images are represented by `Texture2D` because they are 2D image
+data sampled with mesh UV coordinates. Broader texture abstractions should wait
+until a real cubemap, render-target, or volume-texture use case exists.
 
 ## Compatibility and Reproducibility
 
@@ -111,3 +123,5 @@ public interfaces contain no framework resource types.
   through `RuntimePaths`.
 - Static and skinned meshes share the project rendering layer.
 - Framework headers remain confined to the application integration boundary.
+- Scene, camera, lighting, and asset systems remain independent of framework
+  resource classes.
