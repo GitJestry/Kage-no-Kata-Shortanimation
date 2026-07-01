@@ -27,35 +27,34 @@ tasks are attempted or completed.
 
 ## Entries
 
-### 2026-07-01: Editor architecture cleanup and samurai rig validation
+### 2026-07-02: KageEngine skinning, lighting, and editor persistence pass
 
 - Commit: Pending
 - Responsible developer: Julian Meyer
 - Configuration and compiler: CMake 4.2.1, C++23, AppleClang 21.0.0,
   arm64 macOS, Debug
-- Integrated result: The Week 1 editor stores tracked world data in
-  `projects/kage_no_kata_world.kage.json` and local session data in
-  `.kage_local/`. Persistence moved from `EngineCore` to
-  `ProjectSerializer`; shared projection math moved to
-  `math::screen_projection`; the empty runtime module was removed.
-- Verification procedure: Built `build`, launched `build/kage_no_kata`, ran
-  `ctest --test-dir build --output-on-failure`, checked whitespace with
-  `git diff --check` and `git diff --cached --check`, searched production
-  source for forbidden OpenGL DSA calls, and verified Git LFS asset tracking
-  with `git lfs ls-files`.
+- Integrated result: The application is named KageEngine. The editor stores
+  tracked film-world data in `projects/kage_no_kata_world.kage.json` and local
+  scratch scenes in `.kage_local/editor_session.json`. Skinned mesh attributes,
+  joint matrix palettes, clip playback, and reusable pose blending are
+  integrated into the existing mesh path. Lighting now supports one sun plus up
+  to eight point lights.
+- Verification procedure: Configured and built `build/kage_engine`, ran
+  `ctest --test-dir build --output-on-failure`, and checked the rig import path.
 - Evidence and metrics: `asset_import_samurai_rig` passed. Direct import check
   reported `samurai.glb`: 84 primitives, 126,600 vertices, 1 skin, 49 joints,
-  and 1 animation. `EngineCore` went from 1,363 to 976 lines.
-- macOS status: Build, startup smoke test, static GLB imports, samurai rig
-  validation, LFS tracking, shared project file loading, and local session
-  persistence pass.
+  and 1 animation.
+- macOS status: Build, static GLB imports, samurai rig validation, shared
+  project file loading, local scratch-scene persistence, Dark Studio default,
+  sun-light default, and CTest pass.
 - Windows status: Configure, build, runtime launch, and LFS hydration remain
   pending on a Windows machine.
-- Known limitations: The samurai GLB imports and validates rig data, but GPU
-  skinned rendering, clip playback in the viewport, cross-fades, IK, and final
-  film camera timing are not complete.
-- Next integrated step: Add the skinned mesh GPU path and render the samurai in
-  bind pose plus the first sampled animation clip.
+- Known limitations: The current samurai GLB has one clip, so it proves rigging,
+  skinning, and clip playback but not final authored clip-to-clip blending. IK,
+  strike planning, bamboo physics, particles, audio, Windows verification, and
+  final film camera timing remain future tasks.
+- Next integrated step: Export a two-action samurai GLB and demonstrate a real
+  cross-fade through the Animation inspector.
 
 ### 2026-06-24: GLB runtime import and scene foundation
 

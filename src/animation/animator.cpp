@@ -116,6 +116,36 @@ Pose Animator::sampleClip(const assets::ModelAsset& parAsset,
   return makePoseFromLocals(parAsset, std::move(pose.local_transforms));
 }
 
+Pose Animator::blendPoses(const assets::ModelAsset& parAsset,
+                          const Pose& parFirst,
+                          const Pose& parSecond,
+                          float parAmount) {
+  const std::size_t count =
+      std::min(parFirst.local_transforms.size(),
+               parSecond.local_transforms.size());
+  std::vector<math::Transform> locals;
+  locals.reserve(parAsset.nodes.size());
+  for (const assets::GltfNode& node : parAsset.nodes) {
+    locals.push_back(node.local_transform);
+  }
+  const float amount = std::clamp(parAmount, 0.0f, 1.0f);
+
+  for (std::size_t index = 0; index < std::min(count, locals.size());
+       ++index) {
+    const math::Transform& first = parFirst.local_transforms[index];
+    const math::Transform& second = parSecond.local_transforms[index];
+    math::Transform transform;
+    transform.translation =
+        glm::mix(first.translation, second.translation, amount);
+    transform.rotation =
+        glm::normalize(glm::slerp(first.rotation, second.rotation, amount));
+    transform.scale = glm::mix(first.scale, second.scale, amount);
+    locals[index] = transform;
+  }
+
+  return makePoseFromLocals(parAsset, std::move(locals));
+}
+
 std::vector<glm::mat4> Animator::buildJointMatrices(
     const assets::ModelAsset& parAsset, std::size_t parSkinIndex,
     const Pose& parPose) {

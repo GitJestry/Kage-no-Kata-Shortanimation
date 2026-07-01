@@ -18,9 +18,10 @@ class SceneManager final {
     EntityId selected_entity;
     EntityId editor_camera_entity;
     EntityId primary_light_entity;
+    bool local_only = false;
   };
 
-  std::size_t createScene(std::string parName);
+  std::size_t createScene(std::string parName, bool parLocalOnly = false);
   bool deleteScene(std::size_t parSceneIndex);
   void clearScenes();
   void setActiveScene(std::size_t parSceneIndex);

@@ -6,6 +6,9 @@
 
 #include <glm/glm.hpp>
 
+#include <span>
+#include <vector>
+
 namespace kage::render {
 
 class StaticMeshRenderer final {
@@ -23,6 +26,7 @@ class StaticMeshRenderer final {
             const glm::vec3& parCameraPosition,
             const glm::mat4& parEntityTransform,
             const lighting::LightingState& parLighting,
+            std::span<const std::vector<glm::mat4>> parSkinMatrices,
             float parEntityOpacity,
             MaterialDebugMode parDebugMode) const;
   void drawOutline(const GpuMesh& parMesh,

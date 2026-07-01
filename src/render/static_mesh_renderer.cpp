@@ -7,9 +7,13 @@ layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inTexCoord;
 layout (location = 3) in vec4 inTangent;
+layout (location = 4) in vec4 inJoints;
+layout (location = 5) in vec4 inWeights;
 
 uniform mat4 u_model;
 uniform mat4 u_view_projection;
+uniform bool u_skinning_enabled;
+uniform mat4 u_joint_matrices[128];
 
 out vec3 worldNormal;
 out vec3 worldPosition;
@@ -18,10 +22,18 @@ out float tangentSign;
 out vec2 meshTexCoord;
 
 void main() {
-  vec4 world_position = u_model * vec4(inPosition, 1.0);
+  mat4 skin = mat4(1.0);
+  if (u_skinning_enabled) {
+    skin = u_joint_matrices[int(inJoints.x)] * inWeights.x +
+           u_joint_matrices[int(inJoints.y)] * inWeights.y +
+           u_joint_matrices[int(inJoints.z)] * inWeights.z +
+           u_joint_matrices[int(inJoints.w)] * inWeights.w;
+  }
+  vec4 skinned_position = skin * vec4(inPosition, 1.0);
+  vec4 world_position = u_model * skinned_position;
   mat3 normalMatrix = mat3(transpose(inverse(u_model)));
-  worldNormal = normalMatrix * inNormal;
-  worldTangent = normalMatrix * inTangent.xyz;
+  worldNormal = normalMatrix * mat3(skin) * inNormal;
+  worldTangent = normalMatrix * mat3(skin) * inTangent.xyz;
   tangentSign = inTangent.w;
   worldPosition = world_position.xyz;
   meshTexCoord = inTexCoord;
@@ -68,11 +80,11 @@ uniform vec3 u_ambient_color;
 uniform vec3 u_light_direction;
 uniform vec3 u_light_color;
 uniform float u_light_intensity;
-uniform bool u_point_light_enabled;
-uniform vec3 u_point_light_position;
-uniform vec3 u_point_light_color;
-uniform float u_point_light_intensity;
-uniform float u_point_light_range;
+uniform int u_point_light_count;
+uniform vec3 u_point_light_positions[8];
+uniform vec3 u_point_light_colors[8];
+uniform float u_point_light_intensities[8];
+uniform float u_point_light_ranges[8];
 uniform vec3 u_camera_position;
 uniform int u_material_debug_mode;
 
@@ -217,18 +229,21 @@ void main() {
   color += evaluatePbrLight(baseColor.rgb, normal, viewDirection,
                             lightDirection, u_light_color, u_light_intensity,
                             metallic, roughness);
-  if (u_point_light_enabled) {
-    vec3 toLight = u_point_light_position - worldPosition;
+  for (int lightIndex = 0; lightIndex < u_point_light_count; ++lightIndex) {
+    vec3 toLight = u_point_light_positions[lightIndex] - worldPosition;
     float lightDistance = length(toLight);
     vec3 pointDirection = lightDistance > 0.001
         ? toLight / lightDistance
         : vec3(0.0, 1.0, 0.0);
     float attenuation =
-        pow(clamp(1.0 - lightDistance / max(u_point_light_range, 0.001),
+        pow(clamp(1.0 - lightDistance /
+                          max(u_point_light_ranges[lightIndex], 0.001),
                   0.0, 1.0), 2.0);
     color += evaluatePbrLight(baseColor.rgb, normal, viewDirection,
-                              pointDirection, u_point_light_color,
-                              u_point_light_intensity * attenuation,
+                              pointDirection,
+                              u_point_light_colors[lightIndex],
+                              u_point_light_intensities[lightIndex] *
+                                  attenuation,
                               metallic, roughness);
   }
 
@@ -284,10 +299,13 @@ void StaticMeshRenderer::draw(const GpuMesh& parMesh,
                               const glm::vec3& parCameraPosition,
                               const glm::mat4& parEntityTransform,
                               const lighting::LightingState& parLighting,
+                              std::span<const std::vector<glm::mat4>>
+                                  parSkinMatrices,
                               float parEntityOpacity,
                               MaterialDebugMode parDebugMode) const {
   parMesh.draw(m_shader, parViewProjection, parCameraPosition,
-               parEntityTransform, parLighting, parEntityOpacity,
+               parEntityTransform, parLighting, parSkinMatrices,
+               parEntityOpacity,
                parDebugMode);
 }
 

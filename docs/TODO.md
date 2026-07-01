@@ -15,14 +15,18 @@
 - [x] Load and render static GLB mesh data.
 - [x] Load skinned vertex data.
 - [x] Evaluate the joint hierarchy and inverse bind matrices.
-- [ ] Render one clip with the skinning shader and bone buffer.
+- [x] Render one clip with the skinning shader and joint matrix palette.
+- [x] Add pose blending support for assets with at least two clips.
 - [x] Capture the milestone and import metrics for the report.
 
-Acceptance: the test character displays a stable bind pose and one complete clip.
+Acceptance: the test character displays a stable bind pose and one complete
+clip. Full blending evidence is accepted after the two-action GLB export is
+available.
 
 ## Week 2: Interaction and Physics
 
-- [ ] Implement keyframe sampling, slerp, and cross-fades.
+- [ ] Integrate cross-fades into the strike state machine using Week 1 pose
+  blending.
 - [ ] Project the mouse line and produce a debug `CutRequest`.
 - [ ] Generate a wind-up, contact, follow-through, and recovery sword path.
 - [ ] Apply torso and two-hand IK with planted feet.

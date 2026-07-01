@@ -49,6 +49,10 @@ class GizmoController final {
                               const glm::vec2& parCursorPixel,
                               const glm::vec2& parViewportSize,
                               glm::vec3& parAxis) const;
+  [[nodiscard]] bool pickRotationHandle(engine::EngineCore& parEngine,
+                                        scene::EntityId parEntity,
+                                        const glm::vec2& parCursorPixel,
+                                        const glm::vec2& parViewportSize) const;
 
   TransformMode m_mode = TransformMode::Move;
   AxisSpace m_axis_space = AxisSpace::Local;

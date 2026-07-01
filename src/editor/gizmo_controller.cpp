@@ -14,6 +14,7 @@ namespace {
 
 constexpr float ROTATION_RADIANS_PER_PIXEL = 0.008f;
 constexpr float AXIS_SCREEN_HIT_RADIUS = 22.0f;
+constexpr float ROTATION_HANDLE_SCREEN_RADIUS = 30.0f;
 constexpr float SCALE_UNITS_PER_PIXEL = 0.006f;
 
 [[nodiscard]] float getLargestExtent(const kage::math::Bounds3& parBounds) {
@@ -66,6 +67,13 @@ bool GizmoController::begin(engine::EngineCore& parEngine,
   }
 
   glm::vec3 picked_axis{1.0f, 0.0f, 0.0f};
+  if (pickRotationHandle(parEngine, selected, parCursorPixel,
+                         parViewportSize)) {
+    m_operation = Operation::Rotate;
+    m_entity = selected;
+    return true;
+  }
+
   if (m_mode != TransformMode::Rotate &&
       pickAxis(parEngine, selected, parCursorPixel, parViewportSize,
                picked_axis)) {
@@ -258,6 +266,41 @@ bool GizmoController::pickAxis(engine::EngineCore& parEngine,
     }
   }
   return picked;
+}
+
+bool GizmoController::pickRotationHandle(
+    engine::EngineCore& parEngine, scene::EntityId parEntity,
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
+  const scene::EntityRecord* entity = parEngine.getWorld().findEntity(parEntity);
+  if (entity == nullptr) {
+    return false;
+  }
+
+  const math::Transform& transform = entity->transform.transform;
+  const float axis_length =
+      getLargestExtent(parEngine.getEntityWorldBounds(parEntity)) * 0.27f;
+  const glm::vec3 right =
+      m_axis_space == AxisSpace::World
+          ? glm::vec3(1.0f, 0.0f, 0.0f)
+          : transform.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
+  const glm::vec3 up =
+      m_axis_space == AxisSpace::World
+          ? glm::vec3(0.0f, 1.0f, 0.0f)
+          : transform.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
+  const glm::vec3 handle_position =
+      transform.translation + glm::normalize(right + up) * axis_length * 0.42f;
+  const glm::mat4 view_projection =
+      parEngine.getCameraSystem().getCamera().getViewProjectionMatrix(
+          parViewportSize);
+  const kage::math::ScreenPoint handle = kage::math::projectPoint(
+      handle_position, view_projection, parViewportSize);
+  if (!handle.valid) {
+    return false;
+  }
+
+  const glm::vec2 delta = parCursorPixel - handle.pixel;
+  return glm::dot(delta, delta) <=
+         ROTATION_HANDLE_SCREEN_RADIUS * ROTATION_HANDLE_SCREEN_RADIUS;
 }
 
 }  // namespace kage::editor

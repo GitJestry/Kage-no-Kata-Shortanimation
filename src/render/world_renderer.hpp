@@ -30,7 +30,7 @@ enum class GizmoAxisSpace {
 };
 
 struct EditorRenderSettings final {
-  SkyPreset sky_preset = SkyPreset::MountainDawn;
+  SkyPreset sky_preset = SkyPreset::DarkStudio;
   MaterialDebugMode material_debug_mode = MaterialDebugMode::Lit;
   GizmoAxisSpace gizmo_axis_space = GizmoAxisSpace::Local;
   bool floor_grid_visible = true;
@@ -42,6 +42,7 @@ struct PlacementGhost final {
     None,
     StaticAsset,
     Camera,
+    SunLight,
     PointLight
   };
 

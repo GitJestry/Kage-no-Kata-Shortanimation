@@ -363,22 +363,20 @@ void EditorUi::drawLeftPanel(engine::EngineCore& parEngine,
   ImGui::SetNextWindowSizeConstraints(
       ImVec2(280.0f, 320.0f),
       ImVec2(420.0f, std::max(320.0f, area.size.y - STATUS_HEIGHT)));
-  if (!ImGui::Begin("Kage Editor", &m_panel_visible,
+  if (!ImGui::Begin("KageEngine Editor", &m_panel_visible,
                     ImGuiWindowFlags_NoCollapse)) {
-    clampCurrentPanel("Kage Editor", true);
+    clampCurrentPanel("KageEngine Editor", true);
     trackCurrentPanel();
     ImGui::End();
     return;
   }
-  clampCurrentPanel("Kage Editor", true);
+  clampCurrentPanel("KageEngine Editor", true);
 
   drawSceneControls(parEngine);
   ImGui::Separator();
   drawCreationPalette(parEngine, parPlacementController);
   ImGui::Separator();
   drawWorldControls(parEngine);
-  ImGui::Separator();
-  drawAssetLibrary(parEngine, parPlacementController);
   ImGui::Separator();
   drawOutliner(parEngine, parSelectionController);
   trackCurrentPanel();
@@ -403,10 +401,11 @@ void EditorUi::drawSceneControls(engine::EngineCore& parEngine) {
 
   const auto scenes = parEngine.getScenes();
   const std::size_t active_scene = parEngine.getActiveSceneIndex();
-  if (ImGui::BeginTable("SceneListTable", 3,
+  if (ImGui::BeginTable("SceneListTable", 4,
                         ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_SizingStretchProp)) {
     ImGui::TableSetupColumn("Name");
+    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthFixed, 48.0f);
     ImGui::TableSetupColumn("Use", ImGuiTableColumnFlags_WidthFixed, 44.0f);
     ImGui::TableSetupColumn("Del", ImGuiTableColumnFlags_WidthFixed, 38.0f);
     ImGui::TableHeadersRow();
@@ -418,11 +417,14 @@ void EditorUi::drawSceneControls(engine::EngineCore& parEngine) {
       ImGui::TableSetColumnIndex(0);
       ImGui::TextUnformatted(scenes[scene_index].name.c_str());
       ImGui::TableSetColumnIndex(1);
+      ImGui::TextDisabled("%s", scenes[scene_index].local_only ? "Local"
+                                                               : "Shared");
+      ImGui::TableSetColumnIndex(2);
       if (ImGui::Selectable("Open", scene_index == active_scene)) {
         parEngine.setActiveScene(scene_index);
         m_scene_name_buffer_index = static_cast<std::size_t>(-1);
       }
-      ImGui::TableSetColumnIndex(2);
+      ImGui::TableSetColumnIndex(3);
       if (scenes.size() <= 1) {
         ImGui::BeginDisabled();
       }
@@ -442,18 +444,34 @@ void EditorUi::drawSceneControls(engine::EngineCore& parEngine) {
     parEngine.createScene("Scene " + std::to_string(scenes.size() + 1));
     m_scene_name_buffer_index = static_cast<std::size_t>(-1);
   }
+  if (ImGui::Button("+ Local Test Scene", ImVec2(-1.0f, 0.0f))) {
+    parEngine.createLocalScene("Local Test " +
+                               std::to_string(scenes.size() + 1));
+    m_scene_name_buffer_index = static_cast<std::size_t>(-1);
+  }
 }
 
 void EditorUi::drawCreationPalette(
     engine::EngineCore& parEngine,
     PlacementController& parPlacementController) {
   ImGui::TextUnformatted("Create");
+  if (parPlacementController.isActive()) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", parPlacementController.getStatusLabel());
+  }
+
   if (ImGui::BeginTable("CreationPaletteTable", 2,
                         ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_SizingStretchProp)) {
-    ImGui::TableSetupColumn("Entity");
-    ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+    ImGui::TableSetupColumn("Item");
+    ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 82.0f);
     ImGui::TableHeadersRow();
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextDisabled("Entities");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextDisabled("built-in");
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
@@ -466,32 +484,27 @@ void EditorUi::drawCreationPalette(
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
+    if (ImGui::Selectable("Sun Light", false,
+                          ImGuiSelectableFlags_SpanAllColumns)) {
+      parPlacementController.beginSunLight(parEngine);
+    }
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextDisabled("sun");
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
     if (ImGui::Selectable("Point Light", false,
                           ImGuiSelectableFlags_SpanAllColumns)) {
       parPlacementController.beginPointLight(parEngine);
     }
     ImGui::TableSetColumnIndex(1);
-    ImGui::TextDisabled("lighting");
+    ImGui::TextDisabled("point");
 
-    ImGui::EndTable();
-  }
-}
-
-void EditorUi::drawAssetLibrary(
-    engine::EngineCore& parEngine,
-    PlacementController& parPlacementController) {
-  ImGui::TextUnformatted("Asset Library");
-  if (parPlacementController.isActive()) {
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", parPlacementController.getStatusLabel());
-  }
-
-  if (ImGui::BeginTable("AssetLibraryTable", 2,
-                        ImGuiTableFlags_RowBg |
-                            ImGuiTableFlags_SizingStretchProp)) {
-    ImGui::TableSetupColumn("Asset");
-    ImGui::TableSetupColumn("World", ImGuiTableColumnFlags_WidthFixed, 52.0f);
-    ImGui::TableHeadersRow();
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextDisabled("Assets");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextDisabled("world");
 
     const auto assets = parEngine.getAssetLibrary();
     for (std::size_t asset_index = 0; asset_index < assets.size();
@@ -511,6 +524,7 @@ void EditorUi::drawAssetLibrary(
       ImGui::Text("%zu", asset.instance_count);
       ImGui::PopID();
     }
+
     ImGui::EndTable();
   }
 }
@@ -688,6 +702,87 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
       ImGui::Text("Materials: %zu", source->stats.material_count);
       ImGui::Text("Textures: %zu", source->stats.texture_count);
       drawImportDiagnostics(*source);
+    }
+  }
+
+  if (entity->animation.has_value() && entity->static_mesh.has_value() &&
+      ImGui::CollapsingHeader("Animation",
+                              ImGuiTreeNodeFlags_DefaultOpen)) {
+    scene::AnimationComponent animation = *entity->animation;
+    const auto* asset = parEngine.getAssetLibraryEntry(
+        entity->static_mesh->asset_library_index);
+    const std::size_t clip_count =
+        asset == nullptr ? 0 : asset->document.animation_clips.size();
+    const std::size_t skin_count =
+        asset == nullptr ? 0 : asset->document.skins.size();
+    bool changed = false;
+
+    ImGui::Text("Skins: %zu", skin_count);
+    ImGui::Text("Clips: %zu", clip_count);
+    if (clip_count == 0) {
+      ImGui::TextDisabled("Bind pose only");
+    } else {
+      animation.clip_index = std::min(animation.clip_index, clip_count - 1);
+      animation.blend_clip_index =
+          std::min(animation.blend_clip_index, clip_count - 1);
+      const auto get_clip_name = [&](std::size_t parIndex) {
+        const std::string& name =
+            asset->document.animation_clips[parIndex].name;
+        return name.empty() ? "Unnamed clip" : name.c_str();
+      };
+      if (ImGui::BeginCombo("Clip", get_clip_name(animation.clip_index))) {
+        for (std::size_t clip_index = 0; clip_index < clip_count;
+             ++clip_index) {
+          const bool selected = clip_index == animation.clip_index;
+          if (ImGui::Selectable(get_clip_name(clip_index), selected)) {
+            animation.clip_index = clip_index;
+            animation.time_seconds = 0.0f;
+            animation.blend_duration_seconds = 0.0f;
+            animation.blend_time_seconds = 0.0f;
+            changed = true;
+          }
+        }
+        ImGui::EndCombo();
+      }
+
+      changed |= ImGui::Checkbox("Playing", &animation.playing);
+      changed |= ImGui::Checkbox("Loop", &animation.looping);
+      changed |= ImGui::DragFloat("Time", &animation.time_seconds, 0.02f,
+                                  0.0f, 1000.0f);
+      changed |= ImGui::DragFloat("Speed", &animation.playback_speed, 0.02f,
+                                  0.0f, 4.0f);
+      if (clip_count > 1) {
+        animation.blend_clip_index =
+            std::min(animation.blend_clip_index, clip_count - 1);
+        if (ImGui::BeginCombo("Blend target",
+                              get_clip_name(animation.blend_clip_index))) {
+          for (std::size_t clip_index = 0; clip_index < clip_count;
+               ++clip_index) {
+            const bool selected = clip_index == animation.blend_clip_index;
+            if (ImGui::Selectable(get_clip_name(clip_index), selected)) {
+              animation.blend_clip_index = clip_index;
+              changed = true;
+            }
+          }
+          ImGui::EndCombo();
+        }
+        changed |= ImGui::DragFloat("Blend duration",
+                                    &animation.blend_duration_seconds, 0.02f,
+                                    0.0f, 5.0f);
+        if (ImGui::Button("Restart Blend")) {
+          animation.blend_time_seconds = 0.0f;
+          if (animation.blend_duration_seconds <= 0.0f) {
+            animation.blend_duration_seconds = 0.35f;
+          }
+          changed = true;
+        }
+      } else {
+        ImGui::TextDisabled("Blend needs a GLB with at least two clips");
+      }
+    }
+
+    if (changed) {
+      parEngine.setAnimation(entity->id, animation);
     }
   }
 

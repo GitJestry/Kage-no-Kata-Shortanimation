@@ -175,6 +175,72 @@ void migrateOldDefaultEditorCamera(
                       parDocument);
 }
 
+[[nodiscard]] json writeSceneJson(
+    const kage::scene::SceneManager::SceneRecord& parScene) {
+  json scene_json;
+  scene_json["name"] = parScene.name;
+  scene_json["editor_camera"] = parScene.editor_camera_entity.value;
+  scene_json["primary_light"] = parScene.primary_light_entity.value;
+  scene_json["entities"] = json::array();
+
+  for (const kage::scene::EntityRecord& entity :
+       parScene.world.getEntities()) {
+    if (!entity.alive) {
+      continue;
+    }
+
+    json entity_json;
+    entity_json["id"] = entity.id.value;
+    entity_json["name"] = entity.name.name;
+    entity_json["transform"] = toJson(entity.transform.transform);
+    if (entity.static_mesh.has_value()) {
+      entity_json["mesh"] = {
+          {"asset_index", entity.static_mesh->asset_library_index},
+          {"opacity", entity.static_mesh->opacity},
+          {"visible", entity.static_mesh->visible},
+      };
+    }
+    if (entity.animation.has_value()) {
+      entity_json["animation"] = {
+          {"clip_index", entity.animation->clip_index},
+          {"blend_clip_index", entity.animation->blend_clip_index},
+          {"time_seconds", entity.animation->time_seconds},
+          {"blend_time_seconds", entity.animation->blend_time_seconds},
+          {"blend_duration_seconds", entity.animation->blend_duration_seconds},
+          {"playback_speed", entity.animation->playback_speed},
+          {"playing", entity.animation->playing},
+          {"looping", entity.animation->looping},
+      };
+    }
+    if (entity.camera.has_value()) {
+      entity_json["camera"] = {
+          {"active", entity.camera->active},
+          {"fov", entity.camera->vertical_fov_degrees},
+          {"near", entity.camera->near_plane},
+          {"far", entity.camera->far_plane},
+      };
+    }
+    if (entity.directional_light.has_value()) {
+      entity_json["light"] = {
+          {"enabled", entity.directional_light->enabled},
+          {"color", toJson(entity.directional_light->color)},
+          {"intensity", entity.directional_light->intensity},
+      };
+    }
+    if (entity.point_light.has_value()) {
+      entity_json["point_light"] = {
+          {"enabled", entity.point_light->enabled},
+          {"color", toJson(entity.point_light->color)},
+          {"intensity", entity.point_light->intensity},
+          {"range", entity.point_light->range},
+      };
+    }
+    scene_json["entities"].push_back(std::move(entity_json));
+  }
+
+  return scene_json;
+}
+
 }  // namespace
 
 namespace kage::engine {
@@ -251,6 +317,28 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
             mesh.opacity = mesh_json.value("opacity", 1.0f);
             mesh.visible = mesh_json.value("visible", true);
             scene_record->world.setStaticMesh(entity, mesh);
+            if (!asset->document.skins.empty()) {
+              const json& animation_json =
+                  entity_json.value("animation", json::object());
+              scene::AnimationComponent animation;
+              animation.clip_index =
+                  animation_json.value("clip_index", std::size_t{0});
+              animation.blend_clip_index =
+                  animation_json.value("blend_clip_index", std::size_t{0});
+              animation.time_seconds =
+                  animation_json.value("time_seconds", 0.0f);
+              animation.blend_time_seconds =
+                  animation_json.value("blend_time_seconds", 0.0f);
+              animation.blend_duration_seconds =
+                  animation_json.value("blend_duration_seconds", 0.0f);
+              animation.playback_speed =
+                  animation_json.value("playback_speed", 1.0f);
+              animation.playing = animation_json.value(
+                  "playing", !asset->document.animation_clips.empty());
+              animation.looping = animation_json.value("looping", true);
+              animation.skin_matrices.resize(asset->document.skins.size());
+              scene_record->world.setAnimation(entity, std::move(animation));
+            }
           }
         }
         if (entity_json.contains("camera")) {
@@ -348,57 +436,11 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
     if (scene == nullptr) {
       continue;
     }
-
-    json scene_json;
-    scene_json["name"] = scene->name;
-    scene_json["editor_camera"] = scene->editor_camera_entity.value;
-    scene_json["primary_light"] = scene->primary_light_entity.value;
-    scene_json["entities"] = json::array();
-
-    for (const scene::EntityRecord& entity : scene->world.getEntities()) {
-      if (!entity.alive) {
-        continue;
-      }
-
-      json entity_json;
-      entity_json["id"] = entity.id.value;
-      entity_json["name"] = entity.name.name;
-      entity_json["transform"] = toJson(entity.transform.transform);
-      if (entity.static_mesh.has_value()) {
-        entity_json["mesh"] = {
-            {"asset_index", entity.static_mesh->asset_library_index},
-            {"opacity", entity.static_mesh->opacity},
-            {"visible", entity.static_mesh->visible},
-        };
-      }
-      if (entity.camera.has_value()) {
-        entity_json["camera"] = {
-            {"active", entity.camera->active},
-            {"fov", entity.camera->vertical_fov_degrees},
-            {"near", entity.camera->near_plane},
-            {"far", entity.camera->far_plane},
-        };
-      }
-      if (entity.directional_light.has_value()) {
-        entity_json["light"] = {
-            {"enabled", entity.directional_light->enabled},
-            {"color", toJson(entity.directional_light->color)},
-            {"intensity", entity.directional_light->intensity},
-        };
-      }
-      if (entity.point_light.has_value()) {
-        entity_json["point_light"] = {
-            {"enabled", entity.point_light->enabled},
-            {"color", toJson(entity.point_light->color)},
-            {"intensity", entity.point_light->intensity},
-            {"range", entity.point_light->range},
-        };
-      }
-
-      scene_json["entities"].push_back(std::move(entity_json));
+    if (scene->local_only) {
+      continue;
     }
 
-    scenes_json.push_back(std::move(scene_json));
+    scenes_json.push_back(writeSceneJson(*scene));
   }
   document["scenes"] = std::move(scenes_json);
 
@@ -418,6 +460,130 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
     const float fly_speed = document.value(
         "fly_speed", parEngine.m_camera_system.getFlyMoveSpeed());
     parEngine.m_camera_system.setFlyMoveSpeed(fly_speed);
+
+    const json& local_scenes_json =
+        document.value("local_scenes", json::array());
+    for (const json& scene_json : local_scenes_json) {
+      const std::size_t scene_index = parEngine.m_scene_manager.createScene(
+          scene_json.value("name", "Local Test " +
+                                       std::to_string(parEngine.m_scene_manager
+                                                          .getScenes()
+                                                          .size() +
+                                                      1)),
+          true);
+      scene::SceneManager::SceneRecord* scene_record =
+          parEngine.m_scene_manager.getScene(scene_index);
+      if (scene_record == nullptr) {
+        continue;
+      }
+
+      const json& entities_json = scene_json.value("entities", json::array());
+      for (const json& entity_json : entities_json) {
+        const scene::EntityId entity_id{
+            entity_json.value("id", scene::EntityId{}.value)};
+        const scene::EntityId entity = scene_record->world.createEntityWithId(
+            entity_json.value("name", "Entity"), entity_id);
+        scene::EntityRecord* record = scene_record->world.findEntity(entity);
+        if (record == nullptr) {
+          continue;
+        }
+
+        record->transform.transform =
+            readTransform(entity_json.value("transform", json::object()));
+
+        if (entity_json.contains("mesh")) {
+          const json& mesh_json = entity_json["mesh"];
+          const std::size_t asset_index = mesh_json.value(
+              "asset_index", kage::scene::INVALID_ASSET_LIBRARY_INDEX);
+          const auto* asset =
+              parEngine.m_asset_registry.getAssetLibraryEntry(asset_index);
+          if (asset != nullptr) {
+            scene::StaticMeshComponent mesh;
+            mesh.mesh_handle = asset->mesh_handle;
+            mesh.asset_library_index = asset_index;
+            mesh.local_bounds = asset->document.static_model.bounds;
+            mesh.opacity = mesh_json.value("opacity", 1.0f);
+            mesh.visible = mesh_json.value("visible", true);
+            scene_record->world.setStaticMesh(entity, mesh);
+            if (!asset->document.skins.empty()) {
+              const json& animation_json =
+                  entity_json.value("animation", json::object());
+              scene::AnimationComponent animation;
+              animation.clip_index =
+                  animation_json.value("clip_index", std::size_t{0});
+              animation.blend_clip_index =
+                  animation_json.value("blend_clip_index", std::size_t{0});
+              animation.time_seconds =
+                  animation_json.value("time_seconds", 0.0f);
+              animation.blend_time_seconds =
+                  animation_json.value("blend_time_seconds", 0.0f);
+              animation.blend_duration_seconds =
+                  animation_json.value("blend_duration_seconds", 0.0f);
+              animation.playback_speed =
+                  animation_json.value("playback_speed", 1.0f);
+              animation.playing = animation_json.value(
+                  "playing", !asset->document.animation_clips.empty());
+              animation.looping = animation_json.value("looping", true);
+              animation.skin_matrices.resize(asset->document.skins.size());
+              scene_record->world.setAnimation(entity, std::move(animation));
+            }
+          }
+        }
+        if (entity_json.contains("camera")) {
+          const json& camera_json = entity_json["camera"];
+          scene::CameraComponent camera;
+          camera.active = camera_json.value("active", false);
+          camera.vertical_fov_degrees = camera_json.value("fov", 45.0f);
+          camera.near_plane = camera_json.value("near", 0.01f);
+          camera.far_plane = camera_json.value("far", 100.0f);
+          scene_record->world.setCamera(entity, camera);
+        }
+        if (entity_json.contains("light")) {
+          const json& light_json = entity_json["light"];
+          scene::DirectionalLightComponent light;
+          light.enabled = light_json.value("enabled", true);
+          light.color =
+              readVec3(light_json.value("color", json::array()), light.color);
+          light.intensity = light_json.value("intensity", 1.0f);
+          scene_record->world.setDirectionalLight(entity, light);
+        }
+        if (entity_json.contains("point_light")) {
+          const json& light_json = entity_json["point_light"];
+          scene::PointLightComponent light;
+          light.enabled = light_json.value("enabled", true);
+          light.color =
+              readVec3(light_json.value("color", json::array()), light.color);
+          light.intensity = light_json.value("intensity", light.intensity);
+          light.range = light_json.value("range", light.range);
+          scene_record->world.setPointLight(entity, light);
+        }
+      }
+
+      const scene::EntityId editor_camera{
+          scene_json.value("editor_camera", scene::EntityId{}.value)};
+      const scene::EntityId primary_light{
+          scene_json.value("primary_light", scene::EntityId{}.value)};
+      if (scene_record->world.findEntity(editor_camera) != nullptr) {
+        scene_record->editor_camera_entity = editor_camera;
+      }
+      if (scene_record->world.findEntity(primary_light) != nullptr) {
+        scene_record->primary_light_entity = primary_light;
+      }
+      if (!scene_record->editor_camera_entity.isValid() ||
+          scene_record->world.findEntity(scene_record->editor_camera_entity) ==
+              nullptr) {
+        parEngine.createDefaultSceneEntities(*scene_record);
+      }
+      migrateOldDefaultEditorCamera(*scene_record);
+    }
+
+    const std::size_t active_scene =
+        document.value("active_scene", parEngine.m_scene_manager
+                                           .getActiveSceneIndex());
+    if (active_scene < parEngine.m_scene_manager.getScenes().size()) {
+      parEngine.m_scene_manager.setActiveScene(active_scene);
+      parEngine.syncCameraFromEditorEntity();
+    }
 
     const scene::EntityId selected{
         document.value("selected_entity", scene::EntityId{}.value)};
@@ -441,6 +607,17 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
   document["fly_speed"] = parEngine.m_camera_system.getFlyMoveSpeed();
   document["selected_entity"] =
       parEngine.m_scene_manager.getSelectedEntity().value;
+  document["active_scene"] = parEngine.m_scene_manager.getActiveSceneIndex();
+  document["local_scenes"] = json::array();
+
+  for (const scene::SceneManager::SceneRecord& scene :
+       parEngine.m_scene_manager.getScenes()) {
+    if (!scene.local_only) {
+      continue;
+    }
+
+    document["local_scenes"].push_back(writeSceneJson(scene));
+  }
 
   std::ofstream output(save_path);
   output << document.dump(2);

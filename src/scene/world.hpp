@@ -15,6 +15,7 @@ struct EntityRecord final {
   NameComponent name;
   TransformComponent transform;
   std::optional<StaticMeshComponent> static_mesh;
+  std::optional<AnimationComponent> animation;
   std::optional<CameraComponent> camera;
   std::optional<DirectionalLightComponent> directional_light;
   std::optional<PointLightComponent> point_light;
@@ -26,6 +27,7 @@ class World final {
   EntityId createEntity(std::string parName);
   EntityId createEntityWithId(std::string parName, EntityId parEntity);
   void setStaticMesh(EntityId parEntity, StaticMeshComponent parStaticMesh);
+  void setAnimation(EntityId parEntity, AnimationComponent parAnimation);
   void setCamera(EntityId parEntity, CameraComponent parCamera);
   void setDirectionalLight(EntityId parEntity,
                            DirectionalLightComponent parLight);
@@ -35,6 +37,7 @@ class World final {
 
   [[nodiscard]] EntityRecord* findEntity(EntityId parEntity);
   [[nodiscard]] const EntityRecord* findEntity(EntityId parEntity) const;
+  [[nodiscard]] std::span<EntityRecord> getEntities();
   [[nodiscard]] std::span<const EntityRecord> getEntities() const;
 
  private:

@@ -44,6 +44,7 @@ class EngineCore final {
   [[nodiscard]] std::filesystem::path getLocalSessionSavePath() const;
 
   std::size_t createScene(std::string parName);
+  std::size_t createLocalScene(std::string parName);
   bool deleteScene(std::size_t parSceneIndex);
   void setActiveScene(std::size_t parSceneIndex);
   void renameScene(std::size_t parSceneIndex, std::string parName);
@@ -71,6 +72,8 @@ class EngineCore final {
   void resetEditorCameraRoll(scene::EntityId parEntity);
   void setStaticMeshVisible(scene::EntityId parEntity, bool parVisible);
   void setStaticMeshOpacity(scene::EntityId parEntity, float parOpacity);
+  void setAnimation(scene::EntityId parEntity,
+                    const scene::AnimationComponent& parAnimation);
   void setDirectionalLight(scene::EntityId parEntity,
                            const scene::DirectionalLightComponent& parLight);
   void setPointLight(scene::EntityId parEntity,
@@ -140,6 +143,7 @@ class EngineCore final {
                                         const glm::vec2& parViewportSize) const;
   [[nodiscard]] lighting::LightingState buildLightingState() const;
   void createDefaultSceneEntities(scene::SceneManager::SceneRecord& parScene);
+  void updateAnimations(float parDeltaSeconds);
   void syncEditorCameraEntity();
   void syncCameraFromEditorEntity();
   void rebuildAssetInstanceCounts();

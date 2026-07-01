@@ -21,6 +21,10 @@ class Animator final {
   [[nodiscard]] static Pose sampleClip(const assets::ModelAsset& parAsset,
                                        std::size_t parClipIndex,
                                        float parTimeSeconds);
+  [[nodiscard]] static Pose blendPoses(const assets::ModelAsset& parAsset,
+                                       const Pose& parFirst,
+                                       const Pose& parSecond,
+                                       float parAmount);
   [[nodiscard]] static std::vector<glm::mat4> buildJointMatrices(
       const assets::ModelAsset& parAsset, std::size_t parSkinIndex,
       const Pose& parPose);

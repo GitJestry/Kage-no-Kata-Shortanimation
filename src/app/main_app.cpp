@@ -27,7 +27,7 @@ MainApp::MainApp()
   std::filesystem::create_directories(".kage_local");
   m_imgui_ini_path = ".kage_local/imgui.ini";
   ImGui::GetIO().IniFilename = m_imgui_ini_path.c_str();
-  setTitle("Kage no Kata - The Final Cut");
+  setTitle("KageEngine");
   setVSync(true);
 }
 

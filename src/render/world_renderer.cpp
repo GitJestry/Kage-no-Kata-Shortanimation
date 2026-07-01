@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <span>
 #include <utility>
 
 namespace {
@@ -86,6 +87,30 @@ void addTriangle(std::vector<kage::render::SolidGizmoVertex>& parVertices,
   parVertices.push_back({parA, parColor});
   parVertices.push_back({parB, parColor});
   parVertices.push_back({parC, parColor});
+}
+
+void addCube(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+             const glm::vec3& parCenter, float parSize,
+             const glm::vec4& parColor) {
+  const glm::vec3 e(parSize * 0.5f);
+  const std::array<glm::vec3, 8> p = {
+      parCenter + glm::vec3(-e.x, -e.y, -e.z),
+      parCenter + glm::vec3(e.x, -e.y, -e.z),
+      parCenter + glm::vec3(e.x, e.y, -e.z),
+      parCenter + glm::vec3(-e.x, e.y, -e.z),
+      parCenter + glm::vec3(-e.x, -e.y, e.z),
+      parCenter + glm::vec3(e.x, -e.y, e.z),
+      parCenter + glm::vec3(e.x, e.y, e.z),
+      parCenter + glm::vec3(-e.x, e.y, e.z),
+  };
+  const std::array<std::array<int, 3>, 12> faces = {
+      std::array<int, 3>{0, 1, 2}, {0, 2, 3}, {4, 6, 5}, {4, 7, 6},
+      {0, 4, 5},                 {0, 5, 1}, {3, 2, 6}, {3, 6, 7},
+      {1, 5, 6},                 {1, 6, 2}, {0, 3, 7}, {0, 7, 4},
+  };
+  for (const auto& face : faces) {
+    addTriangle(parVertices, p[face[0]], p[face[1]], p[face[2]], parColor);
+  }
 }
 
 [[nodiscard]] glm::vec3 getPerpendicularHelper(const glm::vec3& parDirection) {
@@ -314,6 +339,12 @@ void addTransformAxes(std::vector<kage::render::LineVertex>& parVertices,
   addSolidSphere(parSolid, position, parLength * 0.055f, ROTATION_FILL);
   addCircle(parVertices, position, right, forward, parLength * 0.24f,
             ROTATION_COLOR);
+  const glm::vec3 handle_direction = glm::normalize(right + up);
+  const glm::vec3 handle_position =
+      position + handle_direction * parLength * 0.42f;
+  addLine(parVertices, position, handle_position, ROTATION_COLOR);
+  addCube(parSolid, handle_position, std::max(parLength * 0.075f, 0.045f),
+          ROTATION_FILL);
 }
 
 void addOriginCore(std::vector<kage::render::LineVertex>& parVertices,
@@ -351,8 +382,12 @@ void addLightGizmo(std::vector<kage::render::LineVertex>& parVertices,
 }
 
 void addSunGizmo(std::vector<kage::render::LineVertex>& parVertices,
+                 std::vector<kage::render::SolidGizmoVertex>& parSolid,
+                 std::vector<kage::render::SolidGizmoVertex>& parGlow,
                  const kage::math::Transform& parTransform,
-                 const kage::scene::DirectionalLightComponent& parLight) {
+                 const kage::scene::DirectionalLightComponent& parLight,
+                 const glm::vec3& parCameraRight,
+                 const glm::vec3& parCameraUp) {
   const glm::vec3 position = parTransform.translation;
   const glm::vec3 right = parTransform.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
   const glm::vec3 up = parTransform.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
@@ -361,6 +396,9 @@ void addSunGizmo(std::vector<kage::render::LineVertex>& parVertices,
       glm::clamp(parLight.color * (0.45f + parLight.intensity * 0.24f),
                  glm::vec3(0.0f), glm::vec3(1.0f));
   constexpr float RADIUS = 0.26f;
+  addSolidSphere(parSolid, position, RADIUS * 0.78f, glm::vec4(color, 0.96f));
+  addDisk(parGlow, position, parCameraRight, parCameraUp, RADIUS * 3.2f,
+          glm::vec4(color, 0.16f));
   addCircle(parVertices, position, right, up, RADIUS, color);
   addCircle(parVertices, position, right, forward, RADIUS, color);
   addCircle(parVertices, position, up, forward, RADIUS, color);
@@ -430,10 +468,15 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       continue;
     }
 
+    std::span<const std::vector<glm::mat4>> skin_matrices;
+    if (entity.animation.has_value()) {
+      skin_matrices = entity.animation->skin_matrices;
+    }
     m_static_mesh_renderer.draw(*mesh, view_projection,
                                 camera.position,
                                 entity.transform.transform.toMatrix(),
-                                parLighting, entity.static_mesh->opacity,
+                                parLighting, skin_matrices,
+                                entity.static_mesh->opacity,
                                 parSettings.material_debug_mode);
   }
 
@@ -443,7 +486,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       m_static_mesh_renderer.draw(*mesh, view_projection,
                                   camera.position,
                                   parGhost.transform.toMatrix(),
-                                  parLighting, parGhost.opacity,
+                                  parLighting, {}, parGhost.opacity,
                                   parSettings.material_debug_mode);
     }
   }
@@ -460,8 +503,8 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
           std::clamp(std::max({selected_bounds.getSize().x,
                                selected_bounds.getSize().y,
                                selected_bounds.getSize().z, 1.0f}) *
-                         0.004f,
-                     0.004f, 0.026f);
+                         0.0024f,
+                     0.0025f, 0.014f);
       m_static_mesh_renderer.drawOutline(
           *mesh, view_projection,
           selected_entity->transform.transform.toMatrix(),
@@ -490,8 +533,9 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       continue;
     }
     if (entity.directional_light.has_value()) {
-      addSunGizmo(m_line_vertices, entity.transform.transform,
-                  *entity.directional_light);
+      addSunGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
+                  entity.transform.transform, *entity.directional_light,
+                  camera.getRight(), camera.getUp());
     }
     if (entity.point_light.has_value()) {
       addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
@@ -509,6 +553,13 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
                   parGhost.transform, light, camera.getRight(),
                   camera.getUp());
+  }
+  if (parGhost.kind == PlacementGhost::Kind::SunLight) {
+    scene::DirectionalLightComponent light;
+    light.color = parGhost.light_color;
+    light.intensity = parGhost.light_intensity;
+    addSunGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
+                parGhost.transform, light, camera.getRight(), camera.getUp());
   }
   if (parGhost.kind == PlacementGhost::Kind::Camera) {
     addCameraGizmo(m_line_vertices, parGhost.transform);

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -14,15 +15,28 @@ constexpr GLuint POSITION_ATTRIBUTE = 0;
 constexpr GLuint NORMAL_ATTRIBUTE = 1;
 constexpr GLuint TEX_COORD_ATTRIBUTE = 2;
 constexpr GLuint TANGENT_ATTRIBUTE = 3;
+constexpr GLuint JOINTS_ATTRIBUTE = 4;
+constexpr GLuint WEIGHTS_ATTRIBUTE = 5;
 constexpr GLuint BASE_COLOR_TEXTURE_UNIT = 0;
 constexpr GLuint NORMAL_TEXTURE_UNIT = 1;
 constexpr GLuint METALLIC_ROUGHNESS_TEXTURE_UNIT = 2;
 constexpr GLuint EMISSIVE_TEXTURE_UNIT = 3;
-constexpr GLsizei STATIC_VERTEX_STRIDE =
-    static_cast<GLsizei>(sizeof(kage::assets::StaticVertex));
+constexpr GLsizei MAX_SHADER_JOINTS = 128;
 constexpr glm::vec4 DEFAULT_BASE_COLOR_FACTOR{1.0f};
 constexpr std::array<unsigned char, 4> FALLBACK_TEXTURE_PIXELS{
     255, 255, 255, 255};
+
+struct MeshVertex final {
+  glm::vec3 position{};
+  glm::vec3 normal{};
+  glm::vec4 tangent{};
+  glm::vec2 tex_coord{};
+  glm::vec4 joints{};
+  glm::vec4 weights{};
+};
+
+constexpr GLsizei MESH_VERTEX_STRIDE =
+    static_cast<GLsizei>(sizeof(MeshVertex));
 
 struct TextureUploadPlan final {
   bool used = false;
@@ -101,6 +115,28 @@ struct TextureUploadPlan final {
   return upload_plan;
 }
 
+[[nodiscard]] std::vector<MeshVertex> buildVertices(
+    const kage::assets::StaticPrimitive& parPrimitive) {
+  std::vector<MeshVertex> vertices;
+  vertices.reserve(parPrimitive.vertices.size());
+  for (std::size_t index = 0; index < parPrimitive.vertices.size(); ++index) {
+    const kage::assets::StaticVertex& source = parPrimitive.vertices[index];
+    MeshVertex vertex;
+    vertex.position = source.position;
+    vertex.normal = source.normal;
+    vertex.tangent = source.tangent;
+    vertex.tex_coord = source.tex_coord;
+    if (parPrimitive.hasSkinInfluences()) {
+      const kage::assets::SkinInfluence& influence =
+          parPrimitive.skin_influences[index];
+      vertex.joints = glm::vec4(influence.joints);
+      vertex.weights = influence.weights;
+    }
+    vertices.push_back(vertex);
+  }
+  return vertices;
+}
+
 }  // namespace
 
 namespace kage::render {
@@ -150,6 +186,8 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
     PrimitiveGpuData gpu_primitive;
     gpu_primitive.transform = primitive.transform;
     gpu_primitive.index_count = checkedIndexCount(primitive.indices.size());
+    gpu_primitive.has_skin = primitive.hasSkinInfluences();
+    gpu_primitive.skin_index = primitive.skin_index;
     if (primitive.material_index != assets::INVALID_MATERIAL_INDEX) {
       if (static_cast<std::size_t>(primitive.material_index) >=
           parModel.materials.size()) {
@@ -182,25 +220,31 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
     gpu_primitive.index_buffer.create(GL_ELEMENT_ARRAY_BUFFER);
 
     gpu_primitive.vertex_array.bind();
+    const std::vector<MeshVertex> vertices = buildVertices(primitive);
     gpu_primitive.vertex_buffer.setData(
-        primitive.vertices.size() * sizeof(assets::StaticVertex),
-        primitive.vertices.data(), GL_STATIC_DRAW);
+        vertices.size() * sizeof(MeshVertex), vertices.data(), GL_STATIC_DRAW);
     gpu_primitive.index_buffer.setData(
         primitive.indices.size() * sizeof(std::uint32_t),
         primitive.indices.data(), GL_STATIC_DRAW);
 
     gpu_primitive.vertex_array.setFloatAttribute(
-        POSITION_ATTRIBUTE, 3, GL_FLOAT, STATIC_VERTEX_STRIDE,
-        offsetof(assets::StaticVertex, position));
+        POSITION_ATTRIBUTE, 3, GL_FLOAT, MESH_VERTEX_STRIDE,
+        offsetof(MeshVertex, position));
     gpu_primitive.vertex_array.setFloatAttribute(
-        NORMAL_ATTRIBUTE, 3, GL_FLOAT, STATIC_VERTEX_STRIDE,
-        offsetof(assets::StaticVertex, normal));
+        NORMAL_ATTRIBUTE, 3, GL_FLOAT, MESH_VERTEX_STRIDE,
+        offsetof(MeshVertex, normal));
     gpu_primitive.vertex_array.setFloatAttribute(
-        TEX_COORD_ATTRIBUTE, 2, GL_FLOAT, STATIC_VERTEX_STRIDE,
-        offsetof(assets::StaticVertex, tex_coord));
+        TEX_COORD_ATTRIBUTE, 2, GL_FLOAT, MESH_VERTEX_STRIDE,
+        offsetof(MeshVertex, tex_coord));
     gpu_primitive.vertex_array.setFloatAttribute(
-        TANGENT_ATTRIBUTE, 4, GL_FLOAT, STATIC_VERTEX_STRIDE,
-        offsetof(assets::StaticVertex, tangent));
+        TANGENT_ATTRIBUTE, 4, GL_FLOAT, MESH_VERTEX_STRIDE,
+        offsetof(MeshVertex, tangent));
+    gpu_primitive.vertex_array.setFloatAttribute(
+        JOINTS_ATTRIBUTE, 4, GL_FLOAT, MESH_VERTEX_STRIDE,
+        offsetof(MeshVertex, joints));
+    gpu_primitive.vertex_array.setFloatAttribute(
+        WEIGHTS_ATTRIBUTE, 4, GL_FLOAT, MESH_VERTEX_STRIDE,
+        offsetof(MeshVertex, weights));
 
     m_index_count += primitive.indices.size();
     m_primitives.push_back(std::move(gpu_primitive));
@@ -216,6 +260,7 @@ void GpuMesh::draw(const ShaderProgram& parShader,
                    const glm::vec3& parCameraPosition,
                    const glm::mat4& parEntityTransform,
                    const lighting::LightingState& parLighting,
+                   std::span<const std::vector<glm::mat4>> parSkinMatrices,
                    float parEntityOpacity,
                    MaterialDebugMode parDebugMode) const {
   if (m_primitives.empty()) {
@@ -235,13 +280,23 @@ void GpuMesh::draw(const ShaderProgram& parShader,
                     glm::normalize(parLighting.sun.direction));
   parShader.setVec3("u_light_color", parLighting.sun.color);
   parShader.setFloat("u_light_intensity", parLighting.sun.intensity);
-  parShader.setInt("u_point_light_enabled",
-                   parLighting.point.enabled ? 1 : 0);
-  parShader.setVec3("u_point_light_position", parLighting.point.position);
-  parShader.setVec3("u_point_light_color", parLighting.point.color);
-  parShader.setFloat("u_point_light_intensity",
-                     parLighting.point.intensity);
-  parShader.setFloat("u_point_light_range", parLighting.point.range);
+  const std::size_t point_light_count =
+      std::min(parLighting.point_light_count,
+               parLighting.point_lights.size());
+  parShader.setInt("u_point_light_count",
+                   static_cast<int>(point_light_count));
+  for (std::size_t index = 0; index < point_light_count; ++index) {
+    const lighting::PointLight& light = parLighting.point_lights[index];
+    const std::string suffix = "[" + std::to_string(index) + "]";
+    parShader.setVec3(("u_point_light_positions" + suffix).c_str(),
+                      light.position);
+    parShader.setVec3(("u_point_light_colors" + suffix).c_str(),
+                      light.color);
+    parShader.setFloat(("u_point_light_intensities" + suffix).c_str(),
+                       light.intensity);
+    parShader.setFloat(("u_point_light_ranges" + suffix).c_str(),
+                       light.range);
+  }
   parShader.setInt("u_material_debug_mode",
                    static_cast<int>(parDebugMode));
 
@@ -290,6 +345,22 @@ void GpuMesh::draw(const ShaderProgram& parShader,
     bind_slot("u_has_emissive_texture", "u_emissive_offset",
               "u_emissive_scale", "u_emissive_rotation",
               primitive.emissive_texture, EMISSIVE_TEXTURE_UNIT);
+
+    const bool can_skin =
+        primitive.has_skin &&
+        primitive.skin_index != assets::INVALID_SKIN_INDEX &&
+        static_cast<std::size_t>(primitive.skin_index) <
+            parSkinMatrices.size() &&
+        !parSkinMatrices[primitive.skin_index].empty();
+    parShader.setInt("u_skinning_enabled", can_skin ? 1 : 0);
+    if (can_skin) {
+      const std::vector<glm::mat4>& matrices =
+          parSkinMatrices[primitive.skin_index];
+      parShader.setMat4Array(
+          "u_joint_matrices", matrices.data(),
+          static_cast<GLsizei>(std::min<std::size_t>(
+              matrices.size(), static_cast<std::size_t>(MAX_SHADER_JOINTS))));
+    }
 
     primitive.vertex_array.bind();
     glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,

@@ -148,6 +148,16 @@ void ShaderProgram::setMat4(const char* parName,
                      glm::value_ptr(parValue));
 }
 
+void ShaderProgram::setMat4Array(const char* parName,
+                                 const glm::mat4* parValues,
+                                 GLsizei parCount) const {
+  if (parValues == nullptr || parCount <= 0) {
+    return;
+  }
+  glUniformMatrix4fv(getUniformLocation(parName), parCount, GL_FALSE,
+                     glm::value_ptr(parValues[0]));
+}
+
 void ShaderProgram::setFloat(const char* parName, float parValue) const {
   glUniform1f(getUniformLocation(parName), parValue);
 }

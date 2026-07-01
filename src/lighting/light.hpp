@@ -2,7 +2,12 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
+#include <cstddef>
+
 namespace kage::lighting {
+
+inline constexpr std::size_t MAX_POINT_LIGHTS = 8;
 
 struct DirectionalLight final {
   glm::vec3 direction{0.35f, -0.85f, -0.45f};
@@ -21,7 +26,8 @@ struct PointLight final {
 struct LightingState final {
   glm::vec3 ambient_color{0.18f, 0.2f, 0.24f};
   DirectionalLight sun;
-  PointLight point;
+  std::array<PointLight, MAX_POINT_LIGHTS> point_lights{};
+  std::size_t point_light_count = 0;
 };
 
 }  // namespace kage::lighting

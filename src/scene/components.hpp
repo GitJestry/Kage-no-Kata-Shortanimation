@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace kage::scene {
 
@@ -29,6 +30,18 @@ struct StaticMeshComponent final {
   math::Bounds3 local_bounds;
   float opacity = 1.0f;
   bool visible = true;
+};
+
+struct AnimationComponent final {
+  std::size_t clip_index = 0;
+  std::size_t blend_clip_index = 0;
+  float time_seconds = 0.0f;
+  float blend_time_seconds = 0.0f;
+  float blend_duration_seconds = 0.0f;
+  float playback_speed = 1.0f;
+  bool playing = true;
+  bool looping = true;
+  std::vector<std::vector<glm::mat4>> skin_matrices;
 };
 
 struct CameraComponent final {

@@ -2,7 +2,9 @@
 
 ## Handoff
 
-Blender authors geometry, UVs, materials, armatures, skin weights, and animation clips. The C++ runtime creates GPU resources, evaluates skeletons, blends poses, and drives simulation.
+Blender authors geometry, UVs, materials, armatures, skin weights, and animation
+clips. KageEngine creates GPU resources, evaluates skeletons, blends poses when
+multiple clips are exported, and drives simulation.
 
 - `assets/source_blender/`: `.blend` source files.
 - `assets/models/`: runtime `.glb` exports.
@@ -59,6 +61,7 @@ generates terrain and places vegetation from height, slope, and seed.
 - Meshes contain UVs, normals, and complete material assignments.
 - Skin weights sum to one and use up to four joints.
 - GLB animation names and time ranges match the action table.
+- At least two clips are exported for the grading proof of animation blending.
 - Constraint, attachment, and bamboo joint markers use stable descriptive names.
 - The `Ready` pose keeps both hands on the hilt and both feet planted.
 - Texture and model licenses are recorded.

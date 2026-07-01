@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.26..4.0)
 
-project(kage_no_kata VERSION 0.1.0 LANGUAGES CXX)
+project(kage_engine VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

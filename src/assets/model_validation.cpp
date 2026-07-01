@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace {
 
@@ -119,6 +120,26 @@ RigValidationReport validateRiggedModelAsset(const ModelAsset& parAsset) {
     for (const glm::mat4& joint_matrix : joint_matrices) {
       if (!isFinite(joint_matrix)) {
         report.errors.push_back("sampled clip produced non-finite joint matrix");
+        break;
+      }
+    }
+  }
+
+  if (parAsset.animation_clips.size() >= 2 && !parAsset.skins.empty()) {
+    const animation::Pose first_pose = animation::Animator::sampleClip(
+        parAsset, 0, parAsset.animation_clips[0].duration_seconds * 0.25f);
+    const animation::Pose second_pose = animation::Animator::sampleClip(
+        parAsset, 1, parAsset.animation_clips[1].duration_seconds * 0.75f);
+    const animation::Pose blended_pose =
+        animation::Animator::blendPoses(parAsset, first_pose, second_pose, 0.5f);
+    const std::vector<glm::mat4> blended_matrices =
+        animation::Animator::buildJointMatrices(parAsset, 0, blended_pose);
+    if (blended_matrices.empty()) {
+      report.errors.push_back("blended clips produced no joint matrices");
+    }
+    for (const glm::mat4& joint_matrix : blended_matrices) {
+      if (!isFinite(joint_matrix)) {
+        report.errors.push_back("blended clips produced non-finite joint matrix");
         break;
       }
     }

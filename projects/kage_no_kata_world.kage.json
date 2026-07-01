@@ -2,7 +2,7 @@
   "version": 1,
   "active_scene": 0,
   "render": {
-    "sky": 1,
+    "sky": 3,
     "floor_grid_visible": true,
     "floor_grid_radius": 80,
     "material_debug_mode": 0,
@@ -36,17 +36,16 @@
         },
         {
           "id": 1,
-          "name": "Point Light",
+          "name": "Sun Light",
           "transform": {
             "position": [3.0, 4.0, 3.0],
             "rotation": [1.0, 0.0, 0.0, 0.0],
             "scale": [1.0, 1.0, 1.0]
           },
-          "point_light": {
+          "light": {
             "enabled": true,
-            "color": [1.0, 0.86, 0.56],
-            "intensity": 3.0,
-            "range": 9.0
+            "color": [1.0, 0.94, 0.84],
+            "intensity": 1.0
           }
         },
         {

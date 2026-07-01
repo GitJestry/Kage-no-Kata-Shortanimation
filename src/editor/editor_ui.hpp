@@ -48,8 +48,6 @@ class EditorUi final {
   void drawSceneControls(engine::EngineCore& parEngine);
   void drawCreationPalette(engine::EngineCore& parEngine,
                            PlacementController& parPlacementController);
-  void drawAssetLibrary(engine::EngineCore& parEngine,
-                        PlacementController& parPlacementController);
   void drawWorldControls(engine::EngineCore& parEngine);
   void drawOutliner(engine::EngineCore& parEngine,
                     SelectionController& parSelectionController);

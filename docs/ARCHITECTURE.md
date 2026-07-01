@@ -15,11 +15,11 @@ flowchart TD
     MeshCache["render::MeshResourceCache\nGPU upload/cache"]
     Scenes["scene::SceneManager\nnamed worlds and entities"]
     Camera["camera::CameraSystem\nfly/orbit camera state"]
-    Lighting["lighting::LightingSystem\nambient, sun, point light"]
+    Lighting["lighting::LightingSystem\nambient, sun, point lights"]
     Renderer["render::WorldRenderer\nrender pass coordinator"]
 
     Project["projects/kage_no_kata_world.kage.json\nshared world"]
-    Session[".kage_local/editor_session.json\nprivate session"]
+    Session[".kage_local/editor_session.json\nprivate session and local scenes"]
     GLB["Blender GLB assets\nmesh, material, skin, animation"]
 
     MainApp --> Editor
@@ -55,6 +55,9 @@ flowchart TD
 `CameraSystem`: editor fly/orbit camera state. `EditorCameraBridge` mirrors the
 active editor camera entity.
 
+`Animator`: clip sampling, pose blending, and skinning matrices for skinned GLB
+assets.
+
 ## Persistence Model
 
 Tracked world data:
@@ -63,7 +66,8 @@ Tracked world data:
 Ignored local data:
 `.kage_local/editor_session.json`, `.kage_local/imgui.ini`
 
-Autosave writes local data only. Use `Save Project` for tracked world changes.
+Autosave writes private editor state and local test scenes. Use `Save Project`
+for tracked shared film-world changes.
 
 ## Module Rule
 
@@ -72,4 +76,5 @@ Autosave writes local data only. Use `Save Project` for tracked world changes.
 - user-facing edit behavior belongs in `editor`;
 - GPU state belongs in `render`;
 - camera behavior belongs in `camera`;
+- animation sampling belongs in `animation`;
 - cross-system orchestration belongs behind `engine::EngineCore`.

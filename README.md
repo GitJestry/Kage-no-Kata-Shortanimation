@@ -1,14 +1,21 @@
-# Kage no Kata - The Final Cut
+# KageEngine
 
-Interactive computer animation project at the University of Bonn by Julian Meyer and Faouzi Homsani.
+KageEngine is the C++ OpenGL editor/runtime for the University of Bonn short
+animation project by Julian Meyer and Faouzi Homsani.
 
-The film follows the last heir of a Shinobi sword school during a morning training ritual. The user draws a cut across a bamboo target. Angle, height, direction, and drawing speed drive the sword animation, fracture response, particles, and sound.
+The film is **Kage no Kata - The Final Cut**. It follows the last heir of a
+Shinobi sword school during a morning training ritual. The user draws a cut
+across a bamboo target; angle, height, direction, and drawing speed drive the
+sword animation, fracture response, particles, and sound.
 
 ![Hand-drawn storyboard](assets/storyboard/storyboard-1.png)
 
 ## Production Model
 
-Blender provides meshes, UVs, materials, armatures, skin weights, and named animation clips. The C++ application imports glTF 2.0 data, samples keyframes, blends poses, performs GPU skinning, and connects animation with interaction, physics, particles, audio, and rendering.
+Blender provides meshes, UVs, materials, armatures, skin weights, and named
+animation clips. KageEngine imports glTF 2.0 data, validates rigs, samples
+keyframes, blends poses when two clips are available, and renders skinned
+meshes through the project GPU mesh path.
 
 The runtime targets OpenGL 4.1 on macOS and Windows. The university framework
 `julcst/gltemplate` v1.7b provides window, context, input, and ImGui integration;
@@ -34,7 +41,7 @@ Windows; Xcode, Make, or Ninja builds on macOS.
 Run from the project root:
 
 ```bash
-build/kage_no_kata
+build/kage_engine
 ```
 
 Import checks:
@@ -68,6 +75,6 @@ ctest --test-dir build --output-on-failure
 ## Current Milestone
 
 The editor loads Blender GLBs, validates the samurai rig, places entities,
-edits transforms, and saves the tracked world at
-`projects/kage_no_kata_world.kage.json`. Local editor state stays in
-`.kage_local/`.
+edits transforms, plays skinned animation clips, and saves the tracked film
+world at `projects/kage_no_kata_world.kage.json`. Local editor state and local
+test scenes stay in `.kage_local/`.

@@ -37,13 +37,16 @@ flowchart LR
 `GltfAssetLoader` imports vertex attributes, skin influences, indices, nodes,
 markers, skins, inverse bind matrices, and animation channels.
 `Animator` linearly samples translation and scale, applies quaternion slerp to
-rotation, and blends the authored sequence through `Ready`.
+rotation, and blends two sampled poses when the exported GLB contains more than
+one clip.
 `ProceduralStrikePlanner` and runtime IK generate each requested strike
 according to the [Interaction Design](INPUT_DECISION.md). The state sequence is:
 
 `Idle -> LookAtPicture -> Kneel -> Draw -> Ready -> AwaitCutInput -> WindUp -> Strike -> FollowThrough -> Recover -> AwaitCutInput`
 
-Global joint transforms and inverse bind matrices produce up to 128 skinning matrices in a uniform buffer. `SkinnedVertex` stores position, normal, UV, four joint indices, and four weights.
+Global joint transforms and inverse bind matrices produce up to 128 skinning
+matrices for the mesh shader. Mesh vertices store position, normal, UV,
+tangent, four joint indices, and four weights.
 
 ### Scene, Camera, and Lighting
 
@@ -67,11 +70,11 @@ Fly mode uses WASD movement, Space/Shift vertical movement, right-drag mouse
 look, and scroll speed control. Orbit mode rotates around focused bounds.
 Bezier film-camera paths belong as another controller over the same state.
 
-The lighting system starts with ambient light plus one entity-backed directional
-light. Lights have world transforms, visible editor handles, color, intensity,
-range or direction, and renderer uniforms. Materials evaluate base color,
-normal, metallic/roughness, emissive, alpha, and specular response under that
-scene light state.
+The lighting system uses ambient light, one entity-backed directional sun, and
+up to eight point lights. Sun rotation controls direction; point-light rotation
+is editor transform data only. Materials evaluate base color, normal,
+metallic/roughness, emissive, alpha, and specular response under that scene
+light state.
 
 Project/world save behavior is documented in
 [Editor Workflow](EDITOR_WORKFLOW.md).

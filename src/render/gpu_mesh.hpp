@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace kage::render {
@@ -41,6 +42,7 @@ class GpuMesh final {
             const glm::vec3& parCameraPosition,
             const glm::mat4& parEntityTransform,
             const lighting::LightingState& parLighting,
+            std::span<const std::vector<glm::mat4>> parSkinMatrices,
             float parEntityOpacity,
             MaterialDebugMode parDebugMode) const;
   void drawOutline(const ShaderProgram& parShader,
@@ -73,6 +75,8 @@ class GpuMesh final {
     bool alpha_blend = false;
     bool alpha_mask = false;
     bool double_sided = false;
+    bool has_skin = false;
+    std::uint32_t skin_index = assets::INVALID_SKIN_INDEX;
     GLsizei index_count = 0;
   };
 

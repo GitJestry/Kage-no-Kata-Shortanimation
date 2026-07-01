@@ -14,7 +14,7 @@ floor settings, or material debug mode.
 .kage_local/imgui.ini
 ```
 
-Ignored. Stores selection, camera speed, and panel layout.
+Ignored. Stores selection, camera speed, panel layout, and local test scenes.
 
 ## Asset Handoff
 
@@ -36,7 +36,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 The samurai test requires skin data, joints, normalized weights, inverse bind
-matrices, and one animation clip.
+matrices, and one animation clip. A full rigging-and-blending demonstration
+requires at least two exported clips so KageEngine can cross-fade between them.
 
 ## Editor Controls
 
@@ -49,13 +50,23 @@ matrices, and one animation clip.
 - `Esc`: cancel placement or active gizmo operation.
 - Outliner single click: select entity.
 - Outliner double click: frame selected entity.
+- `+ Local Test Scene`: create an ignored scratch scene for experiments.
 
 Selection is local state.
+
+## Save Model
+
+Shared scenes are written to `projects/kage_no_kata_world.kage.json` by
+`Save Project`.
+
+Local test scenes are written to `.kage_local/editor_session.json`
+automatically. They are useful for testing placement, lighting, and animation
+without committing experimental world changes.
 
 ## Collaboration
 
 1. Pull branch and LFS assets.
-2. Open the editor from the project root with `build/kage_no_kata`.
+2. Open the editor from the project root with `build/kage_engine`.
 3. Edit the world.
 4. Press `Save Project`.
 5. Review `projects/kage_no_kata_world.kage.json`.

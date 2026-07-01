@@ -29,6 +29,8 @@ class ShaderProgram final {
   void release();
 
   void setMat4(const char* parName, const glm::mat4& parValue) const;
+  void setMat4Array(const char* parName, const glm::mat4* parValues,
+                    GLsizei parCount) const;
   void setFloat(const char* parName, float parValue) const;
   void setInt(const char* parName, int parValue) const;
   void setVec2(const char* parName, const glm::vec2& parValue) const;

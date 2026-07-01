@@ -14,12 +14,14 @@ class PlacementController final {
     None,
     StaticAsset,
     Camera,
+    SunLight,
     PointLight
   };
 
   void beginStaticAsset(engine::EngineCore& parEngine,
                         std::size_t parAssetIndex);
   void beginCamera(engine::EngineCore& parEngine);
+  void beginSunLight(engine::EngineCore& parEngine);
   void beginPointLight(engine::EngineCore& parEngine);
   void update(engine::EngineCore& parEngine, const glm::vec2& parCursorPixel,
               const glm::vec2& parViewportSize, bool parLeftMouseDown);
