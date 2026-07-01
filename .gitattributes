@@ -1,0 +1,2 @@
+samurai.glb filter=lfs diff=lfs merge=lfs -text
+samurai.blend filter=lfs diff=lfs merge=lfs -text
