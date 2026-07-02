@@ -2,7 +2,7 @@
 
 #include "engine/editor_camera_bridge.hpp"
 #include "engine/project_serializer.hpp"
-#include "animation/animator.hpp"
+#include "engine/project_defaults.hpp"
 #include "math/screen_projection.hpp"
 #include "scene/components.hpp"
 
@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -28,6 +29,13 @@ constexpr float RAY_EPSILON = 0.00001f;
 constexpr float AUTOSAVE_INTERVAL_SECONDS = 2.0f;
 constexpr float ENTITY_SCREEN_PICK_PADDING = 24.0f;
 constexpr float HANDLE_SCREEN_RADIUS = 28.0f;
+
+using Clock = std::chrono::steady_clock;
+
+[[nodiscard]] float elapsedMilliseconds(Clock::time_point parStart,
+                                        Clock::time_point parEnd) {
+  return std::chrono::duration<float, std::milli>(parEnd - parStart).count();
+}
 
 [[nodiscard]] glm::quat lookRotation(const glm::vec3& parPosition,
                                      const glm::vec3& parTarget) {
@@ -161,15 +169,8 @@ EngineCore::EngineCore() = default;
 
 std::size_t EngineCore::registerStaticAsset(std::string parLabel,
                                             std::filesystem::path parPath) {
-  const std::size_t asset_index = m_asset_registry.registerStaticAsset(
-      std::move(parLabel), std::move(parPath));
-  const assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(asset_index);
-  if (asset != nullptr) {
-    m_mesh_resource_cache.uploadStaticMesh(asset->mesh_handle,
-                                           asset->document.static_model);
-  }
-  return asset_index;
+  return m_asset_registry.registerStaticAsset(std::move(parLabel),
+                                              std::move(parPath));
 }
 
 std::size_t EngineCore::registerModelAsset(std::string parLabel,
@@ -179,17 +180,49 @@ std::size_t EngineCore::registerModelAsset(std::string parLabel,
       std::move(parLabel), std::move(parPath), std::move(parDocument));
   const assets::AssetRegistry::AssetLibraryEntry* asset =
       m_asset_registry.getAssetLibraryEntry(asset_index);
-  if (asset != nullptr) {
+  if (asset != nullptr && asset->document.has_value()) {
+    const Clock::time_point upload_begin = Clock::now();
     m_mesh_resource_cache.uploadStaticMesh(asset->mesh_handle,
-                                           asset->document.static_model);
+                                           asset->document->static_model);
+    m_frame_timings.gpu_upload_ms =
+        elapsedMilliseconds(upload_begin, Clock::now());
   }
   return asset_index;
+}
+
+assets::ModelAsset& EngineCore::ensureAssetLoaded(std::size_t parAssetIndex) {
+  const assets::AssetRegistry::AssetLibraryEntry* before =
+      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
+  const bool was_loaded = before != nullptr && before->isLoaded();
+
+  const Clock::time_point load_begin = Clock::now();
+  assets::ModelAsset& asset = m_asset_registry.loadAsset(parAssetIndex);
+  m_frame_timings.asset_load_ms =
+      was_loaded ? 0.0f : elapsedMilliseconds(load_begin, Clock::now());
+
+  const assets::AssetRegistry::AssetLibraryEntry* entry =
+      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
+  if (entry != nullptr &&
+      m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) == nullptr) {
+    const Clock::time_point upload_begin = Clock::now();
+    m_mesh_resource_cache.uploadStaticMesh(entry->mesh_handle,
+                                           asset.static_model);
+    m_frame_timings.gpu_upload_ms =
+        elapsedMilliseconds(upload_begin, Clock::now());
+  }
+
+  return asset;
+}
+
+const assets::ModelAsset& EngineCore::prepareAssetForUse(
+    std::size_t parAssetIndex) {
+  return ensureAssetLoaded(parAssetIndex);
 }
 
 void EngineCore::createDefaultProject() {
   m_scene_manager.clearScenes();
   const std::size_t scene_index =
-      m_scene_manager.createScene("Kage no Kata World");
+      m_scene_manager.createScene(std::string(defaults::FILM_WORLD_NAME));
   scene::SceneManager::SceneRecord* scene =
       m_scene_manager.getScene(scene_index);
   if (scene == nullptr) {
@@ -245,392 +278,14 @@ std::filesystem::path EngineCore::getLocalSessionSavePath() const {
   return ProjectSerializer::getLocalSessionPath();
 }
 
-std::size_t EngineCore::createScene(std::string parName) {
-  syncEditorCameraEntity();
-  const std::size_t index = m_scene_manager.createScene(std::move(parName));
-  scene::SceneManager::SceneRecord* scene = m_scene_manager.getScene(index);
-  if (scene != nullptr) {
-    createDefaultSceneEntities(*scene);
-  }
-  syncCameraFromEditorEntity();
-  markProjectDirty();
-  return index;
-}
-
-std::size_t EngineCore::createLocalScene(std::string parName) {
-  syncEditorCameraEntity();
-  const std::size_t index =
-      m_scene_manager.createScene(std::move(parName), true);
-  scene::SceneManager::SceneRecord* scene = m_scene_manager.getScene(index);
-  if (scene != nullptr) {
-    createDefaultSceneEntities(*scene);
-  }
-  syncCameraFromEditorEntity();
-  saveLocalSession();
-  return index;
-}
-
-bool EngineCore::deleteScene(std::size_t parSceneIndex) {
-  syncEditorCameraEntity();
-  const scene::SceneManager::SceneRecord* scene =
-      m_scene_manager.getScene(parSceneIndex);
-  const bool local_only = scene != nullptr && scene->local_only;
-  const bool deleted = m_scene_manager.deleteScene(parSceneIndex);
-  if (deleted) {
-    syncCameraFromEditorEntity();
-    rebuildAssetInstanceCounts();
-    if (local_only) {
-      saveLocalSession();
-    } else {
-      markProjectDirty();
-    }
-  }
-  return deleted;
-}
-
-void EngineCore::setActiveScene(std::size_t parSceneIndex) {
-  syncEditorCameraEntity();
-  const std::size_t previous_scene = m_scene_manager.getActiveSceneIndex();
-  m_scene_manager.setActiveScene(parSceneIndex);
-  syncCameraFromEditorEntity();
-  if (previous_scene != m_scene_manager.getActiveSceneIndex()) {
-    markProjectDirty();
-  }
-}
-
-void EngineCore::renameScene(std::size_t parSceneIndex, std::string parName) {
-  m_scene_manager.renameScene(parSceneIndex, std::move(parName));
-  markProjectDirty();
-}
-
-scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,
-                                               const glm::vec3& parPosition,
-                                               float parAlpha) {
-  const assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
-  if (asset == nullptr) {
-    throw std::runtime_error("Asset library index is out of range");
-  }
-
-  scene::EntityId entity =
-      getActiveScene().world.createEntity(
-          m_asset_registry.reserveInstanceName(parAssetIndex));
-  scene::StaticMeshComponent static_mesh;
-  static_mesh.mesh_handle = asset->mesh_handle;
-  static_mesh.asset_library_index = parAssetIndex;
-  static_mesh.local_bounds = asset->document.static_model.bounds;
-  static_mesh.opacity = std::clamp(parAlpha, 0.05f, 1.0f);
-  getActiveScene().world.setStaticMesh(entity, static_mesh);
-  if (!asset->document.skins.empty()) {
-    scene::AnimationComponent animation;
-    animation.clip_index = 0;
-    animation.blend_clip_index =
-        asset->document.animation_clips.size() > 1 ? 1 : 0;
-    animation.playing = !asset->document.animation_clips.empty();
-    animation.skin_matrices.resize(asset->document.skins.size());
-    getActiveScene().world.setAnimation(entity, std::move(animation));
-  }
-  setEntityPosition(entity, parPosition);
-  selectEntity(entity);
-  markProjectDirty();
-  return entity;
-}
-
-scene::EntityId EngineCore::createCameraEntityAt(
-    std::string parName, const glm::vec3& parPosition) {
-  scene::EntityId entity =
-      getActiveScene().world.createEntity(std::move(parName));
-  scene::EntityRecord* record = getActiveScene().world.findEntity(entity);
-  if (record != nullptr) {
-    record->transform.transform.translation = parPosition;
-    record->transform.transform.rotation = m_camera_system.getCamera().orientation;
-  }
-
-  scene::CameraComponent camera;
-  camera.active = false;
-  camera.vertical_fov_degrees = m_camera_system.getCamera().vertical_fov_degrees;
-  camera.near_plane = m_camera_system.getCamera().near_plane;
-  camera.far_plane = m_camera_system.getCamera().far_plane;
-  getActiveScene().world.setCamera(entity, camera);
-  selectEntity(entity);
-  markProjectDirty();
-  return entity;
-}
-
-scene::EntityId EngineCore::createDirectionalLightEntityAt(
-    std::string parName, const glm::vec3& parPosition) {
-  scene::EntityId entity =
-      getActiveScene().world.createEntity(std::move(parName));
-  scene::EntityRecord* record = getActiveScene().world.findEntity(entity);
-  if (record != nullptr) {
-    record->transform.transform.translation = parPosition;
-    record->transform.transform.rotation =
-        lookRotation(parPosition, glm::vec3(0.0f));
-  }
-
-  getActiveScene().world.setDirectionalLight(
-      entity, scene::DirectionalLightComponent{});
-  if (!getActiveScene().primary_light_entity.isValid()) {
-    getActiveScene().primary_light_entity = entity;
-  }
-  selectEntity(entity);
-  markProjectDirty();
-  return entity;
-}
-
-scene::EntityId EngineCore::createPointLightEntityAt(
-    std::string parName, const glm::vec3& parPosition) {
-  scene::EntityId entity =
-      getActiveScene().world.createEntity(std::move(parName));
-  scene::EntityRecord* record = getActiveScene().world.findEntity(entity);
-  if (record != nullptr) {
-    record->transform.transform.translation = parPosition;
-  }
-
-  getActiveScene().world.setPointLight(entity, scene::PointLightComponent{});
-  if (!getActiveScene().primary_light_entity.isValid()) {
-    getActiveScene().primary_light_entity = entity;
-  }
-  selectEntity(entity);
-  markProjectDirty();
-  return entity;
-}
-
-bool EngineCore::deleteEntity(scene::EntityId parEntity) {
-  scene::SceneManager::SceneRecord& scene_record = getActiveScene();
-  if (parEntity == scene_record.editor_camera_entity) {
-    return false;
-  }
-
-  const scene::EntityRecord* entity = scene_record.world.findEntity(parEntity);
-  if (entity != nullptr && entity->static_mesh.has_value() &&
-      entity->static_mesh->asset_library_index !=
-          kage::scene::INVALID_ASSET_LIBRARY_INDEX) {
-    m_asset_registry.releaseInstance(entity->static_mesh->asset_library_index);
-  }
-
-  const bool deleted = scene_record.world.deleteEntity(parEntity);
-  if (!deleted) {
-    return false;
-  }
-
-  if (parEntity == scene_record.selected_entity) {
-    scene_record.selected_entity = {};
-  }
-  if (parEntity == scene_record.primary_light_entity) {
-    scene_record.primary_light_entity = {};
-  }
-  markProjectDirty();
-  return true;
-}
-
-void EngineCore::selectEntity(scene::EntityId parEntity) {
-  m_scene_manager.selectEntity(parEntity);
-}
-
-void EngineCore::clearSelection() {
-  selectEntity({});
-}
-
-void EngineCore::frameEntity(scene::EntityId parEntity) {
-  const scene::EntityRecord* entity =
-      getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  const math::Bounds3 world_bounds = getEntityWorldBounds(parEntity);
-  if (world_bounds.is_valid) {
-    m_camera_system.focusBounds(world_bounds);
-  } else {
-    m_camera_system.focusPoint(entity->transform.transform.translation,
-                               ENTITY_HANDLE_EXTENT);
-  }
-  syncEditorCameraEntity();
-}
-
-void EngineCore::setEntityName(scene::EntityId parEntity,
-                               std::string parName) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || parName.empty()) {
-    return;
-  }
-
-  entity->name.name = std::move(parName);
-  markProjectDirty();
-}
-
-void EngineCore::setEntityPosition(scene::EntityId parEntity,
-                                   const glm::vec3& parPosition) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  entity->transform.transform.translation = parPosition;
-  if (parEntity == getActiveScene().editor_camera_entity) {
-    m_camera_system.getCamera().position = parPosition;
-  }
-  markProjectDirty();
-}
-
-void EngineCore::setEntityTransform(scene::EntityId parEntity,
-                                    const math::Transform& parTransform) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  entity->transform.transform = parTransform;
-  if (parEntity == getActiveScene().editor_camera_entity) {
-    camera::Camera& camera = m_camera_system.getCamera();
-    camera.position = parTransform.translation;
-    camera.orientation = glm::normalize(parTransform.rotation);
-    m_camera_system.syncFlyControllerFromCamera();
-  }
-  markProjectDirty();
-}
-
-void EngineCore::setEntityCamera(scene::EntityId parEntity,
-                                 const scene::CameraComponent& parCamera) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->camera.has_value()) {
-    return;
-  }
-
-  entity->camera = parCamera;
-  if (parEntity == getActiveScene().editor_camera_entity) {
-    camera::Camera& camera = m_camera_system.getCamera();
-    camera.vertical_fov_degrees = parCamera.vertical_fov_degrees;
-    camera.near_plane = parCamera.near_plane;
-    camera.far_plane = parCamera.far_plane;
-  }
-  markProjectDirty();
-}
-
-void EngineCore::resetEditorCameraRoll(scene::EntityId parEntity) {
-  if (parEntity != getActiveScene().editor_camera_entity) {
-    return;
-  }
-
-  m_camera_system.resetFlyCameraRoll();
-  syncEditorCameraEntity();
-  markProjectDirty();
-}
-
-void EngineCore::setStaticMeshVisible(scene::EntityId parEntity,
-                                      bool parVisible) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->static_mesh.has_value()) {
-    return;
-  }
-
-  entity->static_mesh->visible = parVisible;
-  markProjectDirty();
-}
-
-void EngineCore::setStaticMeshOpacity(scene::EntityId parEntity,
-                                      float parOpacity) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->static_mesh.has_value()) {
-    return;
-  }
-
-  entity->static_mesh->opacity = std::clamp(parOpacity, 0.05f, 1.0f);
-  markProjectDirty();
-}
-
-void EngineCore::setAnimation(
-    scene::EntityId parEntity, const scene::AnimationComponent& parAnimation) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->animation.has_value()) {
-    return;
-  }
-
-  entity->animation = parAnimation;
-  entity->animation->skin_matrices.clear();
-  markProjectDirty();
-}
-
-void EngineCore::setDirectionalLight(
-    scene::EntityId parEntity,
-    const scene::DirectionalLightComponent& parLight) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->directional_light.has_value()) {
-    return;
-  }
-
-  entity->directional_light = parLight;
-  markProjectDirty();
-}
-
-void EngineCore::setPointLight(scene::EntityId parEntity,
-                               const scene::PointLightComponent& parLight) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->point_light.has_value()) {
-    return;
-  }
-
-  entity->point_light = parLight;
-  markProjectDirty();
-}
-
-void EngineCore::setAmbientLight(const glm::vec3& parColor) {
-  m_lighting_system.getState().ambient_color = parColor;
-  markProjectDirty();
-}
-
-void EngineCore::setPlacementGhost(render::PlacementGhost parGhost) {
-  m_placement_ghost = parGhost;
-}
-
-void EngineCore::clearPlacementGhost() {
-  m_placement_ghost = {};
-}
-
-void EngineCore::setSkyPreset(render::SkyPreset parPreset) {
-  m_render_settings.sky_preset = parPreset;
-  markProjectDirty();
-}
-
-void EngineCore::setFloorGridVisible(bool parVisible) {
-  m_render_settings.floor_grid_visible = parVisible;
-  markProjectDirty();
-}
-
-void EngineCore::setFloorGridRadius(int parRadius) {
-  m_render_settings.floor_grid_radius = std::clamp(parRadius, 8, 1000);
-  markProjectDirty();
-}
-
-void EngineCore::setEditorViewDistance(float parFarPlane) {
-  const float far_plane = std::clamp(parFarPlane, 5.0f, 5000.0f);
-  m_camera_system.getCamera().far_plane = far_plane;
-  scene::EntityRecord* entity =
-      getActiveScene().world.findEntity(getActiveScene().editor_camera_entity);
-  if (entity != nullptr && entity->camera.has_value()) {
-    entity->camera->far_plane = far_plane;
-  }
-  markProjectDirty();
-}
-
-void EngineCore::setMaterialDebugMode(render::MaterialDebugMode parMode) {
-  m_render_settings.material_debug_mode = parMode;
-  markProjectDirty();
-}
-
-void EngineCore::setGizmoAxisSpace(render::GizmoAxisSpace parAxisSpace) {
-  if (m_render_settings.gizmo_axis_space == parAxisSpace) {
-    return;
-  }
-  m_render_settings.gizmo_axis_space = parAxisSpace;
-  markProjectDirty();
-}
-
 void EngineCore::update(float parDeltaSeconds) {
   m_camera_system.update(parDeltaSeconds);
   syncEditorCameraEntity();
-  updateAnimations(parDeltaSeconds);
+  const Clock::time_point animation_begin = Clock::now();
+  m_animation_system.update(getActiveScene().world, m_asset_registry,
+                            parDeltaSeconds);
+  m_frame_timings.animation_update_ms =
+      elapsedMilliseconds(animation_begin, Clock::now());
   m_lighting_system.setState(buildLightingState());
 
   m_local_session_autosave_timer_seconds += parDeltaSeconds;
@@ -640,87 +295,13 @@ void EngineCore::update(float parDeltaSeconds) {
   }
 }
 
-void EngineCore::updateAnimations(float parDeltaSeconds) {
-  for (scene::EntityRecord& entity : getActiveScene().world.getEntities()) {
-    if (!entity.alive || !entity.static_mesh.has_value()) {
-      continue;
-    }
-
-    const assets::AssetRegistry::AssetLibraryEntry* asset =
-        m_asset_registry.getAssetLibraryEntry(
-            entity.static_mesh->asset_library_index);
-    if (asset == nullptr || asset->document.skins.empty()) {
-      continue;
-    }
-
-    if (!entity.animation.has_value()) {
-      scene::AnimationComponent animation;
-      animation.playing = !asset->document.animation_clips.empty();
-      animation.blend_clip_index =
-          asset->document.animation_clips.size() > 1 ? 1 : 0;
-      animation.skin_matrices.resize(asset->document.skins.size());
-      entity.animation = std::move(animation);
-    }
-
-    scene::AnimationComponent& animation = *entity.animation;
-    const std::size_t clip_count = asset->document.animation_clips.size();
-    if (clip_count > 0) {
-      animation.clip_index = std::min(animation.clip_index, clip_count - 1);
-      animation.blend_clip_index =
-          std::min(animation.blend_clip_index, clip_count - 1);
-      if (animation.playing) {
-        const float delta =
-            std::max(parDeltaSeconds * animation.playback_speed, 0.0f);
-        animation.time_seconds += delta;
-        if (animation.blend_duration_seconds > 0.0f) {
-          animation.blend_time_seconds += delta;
-        }
-        if (!animation.looping) {
-          const float duration =
-              asset->document.animation_clips[animation.clip_index]
-                  .duration_seconds;
-          animation.time_seconds = std::min(animation.time_seconds, duration);
-        }
-      }
-    }
-
-    animation::Pose pose =
-        clip_count > 0
-            ? animation::Animator::sampleClip(asset->document,
-                                              animation.clip_index,
-                                              animation.time_seconds)
-            : animation::Animator::makeBindPose(asset->document);
-    if (clip_count > 1 && animation.blend_duration_seconds > 0.0f) {
-      const float amount = std::clamp(animation.blend_time_seconds /
-                                          animation.blend_duration_seconds,
-                                      0.0f, 1.0f);
-      const animation::Pose blend_pose = animation::Animator::sampleClip(
-          asset->document, animation.blend_clip_index,
-          animation.time_seconds);
-      pose = animation::Animator::blendPoses(asset->document, pose,
-                                             blend_pose, amount);
-      if (amount >= 1.0f) {
-        animation.clip_index = animation.blend_clip_index;
-        animation.blend_time_seconds = 0.0f;
-        animation.blend_duration_seconds = 0.0f;
-      }
-    }
-
-    animation.skin_matrices.resize(asset->document.skins.size());
-    for (std::size_t skin_index = 0; skin_index < asset->document.skins.size();
-         ++skin_index) {
-      animation.skin_matrices[skin_index] =
-          animation::Animator::buildJointMatrices(asset->document, skin_index,
-                                                  pose);
-    }
-  }
-}
-
 void EngineCore::render(const glm::vec2& parViewportSize) {
+  const Clock::time_point render_begin = Clock::now();
   m_world_renderer.render(getActiveScene(), m_mesh_resource_cache,
                           m_camera_system,
                           m_lighting_system.getState(), m_placement_ghost,
                           m_render_settings, parViewportSize);
+  m_frame_timings.render_ms = elapsedMilliseconds(render_begin, Clock::now());
 }
 
 scene::World& EngineCore::getWorld() {
@@ -820,6 +401,10 @@ render::MaterialDebugMode EngineCore::getMaterialDebugMode() const {
 
 render::GizmoAxisSpace EngineCore::getGizmoAxisSpace() const {
   return m_render_settings.gizmo_axis_space;
+}
+
+const EngineCore::FrameTimings& EngineCore::getFrameTimings() const {
+  return m_frame_timings;
 }
 
 math::Bounds3 EngineCore::getEntityWorldBounds(scene::EntityId parEntity) const {
@@ -983,22 +568,24 @@ lighting::LightingState EngineCore::buildLightingState() const {
   state.point_light_count = 0;
   for (const scene::EntityRecord& entity :
        getActiveScene().world.getEntities()) {
-    if (!entity.alive || !entity.directional_light.has_value() ||
-        !entity.directional_light->enabled) {
+    if (!entity.alive || !entity.light.has_value() ||
+        entity.light->type != scene::LightType::Sun ||
+        !entity.light->enabled) {
       continue;
     }
 
     state.sun.direction = glm::normalize(
         entity.transform.transform.rotation * LIGHT_LOCAL_FORWARD);
-    state.sun.color = entity.directional_light->color;
-    state.sun.intensity = entity.directional_light->intensity;
+    state.sun.color = entity.light->color;
+    state.sun.intensity = entity.light->intensity;
     break;
   }
 
   for (const scene::EntityRecord& entity :
        getActiveScene().world.getEntities()) {
-    if (!entity.alive || !entity.point_light.has_value() ||
-        !entity.point_light->enabled) {
+    if (!entity.alive || !entity.light.has_value() ||
+        entity.light->type != scene::LightType::Point ||
+        !entity.light->enabled) {
       continue;
     }
 
@@ -1010,9 +597,9 @@ lighting::LightingState EngineCore::buildLightingState() const {
         state.point_lights[state.point_light_count++];
     point.enabled = true;
     point.position = entity.transform.transform.translation;
-    point.color = entity.point_light->color;
-    point.intensity = entity.point_light->intensity;
-    point.range = entity.point_light->range;
+    point.color = entity.light->color;
+    point.intensity = entity.light->intensity;
+    point.range = entity.light->range;
   }
 
   return state;
@@ -1046,8 +633,12 @@ void EngineCore::createDefaultSceneEntities(
         lookRotation(light_entity->transform.transform.translation,
                      glm::vec3(0.0f, 0.6f, 0.0f));
   }
-  parScene.world.setDirectionalLight(parScene.primary_light_entity,
-                                     scene::DirectionalLightComponent{});
+  scene::LightComponent sun;
+  sun.type = scene::LightType::Sun;
+  sun.color = glm::vec3(1.0f, 0.94f, 0.84f);
+  sun.intensity = 1.0f;
+  sun.range = 0.0f;
+  parScene.world.setLight(parScene.primary_light_entity, sun);
   parScene.selected_entity = {};
 }
 

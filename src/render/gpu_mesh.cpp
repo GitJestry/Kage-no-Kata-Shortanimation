@@ -178,7 +178,10 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
 
   m_primitives.reserve(parModel.primitives.size());
 
-  for (const assets::StaticPrimitive& primitive : parModel.primitives) {
+  for (std::size_t primitive_index = 0;
+       primitive_index < parModel.primitives.size(); ++primitive_index) {
+    const assets::StaticPrimitive& primitive =
+        parModel.primitives[primitive_index];
     if (primitive.vertices.empty() || primitive.indices.empty()) {
       continue;
     }
@@ -188,6 +191,7 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
     gpu_primitive.index_count = checkedIndexCount(primitive.indices.size());
     gpu_primitive.has_skin = primitive.hasSkinInfluences();
     gpu_primitive.skin_index = primitive.skin_index;
+    gpu_primitive.primitive_index = primitive_index;
     if (primitive.material_index != assets::INVALID_MATERIAL_INDEX) {
       if (static_cast<std::size_t>(primitive.material_index) >=
           parModel.materials.size()) {
@@ -349,13 +353,13 @@ void GpuMesh::draw(const ShaderProgram& parShader,
     const bool can_skin =
         primitive.has_skin &&
         primitive.skin_index != assets::INVALID_SKIN_INDEX &&
-        static_cast<std::size_t>(primitive.skin_index) <
+        primitive.primitive_index <
             parSkinMatrices.size() &&
-        !parSkinMatrices[primitive.skin_index].empty();
+        !parSkinMatrices[primitive.primitive_index].empty();
     parShader.setInt("u_skinning_enabled", can_skin ? 1 : 0);
     if (can_skin) {
       const std::vector<glm::mat4>& matrices =
-          parSkinMatrices[primitive.skin_index];
+          parSkinMatrices[primitive.primitive_index];
       parShader.setMat4Array(
           "u_joint_matrices", matrices.data(),
           static_cast<GLsizei>(std::min<std::size_t>(

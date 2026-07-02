@@ -16,6 +16,7 @@ flowchart TD
     Scenes["scene::SceneManager\nnamed worlds and entities"]
     Camera["camera::CameraSystem\nfly/orbit camera state"]
     Lighting["lighting::LightingSystem\nambient, sun, point lights"]
+    Animation["animation::AnimationSystem\nclip playback and skin palettes"]
     Renderer["render::WorldRenderer\nrender pass coordinator"]
 
     Project["projects/kage_no_kata_world.kage.json\nshared world"]
@@ -28,6 +29,7 @@ flowchart TD
     Engine --> Scenes
     Engine --> Camera
     Engine --> Lighting
+    Engine --> Animation
     Engine --> Renderer
     Assets --> MeshCache
     GLB --> Assets
@@ -55,8 +57,10 @@ flowchart TD
 `CameraSystem`: editor fly/orbit camera state. `EditorCameraBridge` mirrors the
 active editor camera entity.
 
-`Animator`: clip sampling, pose blending, and skinning matrices for skinned GLB
-assets.
+`AnimationSystem`: playback state, pose buffers, blend state, and per-primitive
+skin matrix palettes.
+
+`Animator`: stateless clip sampling and pose interpolation math.
 
 ## Persistence Model
 

@@ -35,18 +35,19 @@ tasks are attempted or completed.
   arm64 macOS, Debug
 - Integrated result: The application is named KageEngine. The editor stores
   tracked film-world data in `projects/kage_no_kata_world.kage.json` and local
-  scratch scenes in `.kage_local/editor_session.json`. Skinned mesh attributes,
-  joint matrix palettes, clip playback, and reusable pose blending are
-  integrated into the existing mesh path. Lighting now supports one sun plus up
-  to eight point lights.
+  scratch scenes in `.kage_local/editor_session.json`. GLB library entries are
+  registered by path and loaded lazily when the scene or editor needs them.
+  Skinned mesh attributes, clip playback, pose blending support, and
+  per-primitive joint matrix palettes are integrated into the existing mesh
+  path. Lighting uses a single entity `LightComponent` for sun and point lights.
 - Verification procedure: Configured and built `build/kage_engine`, ran
   `ctest --test-dir build --output-on-failure`, and checked the rig import path.
-- Evidence and metrics: `asset_import_samurai_rig` passed. Direct import check
-  reported `samurai.glb`: 84 primitives, 126,600 vertices, 1 skin, 49 joints,
-  and 1 animation.
+- Evidence and metrics: `asset_import_samurai_rig` passed, including finite CPU
+  sampled skinned bounds. Direct import check reported `samurai.glb`: 84
+  primitives, 126,600 vertices, 1 skin, 49 joints, and 1 animation.
 - macOS status: Build, static GLB imports, samurai rig validation, shared
-  project file loading, local scratch-scene persistence, Dark Studio default,
-  sun-light default, and CTest pass.
+  project file loading, local scratch-scene persistence, lazy samurai asset
+  loading, Dark Studio default, sun-light default, and CTest pass.
 - Windows status: Configure, build, runtime launch, and LFS hydration remain
   pending on a Windows machine.
 - Known limitations: The current samurai GLB has one clip, so it proves rigging,

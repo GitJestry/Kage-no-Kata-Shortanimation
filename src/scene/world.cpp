@@ -57,23 +57,13 @@ void World::setCamera(EntityId parEntity, CameraComponent parCamera) {
   entity->camera = parCamera;
 }
 
-void World::setDirectionalLight(EntityId parEntity,
-                                DirectionalLightComponent parLight) {
+void World::setLight(EntityId parEntity, LightComponent parLight) {
   EntityRecord* entity = findEntity(parEntity);
   if (entity == nullptr) {
     return;
   }
 
-  entity->directional_light = parLight;
-}
-
-void World::setPointLight(EntityId parEntity, PointLightComponent parLight) {
-  EntityRecord* entity = findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  entity->point_light = parLight;
+  entity->light = parLight;
 }
 
 void World::setVisible(EntityId parEntity, bool parVisible) {

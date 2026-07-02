@@ -27,7 +27,8 @@ class Animator final {
                                        float parAmount);
   [[nodiscard]] static std::vector<glm::mat4> buildJointMatrices(
       const assets::ModelAsset& parAsset, std::size_t parSkinIndex,
-      const Pose& parPose);
+      const Pose& parPose,
+      const glm::mat4& parInverseMeshTransform = glm::mat4(1.0f));
 
  private:
   [[nodiscard]] static Pose makePoseFromLocals(

@@ -1,9 +1,12 @@
 #include "app/main_app.hpp"
 
+#include "engine/project_defaults.hpp"
+
 #include <imgui.h>
 
 #include <algorithm>
 #include <filesystem>
+#include <string>
 #include <utility>
 
 namespace {
@@ -27,7 +30,7 @@ MainApp::MainApp()
   std::filesystem::create_directories(".kage_local");
   m_imgui_ini_path = ".kage_local/imgui.ini";
   ImGui::GetIO().IniFilename = m_imgui_ini_path.c_str();
-  setTitle("KageEngine");
+  setTitle(std::string(engine::defaults::APP_NAME));
   setVSync(true);
 }
 

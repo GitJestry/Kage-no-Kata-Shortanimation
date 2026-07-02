@@ -711,10 +711,14 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
     scene::AnimationComponent animation = *entity->animation;
     const auto* asset = parEngine.getAssetLibraryEntry(
         entity->static_mesh->asset_library_index);
+    const assets::ModelAsset* document = nullptr;
+    if (asset != nullptr && asset->document.has_value()) {
+      document = &*asset->document;
+    }
     const std::size_t clip_count =
-        asset == nullptr ? 0 : asset->document.animation_clips.size();
+        document == nullptr ? 0 : document->animation_clips.size();
     const std::size_t skin_count =
-        asset == nullptr ? 0 : asset->document.skins.size();
+        document == nullptr ? 0 : document->skins.size();
     bool changed = false;
 
     ImGui::Text("Skins: %zu", skin_count);
@@ -727,7 +731,7 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
           std::min(animation.blend_clip_index, clip_count - 1);
       const auto get_clip_name = [&](std::size_t parIndex) {
         const std::string& name =
-            asset->document.animation_clips[parIndex].name;
+            document->animation_clips[parIndex].name;
         return name.empty() ? "Unnamed clip" : name.c_str();
       };
       if (ImGui::BeginCombo("Clip", get_clip_name(animation.clip_index))) {
@@ -807,35 +811,36 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
     }
   }
 
-  if (entity->directional_light.has_value() &&
-      ImGui::CollapsingHeader("Sun Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-    scene::DirectionalLightComponent light = *entity->directional_light;
+  if (entity->light.has_value() &&
+      ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+    scene::LightComponent light = *entity->light;
     glm::vec3 ambient = parEngine.getLightingSystem().getState().ambient_color;
     bool changed = false;
+    int light_type =
+        light.type == scene::LightType::Sun ? 0 : 1;
+    if (ImGui::Combo("Type", &light_type, "Sun\0Point\0")) {
+      light.type = light_type == 0 ? scene::LightType::Sun
+                                   : scene::LightType::Point;
+      changed = true;
+    }
     changed |= ImGui::Checkbox("Enabled", &light.enabled);
     changed |= ImGui::ColorEdit3("Color", &light.color.x);
+    const float max_intensity =
+        light.type == scene::LightType::Sun ? 10.0f : 50.0f;
     changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.02f, 0.0f,
-                                10.0f);
+                                max_intensity);
+    if (light.type == scene::LightType::Point) {
+      changed |= ImGui::DragFloat("Range", &light.range, 0.1f, 0.1f,
+                                  200.0f);
+    } else {
+      ImGui::TextDisabled("Sun direction follows entity rotation");
+    }
     const bool ambient_changed = ImGui::ColorEdit3("Ambient", &ambient.x);
     if (changed) {
-      parEngine.setDirectionalLight(entity->id, light);
+      parEngine.setLight(entity->id, light);
     }
     if (ambient_changed) {
       parEngine.setAmbientLight(ambient);
-    }
-  }
-
-  if (entity->point_light.has_value() &&
-      ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-    scene::PointLightComponent light = *entity->point_light;
-    bool changed = false;
-    changed |= ImGui::Checkbox("Enabled", &light.enabled);
-    changed |= ImGui::ColorEdit3("Color", &light.color.x);
-    changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f,
-                                50.0f);
-    changed |= ImGui::DragFloat("Range", &light.range, 0.1f, 0.1f, 200.0f);
-    if (changed) {
-      parEngine.setPointLight(entity->id, light);
     }
   }
 
@@ -849,7 +854,7 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
                                       unsigned int parFrameCount) {
   static_cast<void>(parViewportSize);
   const UiWorkArea area = getUiWorkArea();
-  const ImVec2 size(DIAGNOSTICS_WIDTH, 136.0f);
+  const ImVec2 size(DIAGNOSTICS_WIDTH, 176.0f);
   const ImVec2 position = clampPanelPosition(
       area,
       ImVec2(area.position.x + area.size.x - DIAGNOSTICS_WIDTH - 16.0f,
@@ -870,6 +875,12 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
   ImGui::Text("Build       %s %s %s", KAGE_BUILD_TYPE, __DATE__, __TIME__);
   ImGui::Text("Frame time  %.3f ms",
               parDeltaSeconds * MILLISECONDS_PER_SECOND);
+  const engine::EngineCore::FrameTimings& timings =
+      parEngine.getFrameTimings();
+  ImGui::Text("Asset/GPU   %.2f / %.2f ms", timings.asset_load_ms,
+              timings.gpu_upload_ms);
+  ImGui::Text("Anim/Render %.2f / %.2f ms", timings.animation_update_ms,
+              timings.render_ms);
   ImGui::Text("Frame       %u", parFrameCount);
   ImGui::Text("Scene       %zu", parEngine.getActiveSceneIndex() + 1);
   if (parEngine.getSelectedEntity().isValid()) {
@@ -1020,11 +1031,8 @@ const char* EditorUi::getEntityTypeLabel(
   if (parEntity.camera.has_value()) {
     return "Camera";
   }
-  if (parEntity.directional_light.has_value()) {
-    return "Sun";
-  }
-  if (parEntity.point_light.has_value()) {
-    return "Light";
+  if (parEntity.light.has_value()) {
+    return parEntity.light->type == scene::LightType::Sun ? "Sun" : "Light";
   }
   if (parEntity.static_mesh.has_value()) {
     return "Mesh";

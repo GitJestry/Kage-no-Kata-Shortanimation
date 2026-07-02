@@ -98,6 +98,34 @@ constexpr const char* LOCAL_SESSION_PATH = ".kage_local/editor_session.json";
   return glm::normalize(glm::quat_cast(glm::inverse(view)));
 }
 
+[[nodiscard]] const char* toJson(kage::scene::LightType parType) {
+  return parType == kage::scene::LightType::Sun ? "sun" : "point";
+}
+
+[[nodiscard]] kage::scene::LightType readLightType(const json& parJson,
+                                                   bool parLegacyPoint) {
+  const std::string type =
+      parJson.value("type", parLegacyPoint ? "point" : "sun");
+  return type == "point" ? kage::scene::LightType::Point
+                         : kage::scene::LightType::Sun;
+}
+
+[[nodiscard]] kage::scene::LightComponent readLight(
+    const json& parJson, bool parLegacyPoint) {
+  kage::scene::LightComponent light;
+  light.type = readLightType(parJson, parLegacyPoint);
+  if (light.type == kage::scene::LightType::Sun) {
+    light.color = glm::vec3(1.0f, 0.94f, 0.84f);
+    light.intensity = 1.0f;
+    light.range = 0.0f;
+  }
+  light.enabled = parJson.value("enabled", true);
+  light.color = readVec3(parJson.value("color", json::array()), light.color);
+  light.intensity = parJson.value("intensity", light.intensity);
+  light.range = parJson.value("range", light.range);
+  return light;
+}
+
 [[nodiscard]] bool nearlyEqual(float parLeft, float parRight) {
   return std::abs(parLeft - parRight) <= 0.0001f;
 }
@@ -220,19 +248,13 @@ void migrateOldDefaultEditorCamera(
           {"far", entity.camera->far_plane},
       };
     }
-    if (entity.directional_light.has_value()) {
+    if (entity.light.has_value()) {
       entity_json["light"] = {
-          {"enabled", entity.directional_light->enabled},
-          {"color", toJson(entity.directional_light->color)},
-          {"intensity", entity.directional_light->intensity},
-      };
-    }
-    if (entity.point_light.has_value()) {
-      entity_json["point_light"] = {
-          {"enabled", entity.point_light->enabled},
-          {"color", toJson(entity.point_light->color)},
-          {"intensity", entity.point_light->intensity},
-          {"range", entity.point_light->range},
+          {"type", toJson(entity.light->type)},
+          {"enabled", entity.light->enabled},
+          {"color", toJson(entity.light->color)},
+          {"intensity", entity.light->intensity},
+          {"range", entity.light->range},
       };
     }
     scene_json["entities"].push_back(std::move(entity_json));
@@ -310,14 +332,16 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
           const auto* asset =
               parEngine.m_asset_registry.getAssetLibraryEntry(asset_index);
           if (asset != nullptr) {
+            const assets::ModelAsset& document =
+                parEngine.ensureAssetLoaded(asset_index);
             scene::StaticMeshComponent mesh;
             mesh.mesh_handle = asset->mesh_handle;
             mesh.asset_library_index = asset_index;
-            mesh.local_bounds = asset->document.static_model.bounds;
+            mesh.local_bounds = document.static_model.bounds;
             mesh.opacity = mesh_json.value("opacity", 1.0f);
             mesh.visible = mesh_json.value("visible", true);
             scene_record->world.setStaticMesh(entity, mesh);
-            if (!asset->document.skins.empty()) {
+            if (!document.skins.empty()) {
               const json& animation_json =
                   entity_json.value("animation", json::object());
               scene::AnimationComponent animation;
@@ -334,9 +358,10 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
               animation.playback_speed =
                   animation_json.value("playback_speed", 1.0f);
               animation.playing = animation_json.value(
-                  "playing", !asset->document.animation_clips.empty());
+                  "playing", !document.animation_clips.empty());
               animation.looping = animation_json.value("looping", true);
-              animation.skin_matrices.resize(asset->document.skins.size());
+              animation.primitive_skin_matrices.resize(
+                  document.static_model.primitives.size());
               scene_record->world.setAnimation(entity, std::move(animation));
             }
           }
@@ -352,22 +377,11 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
         }
         if (entity_json.contains("light")) {
           const json& light_json = entity_json["light"];
-          scene::DirectionalLightComponent light;
-          light.enabled = light_json.value("enabled", true);
-          light.color =
-              readVec3(light_json.value("color", json::array()), light.color);
-          light.intensity = light_json.value("intensity", 1.0f);
-          scene_record->world.setDirectionalLight(entity, light);
+          scene_record->world.setLight(entity, readLight(light_json, false));
         }
         if (entity_json.contains("point_light")) {
           const json& light_json = entity_json["point_light"];
-          scene::PointLightComponent light;
-          light.enabled = light_json.value("enabled", true);
-          light.color =
-              readVec3(light_json.value("color", json::array()), light.color);
-          light.intensity = light_json.value("intensity", light.intensity);
-          light.range = light_json.value("range", light.range);
-          scene_record->world.setPointLight(entity, light);
+          scene_record->world.setLight(entity, readLight(light_json, true));
         }
       }
 
@@ -498,14 +512,16 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
           const auto* asset =
               parEngine.m_asset_registry.getAssetLibraryEntry(asset_index);
           if (asset != nullptr) {
+            const assets::ModelAsset& document =
+                parEngine.ensureAssetLoaded(asset_index);
             scene::StaticMeshComponent mesh;
             mesh.mesh_handle = asset->mesh_handle;
             mesh.asset_library_index = asset_index;
-            mesh.local_bounds = asset->document.static_model.bounds;
+            mesh.local_bounds = document.static_model.bounds;
             mesh.opacity = mesh_json.value("opacity", 1.0f);
             mesh.visible = mesh_json.value("visible", true);
             scene_record->world.setStaticMesh(entity, mesh);
-            if (!asset->document.skins.empty()) {
+            if (!document.skins.empty()) {
               const json& animation_json =
                   entity_json.value("animation", json::object());
               scene::AnimationComponent animation;
@@ -522,9 +538,10 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
               animation.playback_speed =
                   animation_json.value("playback_speed", 1.0f);
               animation.playing = animation_json.value(
-                  "playing", !asset->document.animation_clips.empty());
+                  "playing", !document.animation_clips.empty());
               animation.looping = animation_json.value("looping", true);
-              animation.skin_matrices.resize(asset->document.skins.size());
+              animation.primitive_skin_matrices.resize(
+                  document.static_model.primitives.size());
               scene_record->world.setAnimation(entity, std::move(animation));
             }
           }
@@ -540,22 +557,11 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
         }
         if (entity_json.contains("light")) {
           const json& light_json = entity_json["light"];
-          scene::DirectionalLightComponent light;
-          light.enabled = light_json.value("enabled", true);
-          light.color =
-              readVec3(light_json.value("color", json::array()), light.color);
-          light.intensity = light_json.value("intensity", 1.0f);
-          scene_record->world.setDirectionalLight(entity, light);
+          scene_record->world.setLight(entity, readLight(light_json, false));
         }
         if (entity_json.contains("point_light")) {
           const json& light_json = entity_json["point_light"];
-          scene::PointLightComponent light;
-          light.enabled = light_json.value("enabled", true);
-          light.color =
-              readVec3(light_json.value("color", json::array()), light.color);
-          light.intensity = light_json.value("intensity", light.intensity);
-          light.range = light_json.value("range", light.range);
-          scene_record->world.setPointLight(entity, light);
+          scene_record->world.setLight(entity, readLight(light_json, true));
         }
       }
 

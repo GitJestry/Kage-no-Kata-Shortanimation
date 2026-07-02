@@ -9,10 +9,14 @@ namespace kage::assets {
 
 std::size_t AssetRegistry::registerStaticAsset(
     std::string parLabel, std::filesystem::path parPath) {
-  GltfAssetLoader loader;
-  ModelAsset document = loader.loadDocument(parPath);
-  return registerModelAsset(std::move(parLabel), std::move(parPath),
-                            std::move(document));
+  AssetLibraryEntry entry;
+  entry.id.value = m_asset_library.size();
+  entry.label = std::move(parLabel);
+  entry.path = std::move(parPath);
+  entry.mesh_handle = entry.id.value;
+
+  m_asset_library.push_back(std::move(entry));
+  return m_asset_library.size() - 1;
 }
 
 std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
@@ -27,6 +31,25 @@ std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
 
   m_asset_library.push_back(std::move(entry));
   return m_asset_library.size() - 1;
+}
+
+ModelAsset& AssetRegistry::loadAsset(std::size_t parAssetIndex) {
+  if (parAssetIndex >= m_asset_library.size()) {
+    throw std::runtime_error("Asset library index is out of range");
+  }
+
+  AssetLibraryEntry& asset = m_asset_library[parAssetIndex];
+  if (!asset.document.has_value()) {
+    try {
+      GltfAssetLoader loader;
+      asset.document = loader.loadDocument(asset.path);
+      asset.load_error.clear();
+    } catch (const std::exception& error) {
+      asset.load_error = error.what();
+      throw;
+    }
+  }
+  return *asset.document;
 }
 
 std::string AssetRegistry::reserveInstanceName(std::size_t parAssetIndex) {
@@ -97,11 +120,28 @@ const AssetRegistry::AssetLibraryEntry* AssetRegistry::getAssetLibraryEntry(
   return &m_asset_library[parAssetIndex];
 }
 
+AssetRegistry::AssetLibraryEntry* AssetRegistry::getAssetLibraryEntry(
+    std::size_t parAssetIndex) {
+  if (parAssetIndex >= m_asset_library.size()) {
+    return nullptr;
+  }
+
+  return &m_asset_library[parAssetIndex];
+}
+
+const ModelAsset* AssetRegistry::getLoadedAsset(
+    std::size_t parAssetIndex) const {
+  const AssetLibraryEntry* asset = getAssetLibraryEntry(parAssetIndex);
+  return asset != nullptr && asset->document.has_value()
+             ? &*asset->document
+             : nullptr;
+}
+
 const StaticModel* AssetRegistry::getStaticMeshSource(
     StaticMeshHandle parHandle) const {
   for (const AssetLibraryEntry& entry : m_asset_library) {
-    if (entry.mesh_handle == parHandle) {
-      return &entry.document.static_model;
+    if (entry.mesh_handle == parHandle && entry.document.has_value()) {
+      return &entry.document->static_model;
     }
   }
   return nullptr;

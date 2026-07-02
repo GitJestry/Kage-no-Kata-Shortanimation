@@ -5,41 +5,8 @@ project(kage_engine VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(SRC
-  src/assets/asset_registry.cpp
-  src/assets/gltf_asset_loader.cpp
-  src/assets/model_validation.cpp
-  src/animation/animator.cpp
-  src/app/main_app.cpp
-  src/camera/camera.cpp
-  src/camera/camera_system.cpp
-  src/camera/fly_camera_controller.cpp
-  src/editor/editor_ui.cpp
-  src/editor/gizmo_controller.cpp
-  src/editor/placement_controller.cpp
-  src/editor/selection_controller.cpp
-  src/editor/world_editor.cpp
-  src/engine/editor_camera_bridge.cpp
-  src/engine/engine_core.cpp
-  src/engine/project_serializer.cpp
-  src/lighting/lighting_system.cpp
-  src/main.cpp
-  src/platform/runtime_paths.cpp
-  src/render/gpu_buffer.cpp
-  src/render/gpu_mesh.cpp
-  src/render/line_renderer.cpp
-  src/render/mesh_resource_cache.cpp
-  src/render/shader_program.cpp
-  src/render/solid_gizmo_renderer.cpp
-  src/render/static_mesh_renderer.cpp
-  src/render/texture_2d.cpp
-  src/render/vertex_array.cpp
-  src/render/world_renderer.cpp
-  src/scene/scene_manager.cpp
-  src/scene/world.cpp
-)
-
 include(FetchContent)
+include(cmake/Sources.cmake)
 include(cmake/PatchGltemplate.cmake)
 
 set(FRAMEWORK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/framework-src")
@@ -68,7 +35,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tinygltf)
 
-add_executable(${PROJECT_NAME} ${SRC})
+add_executable(${PROJECT_NAME} src/main.cpp ${KAGE_ENGINE_SOURCES})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf)

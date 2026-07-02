@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 
 namespace {
 
@@ -21,12 +22,14 @@ namespace {
     return 0;
   }
 
-  for (std::size_t index = 0; index + 1 < parTimes.size(); ++index) {
-    if (parTimeSeconds < parTimes[index + 1]) {
-      return index;
-    }
+  const auto next = std::upper_bound(parTimes.begin(), parTimes.end(),
+                                     parTimeSeconds);
+  if (next == parTimes.begin()) {
+    return 0;
   }
-  return parTimes.size() - 1;
+  return std::min<std::size_t>(
+      static_cast<std::size_t>(std::distance(parTimes.begin(), next) - 1),
+      parTimes.size() - 1);
 }
 
 [[nodiscard]] float getInterpolationAmount(const std::vector<float>& parTimes,
@@ -148,7 +151,7 @@ Pose Animator::blendPoses(const assets::ModelAsset& parAsset,
 
 std::vector<glm::mat4> Animator::buildJointMatrices(
     const assets::ModelAsset& parAsset, std::size_t parSkinIndex,
-    const Pose& parPose) {
+    const Pose& parPose, const glm::mat4& parInverseMeshTransform) {
   if (parSkinIndex >= parAsset.skins.size()) {
     return {};
   }
@@ -164,7 +167,8 @@ std::vector<glm::mat4> Animator::buildJointMatrices(
       matrices.push_back(glm::mat4(1.0f));
       continue;
     }
-    matrices.push_back(parPose.global_transforms[node_index] *
+    matrices.push_back(parInverseMeshTransform *
+                       parPose.global_transforms[node_index] *
                        skin.inverse_bind_matrices[joint_index]);
   }
   return matrices;

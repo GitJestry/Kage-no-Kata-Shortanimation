@@ -41,7 +41,7 @@ struct AnimationComponent final {
   float playback_speed = 1.0f;
   bool playing = true;
   bool looping = true;
-  std::vector<std::vector<glm::mat4>> skin_matrices;
+  std::vector<std::vector<glm::mat4>> primitive_skin_matrices;
 };
 
 struct CameraComponent final {
@@ -51,13 +51,13 @@ struct CameraComponent final {
   float far_plane = 100.0f;
 };
 
-struct DirectionalLightComponent final {
-  glm::vec3 color{1.0f, 0.94f, 0.84f};
-  float intensity = 1.0f;
-  bool enabled = true;
+enum class LightType {
+  Sun,
+  Point
 };
 
-struct PointLightComponent final {
+struct LightComponent final {
+  LightType type = LightType::Point;
   glm::vec3 color{1.0f, 0.86f, 0.56f};
   float intensity = 3.0f;
   float range = 9.0f;

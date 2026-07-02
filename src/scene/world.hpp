@@ -17,8 +17,7 @@ struct EntityRecord final {
   std::optional<StaticMeshComponent> static_mesh;
   std::optional<AnimationComponent> animation;
   std::optional<CameraComponent> camera;
-  std::optional<DirectionalLightComponent> directional_light;
-  std::optional<PointLightComponent> point_light;
+  std::optional<LightComponent> light;
   bool alive = true;
 };
 
@@ -29,9 +28,7 @@ class World final {
   void setStaticMesh(EntityId parEntity, StaticMeshComponent parStaticMesh);
   void setAnimation(EntityId parEntity, AnimationComponent parAnimation);
   void setCamera(EntityId parEntity, CameraComponent parCamera);
-  void setDirectionalLight(EntityId parEntity,
-                           DirectionalLightComponent parLight);
-  void setPointLight(EntityId parEntity, PointLightComponent parLight);
+  void setLight(EntityId parEntity, LightComponent parLight);
   void setVisible(EntityId parEntity, bool parVisible);
   bool deleteEntity(EntityId parEntity);
 

@@ -1,10 +1,9 @@
 #include "editor/world_editor.hpp"
 
-#include "assets/gltf_asset_loader.hpp"
-#include "assets/model_validation.hpp"
+#include "engine/project_defaults.hpp"
 
-#include <exception>
 #include <filesystem>
+#include <string>
 #include <utility>
 
 namespace kage::editor {
@@ -72,27 +71,20 @@ bool WorldEditor::cancelActiveOperation() {
 }
 
 void WorldEditor::registerDefaultAssets() {
-  m_engine.registerStaticAsset("Sword", m_runtime_paths.getModelPath("sword.glb"));
-  m_engine.registerStaticAsset("Torii gate",
-                               m_runtime_paths.getModelPath("torii_gate.glb"));
+  m_engine.registerStaticAsset(
+      std::string(engine::defaults::SWORD_LABEL),
+      m_runtime_paths.getModelPath(std::string(engine::defaults::SWORD_MODEL)));
+  m_engine.registerStaticAsset(
+      std::string(engine::defaults::TORII_LABEL),
+      m_runtime_paths.getModelPath(std::string(engine::defaults::TORII_MODEL)));
   const std::filesystem::path samurai_path =
-      m_runtime_paths.getModelPath("samurai.glb");
+      m_runtime_paths.getModelPath(std::string(engine::defaults::SAMURAI_MODEL));
   if (!std::filesystem::exists(samurai_path)) {
     return;
   }
 
-  try {
-    assets::GltfAssetLoader loader;
-    assets::ModelAsset samurai = loader.loadDocument(samurai_path);
-    const assets::RigValidationReport report =
-        assets::validateRiggedModelAsset(samurai);
-    if (!report.passed()) {
-      return;
-    }
-    m_engine.registerModelAsset("Samurai", samurai_path, std::move(samurai));
-  } catch (const std::exception&) {
-    return;
-  }
+  m_engine.registerStaticAsset(std::string(engine::defaults::SAMURAI_LABEL),
+                               samurai_path);
 }
 
 void WorldEditor::applyCameraMovement(

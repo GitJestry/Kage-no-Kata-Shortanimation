@@ -17,6 +17,7 @@ namespace kage::editor {
 
 void PlacementController::beginStaticAsset(engine::EngineCore& parEngine,
                                            std::size_t parAssetIndex) {
+  parEngine.prepareAssetForUse(parAssetIndex);
   begin(parEngine, Kind::StaticAsset, parAssetIndex);
 }
 

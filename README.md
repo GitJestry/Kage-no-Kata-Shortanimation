@@ -1,25 +1,12 @@
 # KageEngine
 
-KageEngine is the C++ OpenGL editor/runtime for the University of Bonn short
-animation project by Julian Meyer and Faouzi Homsani.
+KageEngine is the C++ OpenGL editor/runtime for **Kage no Kata - The Final
+Cut**, a University of Bonn short animation project by Julian Meyer and Faouzi
+Homsani.
 
-The film is **Kage no Kata - The Final Cut**. It follows the last heir of a
-Shinobi sword school during a morning training ritual. The user draws a cut
-across a bamboo target; angle, height, direction, and drawing speed drive the
-sword animation, fracture response, particles, and sound.
-
-![Hand-drawn storyboard](assets/storyboard/storyboard-1.png)
-
-## Production Model
-
-Blender provides meshes, UVs, materials, armatures, skin weights, and named
-animation clips. KageEngine imports glTF 2.0 data, validates rigs, samples
-keyframes, blends poses when two clips are available, and renders skinned
-meshes through the project GPU mesh path.
-
-The runtime targets OpenGL 4.1 on macOS and Windows. The university framework
-`julcst/gltemplate` v1.7b provides window, context, input, and ImGui integration;
-project-owned types implement the rendering and runtime systems.
+Current scope: load Blender GLB assets, edit the film world, validate and render
+the samurai rig, play one exported animation clip, and keep shared scene data in
+`projects/kage_no_kata_world.kage.json`.
 
 ## Build
 
@@ -35,10 +22,7 @@ cmake -S . -B build
 cmake --build build --config Release
 ```
 
-CMake fetches the pinned framework version. Visual Studio or Ninja builds on
-Windows; Xcode, Make, or Ninja builds on macOS.
-
-Run from the project root:
+CMake fetches the pinned framework version. Run from the project root:
 
 ```bash
 build/kage_engine
@@ -50,20 +34,14 @@ Import checks:
 ctest --test-dir build --output-on-failure
 ```
 
-## Documentation
+## Where To Look
 
-- [Story and visual concept](docs/CONCEPT.md)
-- [Engine architecture](docs/ARCHITECTURE.md)
-- [Editor workflow](docs/EDITOR_WORKFLOW.md)
-- [Runtime architecture and future systems](docs/TECHNICAL_PLAN.md)
-- [University framework boundary](docs/FRAMEWORK_BOUNDARY.md)
-- [Code style](docs/CODE_STYLE.md)
-- [Platform independence](docs/PLATFORM_INDEPENDENCE.md)
-- [Development log and milestone evidence](docs/DEVELOPMENT_LOG.md)
-- [Blender and asset pipeline](docs/ASSET_PIPELINE.md)
-- [Interaction design](docs/INPUT_DECISION.md)
-- [Requirements, scoring, and ownership](docs/PROJECT_REQUIREMENTS.md)
-- [Four-week schedule](docs/TODO.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Engineering contract](docs/ENGINEERING_CONTRACT.md)
+- [Asset pipeline](docs/ASSET_PIPELINE.md)
+- [Requirements and evidence](docs/PROJECT_REQUIREMENTS.md)
+- [Milestone checklist](docs/TODO.md)
+- [Development log](docs/DEVELOPMENT_LOG.md)
 
 ## References
 
@@ -72,9 +50,4 @@ ctest --test-dir build --output-on-failure
 - [Official project brief](assets/reference/cgintro-animation-project-info.pdf)
 - [Official assessment sheet](assets/reference/cgintro-bewertungsbogen.pdf)
 
-## Current Milestone
-
-The editor loads Blender GLBs, validates the samurai rig, places entities,
-edits transforms, plays skinned animation clips, and saves the tracked film
-world at `projects/kage_no_kata_world.kage.json`. Local editor state and local
-test scenes stay in `.kage_local/`.
+Local editor state and local test scenes stay in `.kage_local/`.

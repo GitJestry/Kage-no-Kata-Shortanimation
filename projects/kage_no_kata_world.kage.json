@@ -39,13 +39,15 @@
           "name": "Sun Light",
           "transform": {
             "position": [3.0, 4.0, 3.0],
-            "rotation": [1.0, 0.0, 0.0, 0.0],
+            "rotation": [0.87166952, -0.3061791, 0.36105734, 0.12682353],
             "scale": [1.0, 1.0, 1.0]
           },
           "light": {
+            "type": "sun",
             "enabled": true,
             "color": [1.0, 0.94, 0.84],
-            "intensity": 1.0
+            "intensity": 1.0,
+            "range": 0.0
           }
         },
         {

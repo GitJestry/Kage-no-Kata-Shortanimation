@@ -38,7 +38,8 @@ The report contains architecture diagrams, debug screenshots, performance data, 
 Current engine support:
 
 - imports GLB skins, joints, inverse bind matrices, joint indices, and weights;
-- validates normalized weights and finite bind/sample matrices through CTest;
+- validates normalized weights, finite joint matrices, and sampled skinned
+  bounds through CTest;
 - samples translation, rotation, and scale channels;
 - blends two sampled poses when at least two clips are available;
 - uploads joint indices and weights with mesh vertices;
@@ -48,7 +49,7 @@ Current samurai asset evidence:
 
 - `samurai.glb` imports as 84 primitives, 126,600 vertices, 1 skin, 49 joints,
   and 1 animation clip;
-- `asset_import_samurai_rig` validates the rig data and sampled joint matrices.
+- `asset_import_samurai_rig` validates the rig data and sampled skinned bounds.
 
 Open asset requirement:
 

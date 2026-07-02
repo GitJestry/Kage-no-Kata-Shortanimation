@@ -364,7 +364,7 @@ void addLightGizmo(std::vector<kage::render::LineVertex>& parVertices,
                    std::vector<kage::render::SolidGizmoVertex>& parSolid,
                    std::vector<kage::render::SolidGizmoVertex>& parGlow,
                    const kage::math::Transform& parTransform,
-                   const kage::scene::PointLightComponent& parLight,
+                   const kage::scene::LightComponent& parLight,
                    const glm::vec3& parCameraRight,
                    const glm::vec3& parCameraUp) {
   const glm::vec3 position = parTransform.translation;
@@ -385,7 +385,7 @@ void addSunGizmo(std::vector<kage::render::LineVertex>& parVertices,
                  std::vector<kage::render::SolidGizmoVertex>& parSolid,
                  std::vector<kage::render::SolidGizmoVertex>& parGlow,
                  const kage::math::Transform& parTransform,
-                 const kage::scene::DirectionalLightComponent& parLight,
+                 const kage::scene::LightComponent& parLight,
                  const glm::vec3& parCameraRight,
                  const glm::vec3& parCameraUp) {
   const glm::vec3 position = parTransform.translation;
@@ -470,7 +470,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
 
     std::span<const std::vector<glm::mat4>> skin_matrices;
     if (entity.animation.has_value()) {
-      skin_matrices = entity.animation->skin_matrices;
+      skin_matrices = entity.animation->primitive_skin_matrices;
     }
     m_static_mesh_renderer.draw(*mesh, view_projection,
                                 camera.position,
@@ -532,22 +532,24 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     if (!entity.alive) {
       continue;
     }
-    if (entity.directional_light.has_value()) {
-      addSunGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
-                  entity.transform.transform, *entity.directional_light,
-                  camera.getRight(), camera.getUp());
-    }
-    if (entity.point_light.has_value()) {
-      addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
-                    entity.transform.transform, *entity.point_light,
+    if (entity.light.has_value()) {
+      if (entity.light->type == scene::LightType::Sun) {
+        addSunGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
+                    entity.transform.transform, *entity.light,
                     camera.getRight(), camera.getUp());
+      } else {
+        addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
+                      entity.transform.transform, *entity.light,
+                      camera.getRight(), camera.getUp());
+      }
     }
     if (entity.camera.has_value()) {
       addCameraGizmo(m_line_vertices, entity.transform.transform);
     }
   }
   if (parGhost.kind == PlacementGhost::Kind::PointLight) {
-    scene::PointLightComponent light;
+    scene::LightComponent light;
+    light.type = scene::LightType::Point;
     light.color = parGhost.light_color;
     light.intensity = parGhost.light_intensity;
     addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
@@ -555,7 +557,8 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                   camera.getUp());
   }
   if (parGhost.kind == PlacementGhost::Kind::SunLight) {
-    scene::DirectionalLightComponent light;
+    scene::LightComponent light;
+    light.type = scene::LightType::Sun;
     light.color = parGhost.light_color;
     light.intensity = parGhost.light_intensity;
     addSunGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,

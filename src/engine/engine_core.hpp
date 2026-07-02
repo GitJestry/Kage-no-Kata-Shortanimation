@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/asset_registry.hpp"
+#include "animation/animation_system.hpp"
 #include "camera/camera_system.hpp"
 #include "lighting/lighting_system.hpp"
 #include "render/mesh_resource_cache.hpp"
@@ -21,6 +22,13 @@ class ProjectSerializer;
 
 class EngineCore final {
  public:
+  struct FrameTimings final {
+    float asset_load_ms = 0.0f;
+    float gpu_upload_ms = 0.0f;
+    float animation_update_ms = 0.0f;
+    float render_ms = 0.0f;
+  };
+
   struct CameraRay final {
     glm::vec3 origin{0.0f};
     glm::vec3 direction{0.0f, 0.0f, -1.0f};
@@ -74,13 +82,12 @@ class EngineCore final {
   void setStaticMeshOpacity(scene::EntityId parEntity, float parOpacity);
   void setAnimation(scene::EntityId parEntity,
                     const scene::AnimationComponent& parAnimation);
-  void setDirectionalLight(scene::EntityId parEntity,
-                           const scene::DirectionalLightComponent& parLight);
-  void setPointLight(scene::EntityId parEntity,
-                     const scene::PointLightComponent& parLight);
+  void setLight(scene::EntityId parEntity,
+                const scene::LightComponent& parLight);
   void setAmbientLight(const glm::vec3& parColor);
   void setPlacementGhost(render::PlacementGhost parGhost);
   void clearPlacementGhost();
+  const assets::ModelAsset& prepareAssetForUse(std::size_t parAssetIndex);
 
   void setSkyPreset(render::SkyPreset parPreset);
   void setFloorGridVisible(bool parVisible);
@@ -91,6 +98,7 @@ class EngineCore final {
 
   void update(float parDeltaSeconds);
   void render(const glm::vec2& parViewportSize);
+  [[nodiscard]] const FrameTimings& getFrameTimings() const;
 
   [[nodiscard]] scene::World& getWorld();
   [[nodiscard]] const scene::World& getWorld() const;
@@ -137,13 +145,13 @@ class EngineCore final {
       const glm::vec2& parViewportSize) const;
 
  private:
+  assets::ModelAsset& ensureAssetLoaded(std::size_t parAssetIndex);
   [[nodiscard]] scene::SceneManager::SceneRecord& getActiveScene();
   [[nodiscard]] const scene::SceneManager::SceneRecord& getActiveScene() const;
   [[nodiscard]] CameraRay makeCameraRay(const glm::vec2& parCursorPixel,
                                         const glm::vec2& parViewportSize) const;
   [[nodiscard]] lighting::LightingState buildLightingState() const;
   void createDefaultSceneEntities(scene::SceneManager::SceneRecord& parScene);
-  void updateAnimations(float parDeltaSeconds);
   void syncEditorCameraEntity();
   void syncCameraFromEditorEntity();
   void rebuildAssetInstanceCounts();
@@ -151,6 +159,7 @@ class EngineCore final {
   friend class ProjectSerializer;
 
   assets::AssetRegistry m_asset_registry;
+  animation::AnimationSystem m_animation_system;
   scene::SceneManager m_scene_manager;
   camera::CameraSystem m_camera_system;
   lighting::LightingSystem m_lighting_system;
@@ -158,6 +167,7 @@ class EngineCore final {
   render::WorldRenderer m_world_renderer;
   render::EditorRenderSettings m_render_settings;
   render::PlacementGhost m_placement_ghost;
+  FrameTimings m_frame_timings;
   bool m_project_dirty = false;
   float m_local_session_autosave_timer_seconds = 0.0f;
 };

@@ -77,6 +77,7 @@ class GpuMesh final {
     bool double_sided = false;
     bool has_skin = false;
     std::uint32_t skin_index = assets::INVALID_SKIN_INDEX;
+    std::size_t primitive_index = 0;
     GLsizei index_count = 0;
   };
 
