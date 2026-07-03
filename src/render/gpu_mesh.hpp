@@ -48,6 +48,7 @@ class GpuMesh final {
   void drawOutline(const ShaderProgram& parShader,
                    const glm::mat4& parViewProjection,
                    const glm::mat4& parEntityTransform,
+                   std::span<const std::vector<glm::mat4>> parSkinMatrices,
                    const glm::vec4& parColor,
                    float parThickness) const;
   void clear();

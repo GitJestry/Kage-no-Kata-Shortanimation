@@ -1,9 +1,12 @@
 #include "animation/animator.hpp"
 
+#include <glm/gtc/matrix_inverse.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <vector>
 
 namespace {
 
@@ -48,11 +51,25 @@ namespace {
   return std::clamp((parTimeSeconds - begin) / (end - begin), 0.0f, 1.0f);
 }
 
+[[nodiscard]] glm::mat4 getInverseMeshBindTransform(
+    const kage::assets::ModelAsset& parAsset,
+    const kage::assets::StaticPrimitive& parPrimitive) {
+  if (parPrimitive.node_index == kage::assets::INVALID_NODE_INDEX ||
+      static_cast<std::size_t>(parPrimitive.node_index) >=
+          parAsset.nodes.size()) {
+    return glm::inverse(parPrimitive.transform);
+  }
+
+  return glm::inverse(
+      parAsset.nodes[static_cast<std::size_t>(parPrimitive.node_index)]
+          .global_transform);
+}
+
 }  // namespace
 
 namespace kage::animation {
 
-Pose Animator::makeBindPose(const assets::ModelAsset& parAsset) {
+SkeletonPose Animator::makeBindPose(const assets::ModelAsset& parAsset) {
   std::vector<math::Transform> locals;
   locals.reserve(parAsset.nodes.size());
   for (const assets::GltfNode& node : parAsset.nodes) {
@@ -61,9 +78,9 @@ Pose Animator::makeBindPose(const assets::ModelAsset& parAsset) {
   return makePoseFromLocals(parAsset, std::move(locals));
 }
 
-Pose Animator::sampleClip(const assets::ModelAsset& parAsset,
+SkeletonPose Animator::sampleClip(const assets::ModelAsset& parAsset,
                           std::size_t parClipIndex, float parTimeSeconds) {
-  Pose pose = makeBindPose(parAsset);
+  SkeletonPose pose = makeBindPose(parAsset);
   if (parClipIndex >= parAsset.animation_clips.size()) {
     return pose;
   }
@@ -119,9 +136,9 @@ Pose Animator::sampleClip(const assets::ModelAsset& parAsset,
   return makePoseFromLocals(parAsset, std::move(pose.local_transforms));
 }
 
-Pose Animator::blendPoses(const assets::ModelAsset& parAsset,
-                          const Pose& parFirst,
-                          const Pose& parSecond,
+SkeletonPose Animator::blendPoses(const assets::ModelAsset& parAsset,
+                          const SkeletonPose& parFirst,
+                          const SkeletonPose& parSecond,
                           float parAmount) {
   const std::size_t count =
       std::min(parFirst.local_transforms.size(),
@@ -151,7 +168,7 @@ Pose Animator::blendPoses(const assets::ModelAsset& parAsset,
 
 std::vector<glm::mat4> Animator::buildJointMatrices(
     const assets::ModelAsset& parAsset, std::size_t parSkinIndex,
-    const Pose& parPose, const glm::mat4& parInverseMeshTransform) {
+    const SkeletonPose& parPose, const glm::mat4& parInverseMeshTransform) {
   if (parSkinIndex >= parAsset.skins.size()) {
     return {};
   }
@@ -174,21 +191,81 @@ std::vector<glm::mat4> Animator::buildJointMatrices(
   return matrices;
 }
 
-Pose Animator::makePoseFromLocals(const assets::ModelAsset& parAsset,
-                                  std::vector<math::Transform> parLocalTransforms) {
-  Pose pose;
+std::vector<glm::mat4> Animator::buildPrimitiveSkinMatrices(
+    const assets::ModelAsset& parAsset,
+    const assets::StaticPrimitive& parPrimitive,
+    const SkeletonPose& parPose) {
+  if (parPrimitive.skin_index == assets::INVALID_SKIN_INDEX) {
+    return {};
+  }
+
+  return buildJointMatrices(parAsset, parPrimitive.skin_index, parPose,
+                            getInverseMeshBindTransform(parAsset,
+                                                        parPrimitive));
+}
+
+SkeletonPose Animator::makePoseFromLocals(
+    const assets::ModelAsset& parAsset,
+    std::vector<math::Transform> parLocalTransforms) {
+  SkeletonPose pose;
   pose.local_transforms = std::move(parLocalTransforms);
-  pose.global_transforms.resize(pose.local_transforms.size(), glm::mat4(1.0f));
+  if (pose.local_transforms.size() < parAsset.nodes.size()) {
+    pose.local_transforms.reserve(parAsset.nodes.size());
+    for (std::size_t index = pose.local_transforms.size();
+         index < parAsset.nodes.size(); ++index) {
+      pose.local_transforms.push_back(parAsset.nodes[index].local_transform);
+    }
+  }
+  if (pose.local_transforms.size() > parAsset.nodes.size()) {
+    pose.local_transforms.resize(parAsset.nodes.size());
+  }
+
+  pose.global_transforms.resize(parAsset.nodes.size(), glm::mat4(1.0f));
+  enum class VisitState {
+    Unvisited,
+    Visiting,
+    Done
+  };
+  std::vector<VisitState> states(parAsset.nodes.size(), VisitState::Unvisited);
+
+  const auto compute_node = [&](const auto& self,
+                                std::size_t parNodeIndex) -> void {
+    if (parNodeIndex >= parAsset.nodes.size()) {
+      return;
+    }
+    if (states[parNodeIndex] == VisitState::Done) {
+      return;
+    }
+
+    const glm::mat4 local = pose.local_transforms[parNodeIndex].toMatrix();
+    if (states[parNodeIndex] == VisitState::Visiting) {
+      pose.global_transforms[parNodeIndex] = local;
+      states[parNodeIndex] = VisitState::Done;
+      return;
+    }
+
+    states[parNodeIndex] = VisitState::Visiting;
+    const std::uint32_t parent = parAsset.nodes[parNodeIndex].parent_index;
+    if (parent != assets::INVALID_NODE_INDEX &&
+        static_cast<std::size_t>(parent) < parAsset.nodes.size() &&
+        parent != parNodeIndex) {
+      self(self, static_cast<std::size_t>(parent));
+      pose.global_transforms[parNodeIndex] =
+          pose.global_transforms[static_cast<std::size_t>(parent)] * local;
+    } else {
+      pose.global_transforms[parNodeIndex] = local;
+    }
+    states[parNodeIndex] = VisitState::Done;
+  };
+
+  for (const std::uint32_t root_node : parAsset.root_nodes) {
+    compute_node(compute_node, static_cast<std::size_t>(root_node));
+  }
   for (std::size_t node_index = 0; node_index < parAsset.nodes.size();
        ++node_index) {
-    const glm::mat4 local = pose.local_transforms[node_index].toMatrix();
-    const std::uint32_t parent = parAsset.nodes[node_index].parent_index;
-    pose.global_transforms[node_index] =
-        parent != assets::INVALID_NODE_INDEX &&
-                parent < pose.global_transforms.size()
-            ? pose.global_transforms[parent] * local
-            : local;
+    compute_node(compute_node, node_index);
   }
+
   return pose;
 }
 

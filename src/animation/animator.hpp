@@ -10,28 +10,32 @@
 
 namespace kage::animation {
 
-struct Pose final {
+struct SkeletonPose final {
   std::vector<math::Transform> local_transforms;
   std::vector<glm::mat4> global_transforms;
 };
 
 class Animator final {
  public:
-  [[nodiscard]] static Pose makeBindPose(const assets::ModelAsset& parAsset);
-  [[nodiscard]] static Pose sampleClip(const assets::ModelAsset& parAsset,
+  [[nodiscard]] static SkeletonPose makeBindPose(const assets::ModelAsset& parAsset);
+  [[nodiscard]] static SkeletonPose sampleClip(const assets::ModelAsset& parAsset,
                                        std::size_t parClipIndex,
                                        float parTimeSeconds);
-  [[nodiscard]] static Pose blendPoses(const assets::ModelAsset& parAsset,
-                                       const Pose& parFirst,
-                                       const Pose& parSecond,
+  [[nodiscard]] static SkeletonPose blendPoses(const assets::ModelAsset& parAsset,
+                                       const SkeletonPose& parFirst,
+                                       const SkeletonPose& parSecond,
                                        float parAmount);
   [[nodiscard]] static std::vector<glm::mat4> buildJointMatrices(
       const assets::ModelAsset& parAsset, std::size_t parSkinIndex,
-      const Pose& parPose,
+      const SkeletonPose& parPose,
       const glm::mat4& parInverseMeshTransform = glm::mat4(1.0f));
+  [[nodiscard]] static std::vector<glm::mat4> buildPrimitiveSkinMatrices(
+      const assets::ModelAsset& parAsset,
+      const assets::StaticPrimitive& parPrimitive,
+      const SkeletonPose& parPose);
 
  private:
-  [[nodiscard]] static Pose makePoseFromLocals(
+  [[nodiscard]] static SkeletonPose makePoseFromLocals(
       const assets::ModelAsset& parAsset,
       std::vector<math::Transform> parLocalTransforms);
 };

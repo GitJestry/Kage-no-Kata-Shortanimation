@@ -1,4 +1,4 @@
-#include "render/static_mesh_renderer.hpp"
+#include "render/mesh_renderer.hpp"
 
 namespace {
 
@@ -76,10 +76,13 @@ uniform float u_alpha_cutoff;
 uniform bool u_alpha_mask;
 uniform float u_entity_opacity;
 uniform vec3 u_emissive_factor;
-uniform vec3 u_ambient_color;
-uniform vec3 u_light_direction;
-uniform vec3 u_light_color;
-uniform float u_light_intensity;
+uniform vec3 u_ambient_diffuse;
+uniform vec3 u_ambient_specular;
+uniform float u_exposure;
+uniform bool u_sun_enabled;
+uniform vec3 u_sun_direction_to_light;
+uniform vec3 u_sun_color;
+uniform float u_sun_intensity;
 uniform int u_point_light_count;
 uniform vec3 u_point_light_positions[8];
 uniform vec3 u_point_light_colors[8];
@@ -167,7 +170,7 @@ void main() {
     normal = normalize(tangentSpace * mappedNormal);
   }
 
-  vec3 lightDirection = normalize(-u_light_direction);
+  vec3 sunDirectionToLight = normalize(u_sun_direction_to_light);
   vec4 baseColor = u_base_color_factor;
   if (u_has_base_color_texture) {
     vec4 textureColor =
@@ -225,10 +228,12 @@ void main() {
   }
 
   vec3 viewDirection = normalize(u_camera_position - worldPosition);
-  vec3 color = baseColor.rgb * u_ambient_color * (1.0 - metallic * 0.45);
-  color += evaluatePbrLight(baseColor.rgb, normal, viewDirection,
-                            lightDirection, u_light_color, u_light_intensity,
-                            metallic, roughness);
+  vec3 color = baseColor.rgb * u_ambient_diffuse * (1.0 - metallic * 0.45);
+  if (u_sun_enabled) {
+    color += evaluatePbrLight(baseColor.rgb, normal, viewDirection,
+                              sunDirectionToLight, u_sun_color,
+                              u_sun_intensity, metallic, roughness);
+  }
   for (int lightIndex = 0; lightIndex < u_point_light_count; ++lightIndex) {
     vec3 toLight = u_point_light_positions[lightIndex] - worldPosition;
     float lightDistance = length(toLight);
@@ -249,28 +254,38 @@ void main() {
 
   vec3 f0 = mix(vec3(0.04), baseColor.rgb, metallic);
   vec3 skySpecular = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
-  color += skySpecular * mix(vec3(0.08, 0.10, 0.12),
-                             u_ambient_color + u_light_color * 0.12,
-                             1.0 - roughness) *
+  color += skySpecular * u_ambient_specular *
            (0.18 + metallic * 0.55);
   color += emissive;
-  fragColor = vec4(color, alpha);
+  fragColor = vec4(color * u_exposure, alpha);
 }
 )";
 
 constexpr char OUTLINE_VERTEX_SHADER[] = R"(#version 410 core
 layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
+layout (location = 4) in vec4 inJoints;
+layout (location = 5) in vec4 inWeights;
 
 uniform mat4 u_model;
 uniform mat4 u_view_projection;
 uniform float u_outline_thickness;
+uniform bool u_skinning_enabled;
+uniform mat4 u_joint_matrices[128];
 
 void main() {
+  mat4 skin = mat4(1.0);
+  if (u_skinning_enabled) {
+    skin = u_joint_matrices[int(inJoints.x)] * inWeights.x +
+           u_joint_matrices[int(inJoints.y)] * inWeights.y +
+           u_joint_matrices[int(inJoints.z)] * inWeights.z +
+           u_joint_matrices[int(inJoints.w)] * inWeights.w;
+  }
   mat3 normalMatrix = mat3(transpose(inverse(u_model)));
-  vec3 normal = normalize(normalMatrix * inNormal);
+  vec3 normal = normalize(normalMatrix * mat3(skin) * inNormal);
   vec4 worldPosition =
-      u_model * vec4(inPosition, 1.0) + vec4(normal * u_outline_thickness, 0.0);
+      u_model * skin * vec4(inPosition, 1.0) +
+      vec4(normal * u_outline_thickness, 0.0);
   gl_Position = u_view_projection * worldPosition;
 }
 )";
@@ -289,12 +304,12 @@ void main() {
 
 namespace kage::render {
 
-StaticMeshRenderer::StaticMeshRenderer() {
+MeshRenderer::MeshRenderer() {
   m_shader.create(STATIC_MESH_VERTEX_SHADER, STATIC_MESH_FRAGMENT_SHADER);
   m_outline_shader.create(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
 }
 
-void StaticMeshRenderer::draw(const GpuMesh& parMesh,
+void MeshRenderer::draw(const GpuMesh& parMesh,
                               const glm::mat4& parViewProjection,
                               const glm::vec3& parCameraPosition,
                               const glm::mat4& parEntityTransform,
@@ -309,13 +324,15 @@ void StaticMeshRenderer::draw(const GpuMesh& parMesh,
                parDebugMode);
 }
 
-void StaticMeshRenderer::drawOutline(const GpuMesh& parMesh,
+void MeshRenderer::drawOutline(const GpuMesh& parMesh,
                                      const glm::mat4& parViewProjection,
                                      const glm::mat4& parEntityTransform,
+                                     std::span<const std::vector<glm::mat4>>
+                                         parSkinMatrices,
                                      const glm::vec4& parColor,
                                      float parThickness) const {
   parMesh.drawOutline(m_outline_shader, parViewProjection, parEntityTransform,
-                      parColor, parThickness);
+                      parSkinMatrices, parColor, parThickness);
 }
 
 }  // namespace kage::render

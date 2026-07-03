@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor/editor_ui.hpp"
+#include "editor/confirmation_dialog.hpp"
 #include "editor/gizmo_controller.hpp"
 #include "editor/placement_controller.hpp"
 #include "editor/selection_controller.hpp"
@@ -31,10 +32,12 @@ class WorldEditor final {
   void registerDefaultAssets();
   void applyCameraMovement(const input::EditorInputSnapshot& parInput);
   void handlePointerInput(const input::EditorInputSnapshot& parInput);
+  void publishGizmoGuide();
 
   engine::EngineCore& m_engine;
   platform::RuntimePaths m_runtime_paths;
   EditorUi m_ui;
+  ConfirmationDialog m_confirmation_dialog;
   PlacementController m_placement_controller;
   SelectionController m_selection_controller;
   GizmoController m_gizmo_controller;

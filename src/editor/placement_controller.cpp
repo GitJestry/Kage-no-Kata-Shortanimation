@@ -17,16 +17,12 @@ namespace kage::editor {
 
 void PlacementController::beginStaticAsset(engine::EngineCore& parEngine,
                                            std::size_t parAssetIndex) {
-  parEngine.prepareAssetForUse(parAssetIndex);
+  parEngine.requestAssetLoad(parAssetIndex);
   begin(parEngine, Kind::StaticAsset, parAssetIndex);
 }
 
 void PlacementController::beginCamera(engine::EngineCore& parEngine) {
   begin(parEngine, Kind::Camera, 0);
-}
-
-void PlacementController::beginSunLight(engine::EngineCore& parEngine) {
-  begin(parEngine, Kind::SunLight, 0);
 }
 
 void PlacementController::beginPointLight(engine::EngineCore& parEngine) {
@@ -50,12 +46,6 @@ void PlacementController::update(engine::EngineCore& parEngine,
     case Kind::Camera:
       position.y += CAMERA_PLACEMENT_HEIGHT;
       m_transform.rotation = parEngine.getCameraSystem().getCamera().orientation;
-      break;
-    case Kind::SunLight:
-      position.y += LIGHT_PLACEMENT_HEIGHT;
-      m_transform.rotation = glm::quatLookAt(
-          glm::normalize(glm::vec3(0.35f, -0.85f, -0.45f)),
-          glm::vec3(0.0f, 1.0f, 0.0f));
       break;
     case Kind::PointLight:
       position.y += LIGHT_PLACEMENT_HEIGHT;
@@ -82,12 +72,9 @@ bool PlacementController::commit(engine::EngineCore& parEngine) {
     case Kind::Camera:
       parEngine.createCameraEntityAt("Camera", m_transform.translation);
       break;
-    case Kind::SunLight:
-      parEngine.createDirectionalLightEntityAt("Sun Light",
-                                               m_transform.translation);
-      break;
     case Kind::PointLight:
-      parEngine.createPointLightEntityAt("Point Light", m_transform.translation);
+      parEngine.createPointLightEntityAt("Light Source",
+                                         m_transform.translation);
       break;
     case Kind::None:
       return false;
@@ -132,10 +119,8 @@ const char* PlacementController::getStatusLabel() const {
       return "Placing asset";
     case Kind::Camera:
       return "Placing camera";
-    case Kind::SunLight:
-      return "Placing sun light";
     case Kind::PointLight:
-      return "Placing point light";
+      return "Placing light source";
     case Kind::None:
       return "Ready";
   }
@@ -155,11 +140,6 @@ void PlacementController::begin(engine::EngineCore& parEngine, Kind parKind,
   if (m_kind == Kind::Camera) {
     position.y = CAMERA_PLACEMENT_HEIGHT;
     m_transform.rotation = parEngine.getCameraSystem().getCamera().orientation;
-  } else if (m_kind == Kind::SunLight) {
-    position.y = LIGHT_PLACEMENT_HEIGHT;
-    m_transform.rotation = glm::quatLookAt(
-        glm::normalize(glm::vec3(0.35f, -0.85f, -0.45f)),
-        glm::vec3(0.0f, 1.0f, 0.0f));
   } else if (m_kind == Kind::PointLight) {
     position.y = LIGHT_PLACEMENT_HEIGHT;
   }
@@ -185,9 +165,6 @@ void PlacementController::publishGhost(engine::EngineCore& parEngine) const {
     }
     case Kind::Camera:
       ghost.kind = render::PlacementGhost::Kind::Camera;
-      break;
-    case Kind::SunLight:
-      ghost.kind = render::PlacementGhost::Kind::SunLight;
       break;
     case Kind::PointLight:
       ghost.kind = render::PlacementGhost::Kind::PointLight;

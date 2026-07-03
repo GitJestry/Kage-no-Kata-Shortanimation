@@ -11,15 +11,11 @@ namespace {
 
 constexpr float ENTITY_HANDLE_EXTENT = 0.35f;
 
-[[nodiscard]] glm::quat lookRotation(const glm::vec3& parPosition,
-                                     const glm::vec3& parTarget) {
-  if (glm::length(parTarget - parPosition) <= 0.0001f) {
-    return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-  }
-
-  const glm::mat4 view =
-      glm::lookAt(parPosition, parTarget, glm::vec3(0.0f, 1.0f, 0.0f));
-  return glm::normalize(glm::quat_cast(glm::inverse(view)));
+[[nodiscard]] kage::math::Bounds3 makePlaceholderAssetBounds() {
+  kage::math::Bounds3 bounds;
+  bounds.includePoint(glm::vec3(-0.5f, 0.0f, -0.5f));
+  bounds.includePoint(glm::vec3(0.5f, 1.0f, 0.5f));
+  return bounds;
 }
 
 }  // namespace
@@ -92,24 +88,27 @@ scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,
   if (asset == nullptr) {
     throw std::runtime_error("Asset library index is out of range");
   }
-  assets::ModelAsset& document = ensureAssetLoaded(parAssetIndex);
+  const assets::ModelAsset* document =
+      m_asset_registry.getLoadedAsset(parAssetIndex);
+  if (document == nullptr) {
+    requestAssetLoad(parAssetIndex);
+  }
 
   scene::EntityId entity = getActiveScene().world.createEntity(
       m_asset_registry.reserveInstanceName(parAssetIndex));
   scene::StaticMeshComponent static_mesh;
   static_mesh.mesh_handle = asset->mesh_handle;
   static_mesh.asset_library_index = parAssetIndex;
-  static_mesh.local_bounds = document.static_model.bounds;
+  static_mesh.local_bounds =
+      document != nullptr ? document->static_model.bounds
+                          : makePlaceholderAssetBounds();
   static_mesh.opacity = std::clamp(parAlpha, 0.05f, 1.0f);
   getActiveScene().world.setStaticMesh(entity, static_mesh);
-  if (!document.skins.empty()) {
-    scene::AnimationComponent animation;
-    animation.clip_index = 0;
-    animation.blend_clip_index = document.animation_clips.size() > 1 ? 1 : 0;
-    animation.playing = !document.animation_clips.empty();
-    animation.primitive_skin_matrices.resize(
-        document.static_model.primitives.size());
-    getActiveScene().world.setAnimation(entity, std::move(animation));
+  if (document != nullptr && !document->skins.empty()) {
+    scene::RigComponent rig;
+    rig.primitive_skin_matrices.resize(
+        document->static_model.primitives.size());
+    getActiveScene().world.setRig(entity, std::move(rig));
   }
   setEntityPosition(entity, parPosition);
   selectEntity(entity);
@@ -139,31 +138,6 @@ scene::EntityId EngineCore::createCameraEntityAt(
   return entity;
 }
 
-scene::EntityId EngineCore::createDirectionalLightEntityAt(
-    std::string parName, const glm::vec3& parPosition) {
-  scene::EntityId entity =
-      getActiveScene().world.createEntity(std::move(parName));
-  scene::EntityRecord* record = getActiveScene().world.findEntity(entity);
-  if (record != nullptr) {
-    record->transform.transform.translation = parPosition;
-    record->transform.transform.rotation =
-        lookRotation(parPosition, glm::vec3(0.0f));
-  }
-
-  scene::LightComponent light;
-  light.type = scene::LightType::Sun;
-  light.color = glm::vec3(1.0f, 0.94f, 0.84f);
-  light.intensity = 1.0f;
-  light.range = 0.0f;
-  getActiveScene().world.setLight(entity, light);
-  if (!getActiveScene().primary_light_entity.isValid()) {
-    getActiveScene().primary_light_entity = entity;
-  }
-  selectEntity(entity);
-  markProjectDirty();
-  return entity;
-}
-
 scene::EntityId EngineCore::createPointLightEntityAt(
     std::string parName, const glm::vec3& parPosition) {
   scene::EntityId entity =
@@ -176,9 +150,6 @@ scene::EntityId EngineCore::createPointLightEntityAt(
   scene::LightComponent light;
   light.type = scene::LightType::Point;
   getActiveScene().world.setLight(entity, light);
-  if (!getActiveScene().primary_light_entity.isValid()) {
-    getActiveScene().primary_light_entity = entity;
-  }
   selectEntity(entity);
   markProjectDirty();
   return entity;
@@ -205,9 +176,6 @@ bool EngineCore::deleteEntity(scene::EntityId parEntity) {
   if (parEntity == scene_record.selected_entity) {
     scene_record.selected_entity = {};
   }
-  if (parEntity == scene_record.primary_light_entity) {
-    scene_record.primary_light_entity = {};
-  }
   markProjectDirty();
   return true;
 }
@@ -228,12 +196,18 @@ void EngineCore::frameEntity(scene::EntityId parEntity) {
   }
 
   const math::Bounds3 world_bounds = getEntityWorldBounds(parEntity);
+  const float far_plane = m_camera_system.getCamera().far_plane;
   if (world_bounds.is_valid) {
-    m_camera_system.focusBounds(world_bounds);
+    m_camera_system.frameBounds(world_bounds);
   } else {
-    m_camera_system.focusPoint(entity->transform.transform.translation,
-                               ENTITY_HANDLE_EXTENT);
+    math::Bounds3 point_bounds;
+    point_bounds.includePoint(entity->transform.transform.translation -
+                              glm::vec3(ENTITY_HANDLE_EXTENT));
+    point_bounds.includePoint(entity->transform.transform.translation +
+                              glm::vec3(ENTITY_HANDLE_EXTENT));
+    m_camera_system.frameBounds(point_bounds);
   }
+  m_camera_system.getCamera().far_plane = far_plane;
   syncEditorCameraEntity();
 }
 
@@ -296,16 +270,6 @@ void EngineCore::setEntityCamera(scene::EntityId parEntity,
   markProjectDirty();
 }
 
-void EngineCore::resetEditorCameraRoll(scene::EntityId parEntity) {
-  if (parEntity != getActiveScene().editor_camera_entity) {
-    return;
-  }
-
-  m_camera_system.resetFlyCameraRoll();
-  syncEditorCameraEntity();
-  markProjectDirty();
-}
-
 void EngineCore::setStaticMeshVisible(scene::EntityId parEntity,
                                       bool parVisible) {
   scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
@@ -328,15 +292,25 @@ void EngineCore::setStaticMeshOpacity(scene::EntityId parEntity,
   markProjectDirty();
 }
 
-void EngineCore::setAnimation(
-    scene::EntityId parEntity, const scene::AnimationComponent& parAnimation) {
+void EngineCore::setAnimationPlayer(
+    scene::EntityId parEntity,
+    const scene::AnimationPlayerComponent& parAnimationPlayer) {
   scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->animation.has_value()) {
+  if (entity == nullptr || !entity->rig.has_value()) {
     return;
   }
 
-  entity->animation = parAnimation;
-  entity->animation->primitive_skin_matrices.clear();
+  getActiveScene().world.setAnimationPlayer(parEntity, parAnimationPlayer);
+  markProjectDirty();
+}
+
+void EngineCore::clearAnimationPlayer(scene::EntityId parEntity) {
+  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
+  if (entity == nullptr) {
+    return;
+  }
+
+  getActiveScene().world.clearAnimationPlayer(parEntity);
   markProjectDirty();
 }
 
@@ -351,8 +325,30 @@ void EngineCore::setLight(scene::EntityId parEntity,
   markProjectDirty();
 }
 
-void EngineCore::setAmbientLight(const glm::vec3& parColor) {
-  m_lighting_system.getState().ambient_color = parColor;
+void EngineCore::setSunLightSettings(
+    const scene::SunLightSettings& parSunLight) {
+  scene::SunLightSettings sun_light = parSunLight;
+  const float length = glm::length(sun_light.direction_to_sun);
+  sun_light.direction_to_sun =
+      length > 0.0001f ? sun_light.direction_to_sun / length
+                       : glm::vec3(0.35f, 0.85f, 0.45f);
+  sun_light.intensity = std::max(sun_light.intensity, 0.0f);
+  getActiveScene().sun_light = sun_light;
+  markProjectDirty();
+}
+
+void EngineCore::setAmbientDiffuse(const glm::vec3& parColor) {
+  m_lighting_system.getState().ambient_diffuse = parColor;
+  markProjectDirty();
+}
+
+void EngineCore::setAmbientSpecular(const glm::vec3& parColor) {
+  m_lighting_system.getState().ambient_specular = parColor;
+  markProjectDirty();
+}
+
+void EngineCore::setExposure(float parExposure) {
+  m_lighting_system.getState().exposure = std::max(parExposure, 0.0f);
   markProjectDirty();
 }
 
@@ -362,6 +358,14 @@ void EngineCore::setPlacementGhost(render::PlacementGhost parGhost) {
 
 void EngineCore::clearPlacementGhost() {
   m_placement_ghost = {};
+}
+
+void EngineCore::setGizmoGuide(render::GizmoGuide parGuide) {
+  m_gizmo_guide = parGuide;
+}
+
+void EngineCore::clearGizmoGuide() {
+  m_gizmo_guide = {};
 }
 
 void EngineCore::setSkyPreset(render::SkyPreset parPreset) {

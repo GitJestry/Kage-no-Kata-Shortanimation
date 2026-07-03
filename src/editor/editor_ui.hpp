@@ -3,6 +3,9 @@
 #include "editor/placement_controller.hpp"
 #include "editor/selection_controller.hpp"
 #include "editor/gizmo_controller.hpp"
+#include "editor/confirmation_dialog.hpp"
+#include "editor/file_browser_dialog.hpp"
+#include "editor/ui_panel_rect.hpp"
 #include "engine/engine_core.hpp"
 
 #include <glm/glm.hpp>
@@ -20,6 +23,7 @@ class EditorUi final {
             PlacementController& parPlacementController,
             SelectionController& parSelectionController,
             GizmoController& parGizmoController,
+            ConfirmationDialog& parConfirmationDialog,
             const glm::vec2& parViewportSize, float parDeltaSeconds,
             unsigned int parFrameCount);
   void togglePanelVisibility();
@@ -27,13 +31,6 @@ class EditorUi final {
   [[nodiscard]] bool isCursorOverPanel(const glm::vec2& parUiCursor) const;
 
  private:
-  struct PanelRect final {
-    glm::vec2 min{0.0f};
-    glm::vec2 max{0.0f};
-
-    [[nodiscard]] bool contains(const glm::vec2& parPoint) const;
-  };
-
   void applyStyle();
   void beginPanelTracking();
   void trackCurrentPanel();
@@ -44,15 +41,19 @@ class EditorUi final {
                      PlacementController& parPlacementController,
                      SelectionController& parSelectionController,
                      GizmoController& parGizmoController,
+                     ConfirmationDialog& parConfirmationDialog,
                      const glm::vec2& parViewportSize);
-  void drawSceneControls(engine::EngineCore& parEngine);
+  void drawSceneControls(engine::EngineCore& parEngine,
+                         ConfirmationDialog& parConfirmationDialog);
   void drawCreationPalette(engine::EngineCore& parEngine,
                            PlacementController& parPlacementController);
   void drawWorldControls(engine::EngineCore& parEngine);
   void drawOutliner(engine::EngineCore& parEngine,
-                    SelectionController& parSelectionController);
+                    SelectionController& parSelectionController,
+                    ConfirmationDialog& parConfirmationDialog);
   void drawInspector(engine::EngineCore& parEngine,
                      GizmoController& parGizmoController,
+                     ConfirmationDialog& parConfirmationDialog,
                      const glm::vec2& parViewportSize);
   void drawRuntimeDiagnostics(engine::EngineCore& parEngine,
                               const glm::vec2& parViewportSize,
@@ -62,7 +63,8 @@ class EditorUi final {
                        const PlacementController& parPlacementController,
                        const GizmoController& parGizmoController,
                        const glm::vec2& parViewportSize);
-  void drawImportDiagnostics(const assets::StaticModel& parModel);
+  void drawImportDialogs(engine::EngineCore& parEngine,
+                         PlacementController& parPlacementController);
   void refreshSceneNameBuffer(engine::EngineCore& parEngine);
   void refreshEntityNameBuffer(const scene::EntityRecord& parEntity);
 
@@ -71,19 +73,21 @@ class EditorUi final {
 
   std::array<char, 128> m_scene_name_buffer{};
   std::array<char, 128> m_entity_name_buffer{};
+  std::array<char, 128> m_model_import_label_buffer{};
+  std::array<char, 128> m_animation_import_label_buffer{};
   std::size_t m_scene_name_buffer_index = static_cast<std::size_t>(-1);
   std::uint32_t m_entity_name_buffer_id =
       std::numeric_limits<std::uint32_t>::max();
   std::size_t m_selected_asset_index = 0;
+  std::string m_model_import_error;
+  std::string m_animation_import_error;
+  FileBrowserDialog m_model_import_browser;
+  FileBrowserDialog m_animation_import_browser;
   bool m_panel_visible = true;
   bool m_inspector_visible = true;
+  bool m_timeline_visible = true;
   bool m_diagnostics_visible = false;
-  std::vector<PanelRect> m_panel_rects;
+  std::vector<UiPanelRect> m_panel_rects;
 };
-
-inline bool EditorUi::PanelRect::contains(const glm::vec2& parPoint) const {
-  return parPoint.x >= min.x && parPoint.x <= max.x &&
-         parPoint.y >= min.y && parPoint.y <= max.y;
-}
 
 }  // namespace kage::editor

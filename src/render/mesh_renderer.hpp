@@ -11,15 +11,15 @@
 
 namespace kage::render {
 
-class StaticMeshRenderer final {
+class MeshRenderer final {
  public:
-  StaticMeshRenderer();
+  MeshRenderer();
 
-  StaticMeshRenderer(const StaticMeshRenderer&) = delete;
-  StaticMeshRenderer& operator=(const StaticMeshRenderer&) = delete;
+  MeshRenderer(const MeshRenderer&) = delete;
+  MeshRenderer& operator=(const MeshRenderer&) = delete;
 
-  StaticMeshRenderer(StaticMeshRenderer&&) noexcept = default;
-  StaticMeshRenderer& operator=(StaticMeshRenderer&&) noexcept = default;
+  MeshRenderer(MeshRenderer&&) noexcept = default;
+  MeshRenderer& operator=(MeshRenderer&&) noexcept = default;
 
   void draw(const GpuMesh& parMesh,
             const glm::mat4& parViewProjection,
@@ -32,6 +32,7 @@ class StaticMeshRenderer final {
   void drawOutline(const GpuMesh& parMesh,
                    const glm::mat4& parViewProjection,
                    const glm::mat4& parEntityTransform,
+                   std::span<const std::vector<glm::mat4>> parSkinMatrices,
                    const glm::vec4& parColor,
                    float parThickness) const;
 

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "label": "Sword",
+      "glb": "assets/models/sword.glb",
+      "source": "assets/source_blender/sword/sword.blend",
+      "animation_packs": []
+    },
+    {
+      "label": "Torii gate",
+      "glb": "assets/models/torii_gate.glb",
+      "source": "assets/source_blender/torii_gate/torii_gate.blend",
+      "animation_packs": []
+    },
+    {
+      "label": "Samurai",
+      "glb": "assets/models/samurai.glb",
+      "source": "assets/source_blender/samurai_rig/samurai.blend",
+      "animation_packs": []
+    }
+  ]
+}

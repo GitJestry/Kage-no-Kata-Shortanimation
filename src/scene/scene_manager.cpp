@@ -96,6 +96,10 @@ const SceneManager::SceneRecord* SceneManager::getScene(
   return &m_scenes[parSceneIndex];
 }
 
+std::span<SceneManager::SceneRecord> SceneManager::getScenes() {
+  return m_scenes;
+}
+
 std::span<const SceneManager::SceneRecord> SceneManager::getScenes() const {
   return m_scenes;
 }
@@ -110,10 +114,6 @@ EntityId SceneManager::getSelectedEntity() const {
 
 EntityId SceneManager::getEditorCameraEntity() const {
   return getActiveScene().editor_camera_entity;
-}
-
-EntityId SceneManager::getPrimaryLightEntity() const {
-  return getActiveScene().primary_light_entity;
 }
 
 }  // namespace kage::scene

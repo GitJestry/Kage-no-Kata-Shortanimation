@@ -40,15 +40,35 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf)
 
-add_executable(asset_import_check
+function(kage_add_check TARGET_NAME)
+  add_executable(${TARGET_NAME} ${ARGN})
+  target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
+  target_include_directories(${TARGET_NAME} PRIVATE src)
+  target_link_libraries(${TARGET_NAME} PRIVATE tinygltf glm)
+endfunction()
+
+kage_add_check(asset_import_check
   tests/asset_import_check.cpp
+  src/assets/gltf_asset_loader.cpp
+)
+kage_add_check(animation_hierarchy_check
+  tests/animation_hierarchy_check.cpp
+  src/animation/animator.cpp
+)
+kage_add_check(animation_playback_check
+  tests/animation_playback_check.cpp
   src/animation/animator.cpp
   src/assets/gltf_asset_loader.cpp
-  src/assets/model_validation.cpp
 )
-target_compile_features(asset_import_check PRIVATE cxx_std_23)
-target_include_directories(asset_import_check PRIVATE src)
-target_link_libraries(asset_import_check PRIVATE tinygltf glm)
+kage_add_check(animation_import_compatibility_check
+  tests/animation_import_compatibility_check.cpp
+  src/assets/asset_registry.cpp
+  src/assets/gltf_asset_loader.cpp
+)
+kage_add_check(light_response_check
+  tests/light_response_check.cpp
+  src/lighting/light_math.cpp
+)
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
@@ -67,6 +87,7 @@ elseif(NOT WIN32)
 endif()
 
 set(RUNTIME_ASSET_DIRECTORIES
+  animations
   audio
   models
   textures
@@ -107,6 +128,30 @@ add_test(
   COMMAND asset_import_check
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
     --require-rig
+    --min-animation-clips
+    2
+    --min-real-clip-duration
+    1.0
+    --min-clip-keys
+    3
+)
+add_test(
+  NAME animation_hierarchy
+  COMMAND animation_hierarchy_check
+)
+add_test(
+  NAME animation_playback_samurai
+  COMMAND animation_playback_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
+)
+add_test(
+  NAME animation_import_compatibility
+  COMMAND animation_import_compatibility_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
+)
+add_test(
+  NAME light_direction_response
+  COMMAND light_response_check
 )
 
 foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)

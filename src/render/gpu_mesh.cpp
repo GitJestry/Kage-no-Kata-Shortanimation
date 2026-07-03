@@ -279,11 +279,14 @@ void GpuMesh::draw(const ShaderProgram& parShader,
   parShader.setInt("u_metallic_roughness_texture",
                    METALLIC_ROUGHNESS_TEXTURE_UNIT);
   parShader.setInt("u_emissive_texture", EMISSIVE_TEXTURE_UNIT);
-  parShader.setVec3("u_ambient_color", parLighting.ambient_color);
-  parShader.setVec3("u_light_direction",
-                    glm::normalize(parLighting.sun.direction));
-  parShader.setVec3("u_light_color", parLighting.sun.color);
-  parShader.setFloat("u_light_intensity", parLighting.sun.intensity);
+  parShader.setVec3("u_ambient_diffuse", parLighting.ambient_diffuse);
+  parShader.setVec3("u_ambient_specular", parLighting.ambient_specular);
+  parShader.setFloat("u_exposure", parLighting.exposure);
+  parShader.setInt("u_sun_enabled", parLighting.sun.enabled ? 1 : 0);
+  parShader.setVec3("u_sun_direction_to_light",
+                    glm::normalize(parLighting.sun.direction_to_light));
+  parShader.setVec3("u_sun_color", parLighting.sun.color);
+  parShader.setFloat("u_sun_intensity", parLighting.sun.intensity);
   const std::size_t point_light_count =
       std::min(parLighting.point_light_count,
                parLighting.point_lights.size());
@@ -381,6 +384,8 @@ void GpuMesh::draw(const ShaderProgram& parShader,
 void GpuMesh::drawOutline(const ShaderProgram& parShader,
                           const glm::mat4& parViewProjection,
                           const glm::mat4& parEntityTransform,
+                          std::span<const std::vector<glm::mat4>>
+                              parSkinMatrices,
                           const glm::vec4& parColor,
                           float parThickness) const {
   if (m_primitives.empty()) {
@@ -396,6 +401,20 @@ void GpuMesh::drawOutline(const ShaderProgram& parShader,
   glCullFace(GL_FRONT);
   for (const PrimitiveGpuData& primitive : m_primitives) {
     parShader.setMat4("u_model", parEntityTransform * primitive.transform);
+    const bool can_skin =
+        primitive.has_skin &&
+        primitive.skin_index != assets::INVALID_SKIN_INDEX &&
+        primitive.primitive_index < parSkinMatrices.size() &&
+        !parSkinMatrices[primitive.primitive_index].empty();
+    parShader.setInt("u_skinning_enabled", can_skin ? 1 : 0);
+    if (can_skin) {
+      const std::vector<glm::mat4>& matrices =
+          parSkinMatrices[primitive.primitive_index];
+      parShader.setMat4Array(
+          "u_joint_matrices", matrices.data(),
+          static_cast<GLsizei>(std::min<std::size_t>(
+              matrices.size(), static_cast<std::size_t>(MAX_SHADER_JOINTS))));
+    }
     primitive.vertex_array.bind();
     glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,
                    nullptr);

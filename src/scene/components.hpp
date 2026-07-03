@@ -32,16 +32,19 @@ struct StaticMeshComponent final {
   bool visible = true;
 };
 
-struct AnimationComponent final {
+struct RigComponent final {
+  std::vector<std::vector<glm::mat4>> primitive_skin_matrices;
+};
+
+struct AnimationPlayerComponent final {
   std::size_t clip_index = 0;
   std::size_t blend_clip_index = 0;
   float time_seconds = 0.0f;
   float blend_time_seconds = 0.0f;
   float blend_duration_seconds = 0.0f;
   float playback_speed = 1.0f;
-  bool playing = true;
+  bool playing = false;
   bool looping = true;
-  std::vector<std::vector<glm::mat4>> primitive_skin_matrices;
 };
 
 struct CameraComponent final {
@@ -53,7 +56,8 @@ struct CameraComponent final {
 
 enum class LightType {
   Sun,
-  Point
+  Point,
+  Spot
 };
 
 struct LightComponent final {
@@ -61,6 +65,13 @@ struct LightComponent final {
   glm::vec3 color{1.0f, 0.86f, 0.56f};
   float intensity = 3.0f;
   float range = 9.0f;
+  bool enabled = true;
+};
+
+struct SunLightSettings final {
+  glm::vec3 direction_to_sun{0.35f, 0.85f, 0.45f};
+  glm::vec3 color{1.0f, 0.94f, 0.84f};
+  float intensity = 1.0f;
   bool enabled = true;
 };
 

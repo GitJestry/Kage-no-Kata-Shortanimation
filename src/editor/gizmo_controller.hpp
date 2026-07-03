@@ -4,6 +4,8 @@
 
 #include <glm/glm.hpp>
 
+#include <optional>
+
 namespace kage::editor {
 
 class GizmoController final {
@@ -42,13 +44,16 @@ class GizmoController final {
 
   [[nodiscard]] bool isActive() const;
   [[nodiscard]] Operation getOperation() const;
+  [[nodiscard]] std::optional<render::GizmoGuide> getActiveGuide(
+      const engine::EngineCore& parEngine) const;
 
  private:
   [[nodiscard]] bool pickAxis(engine::EngineCore& parEngine,
                               scene::EntityId parEntity,
                               const glm::vec2& parCursorPixel,
                               const glm::vec2& parViewportSize,
-                              glm::vec3& parAxis) const;
+                              glm::vec3& parAxis,
+                              glm::vec3& parAxisColor) const;
   [[nodiscard]] bool pickRotationHandle(engine::EngineCore& parEngine,
                                         scene::EntityId parEntity,
                                         const glm::vec2& parCursorPixel,
@@ -60,6 +65,7 @@ class GizmoController final {
   scene::EntityId m_entity;
   glm::vec3 m_drag_offset{0.0f};
   glm::vec3 m_axis{1.0f, 0.0f, 0.0f};
+  glm::vec3 m_axis_color{0.18f, 0.82f, 0.28f};
   float m_drag_height = 0.0f;
 };
 

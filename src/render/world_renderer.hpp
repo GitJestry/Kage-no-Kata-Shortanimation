@@ -7,7 +7,7 @@
 #include "render/line_renderer.hpp"
 #include "render/mesh_resource_cache.hpp"
 #include "render/solid_gizmo_renderer.hpp"
-#include "render/static_mesh_renderer.hpp"
+#include "render/mesh_renderer.hpp"
 #include "scene/scene_manager.hpp"
 
 #include <glm/glm.hpp>
@@ -21,7 +21,8 @@ enum class SkyPreset {
   ClearDay,
   MountainDawn,
   WarmDusk,
-  DarkStudio
+  DarkStudio,
+  DarkVoid
 };
 
 enum class GizmoAxisSpace {
@@ -30,11 +31,19 @@ enum class GizmoAxisSpace {
 };
 
 struct EditorRenderSettings final {
-  SkyPreset sky_preset = SkyPreset::DarkStudio;
+  SkyPreset sky_preset = SkyPreset::DarkVoid;
   MaterialDebugMode material_debug_mode = MaterialDebugMode::Lit;
   GizmoAxisSpace gizmo_axis_space = GizmoAxisSpace::Local;
   bool floor_grid_visible = true;
   int floor_grid_radius = 80;
+};
+
+struct GizmoGuide final {
+  bool active = false;
+  glm::vec3 origin{0.0f};
+  glm::vec3 axis{1.0f, 0.0f, 0.0f};
+  glm::vec3 color{1.0f};
+  float half_length = 500.0f;
 };
 
 struct PlacementGhost final {
@@ -42,7 +51,6 @@ struct PlacementGhost final {
     None,
     StaticAsset,
     Camera,
-    SunLight,
     PointLight
   };
 
@@ -63,6 +71,7 @@ class WorldRenderer final {
               const camera::CameraSystem& parCameraSystem,
               const lighting::LightingState& parLighting,
               const PlacementGhost& parGhost,
+              const GizmoGuide& parGizmoGuide,
               const EditorRenderSettings& parSettings,
               const glm::vec2& parViewportSize);
 
@@ -70,7 +79,7 @@ class WorldRenderer final {
   [[nodiscard]] static glm::vec3 getClearColor(SkyPreset parPreset);
 
  private:
-  StaticMeshRenderer m_static_mesh_renderer;
+  MeshRenderer m_mesh_renderer;
   SolidGizmoRenderer m_solid_gizmo_renderer;
   LineRenderer m_line_renderer;
   std::vector<SolidGizmoVertex> m_floor_vertices;

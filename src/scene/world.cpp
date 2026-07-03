@@ -39,13 +39,32 @@ void World::setStaticMesh(EntityId parEntity,
   entity->static_mesh = parStaticMesh;
 }
 
-void World::setAnimation(EntityId parEntity, AnimationComponent parAnimation) {
+void World::setRig(EntityId parEntity, RigComponent parRig) {
   EntityRecord* entity = findEntity(parEntity);
   if (entity == nullptr) {
     return;
   }
 
-  entity->animation = std::move(parAnimation);
+  entity->rig = std::move(parRig);
+}
+
+void World::setAnimationPlayer(
+    EntityId parEntity, AnimationPlayerComponent parAnimationPlayer) {
+  EntityRecord* entity = findEntity(parEntity);
+  if (entity == nullptr) {
+    return;
+  }
+
+  entity->animation_player = parAnimationPlayer;
+}
+
+void World::clearAnimationPlayer(EntityId parEntity) {
+  EntityRecord* entity = findEntity(parEntity);
+  if (entity == nullptr) {
+    return;
+  }
+
+  entity->animation_player.reset();
 }
 
 void World::setCamera(EntityId parEntity, CameraComponent parCamera) {

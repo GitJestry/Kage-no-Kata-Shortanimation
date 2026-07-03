@@ -1,7 +1,5 @@
 #include "app/main_app.hpp"
 
-#include "engine/project_defaults.hpp"
-
 #include <imgui.h>
 
 #include <algorithm>
@@ -30,7 +28,7 @@ MainApp::MainApp()
   std::filesystem::create_directories(".kage_local");
   m_imgui_ini_path = ".kage_local/imgui.ini";
   ImGui::GetIO().IniFilename = m_imgui_ini_path.c_str();
-  setTitle(std::string(engine::defaults::APP_NAME));
+  setTitle("KageEngine");
   setVSync(true);
 }
 
@@ -130,6 +128,9 @@ input::EditorInputSnapshot MainApp::collectInputSnapshot() {
   snapshot.key_tab_pressed = tab_down && !m_last_tab_down;
   snapshot.wants_capture_mouse = io.WantCaptureMouse;
   snapshot.wants_capture_keyboard = io.WantCaptureKeyboard;
+  snapshot.ui_item_active = ImGui::IsAnyItemActive();
+  snapshot.ui_popup_open =
+      ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
   snapshot.viewport_hovered = isCursorInside(ui_cursor, ui_size);
   snapshot.scroll_y = std::exchange(m_scroll_y, 0.0f);
 

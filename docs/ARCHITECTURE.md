@@ -1,84 +1,54 @@
-# Engine Architecture
+# Architecture
 
-Framework code hosts the application. Project systems own data and behavior.
-OpenGL resources stay in `render`.
-
-## System Map
+KageEngine is a small editor/runtime foundation for the film. Framework code
+owns the window; project systems own behavior.
 
 ```mermaid
 flowchart TD
-    MainApp["app::MainApp\nframework boundary"]
-    Editor["editor::WorldEditor\ninput/update coordinator"]
-    Engine["engine::EngineCore\nthin facade"]
+    MainApp["MainApp\nwindow + raw input polling"]
+    Editor["WorldEditor\neditor input coordinator"]
+    Engine["EngineCore\ncommands + queries"]
+    Assets["AssetRegistry\nGLB model data"]
+    MeshCache["MeshResourceCache\nGPU resources"]
+    Scenes["SceneManager\nworlds + entities"]
+    Camera["CameraSystem\nfly camera + frame selection"]
+    Animation["AnimationSystem\nclip playback + skin matrices"]
+    Lighting["LightingSystem\nsun, environment, point lights"]
+    Renderer["WorldRenderer\nrender pass coordinator"]
+    Catalog["projects/kage_no_kata_assets.kage.json"]
+    World["projects/kage_no_kata_world.kage.json"]
 
-    Assets["assets::AssetRegistry\nparsed model assets"]
-    MeshCache["render::MeshResourceCache\nGPU upload/cache"]
-    Scenes["scene::SceneManager\nnamed worlds and entities"]
-    Camera["camera::CameraSystem\nfly/orbit camera state"]
-    Lighting["lighting::LightingSystem\nambient, sun, point lights"]
-    Animation["animation::AnimationSystem\nclip playback and skin palettes"]
-    Renderer["render::WorldRenderer\nrender pass coordinator"]
-
-    Project["projects/kage_no_kata_world.kage.json\nshared world"]
-    Session[".kage_local/editor_session.json\nprivate session and local scenes"]
-    GLB["Blender GLB assets\nmesh, material, skin, animation"]
-
-    MainApp --> Editor
-    Editor --> Engine
-    Engine --> Assets
+    MainApp --> Editor --> Engine
+    Engine --> Assets --> MeshCache
     Engine --> Scenes
     Engine --> Camera
-    Engine --> Lighting
     Engine --> Animation
-    Engine --> Renderer
-    Assets --> MeshCache
-    GLB --> Assets
-    Renderer --> MeshCache
-    Project <--> Engine
-    Session <--> Engine
+    Engine --> Lighting
+    Engine --> Renderer --> MeshCache
+    Catalog <--> Assets
+    World <--> Engine
 ```
 
-## Ownership
+## Ownership Rules
 
-`MainApp`: window lifecycle, input polling, close handling, editor dispatch.
+- UI sends commands; it does not mutate scene records directly.
+- Assets store parsed source data. Render owns GPU buffers and textures.
+- Scene data uses stable entity ids and stable asset ids.
+- Animation samples skeleton clips into `SkeletonPose` and writes skin palettes.
+- Lighting stores one scene sun, environment values, and point light entities.
+- The editor camera is a fly camera; framing moves the camera to a selected
+  bounds without changing grid or view-distance settings.
 
-`WorldEditor`: editor input, placement, selection, gizmos, UI.
+## Persistence
 
-`EngineCore`: commands, queries, render dispatch, project-system coordination.
+Tracked project data:
 
-`ProjectSerializer`: tracked world load/save and local session load/save.
+- `projects/kage_no_kata_assets.kage.json`
+- `projects/kage_no_kata_world.kage.json`
 
-`AssetRegistry`: parsed GLB/model data and asset library metadata.
+Private editor state:
 
-`MeshResourceCache`: uploaded GPU resources derived from parsed assets.
+- `.kage_local/editor_session.json`
+- `.kage_local/imgui.ini`
 
-`SceneManager`: named worlds, active scene, stable entity ids, selection.
-
-`CameraSystem`: editor fly/orbit camera state. `EditorCameraBridge` mirrors the
-active editor camera entity.
-
-`AnimationSystem`: playback state, pose buffers, blend state, and per-primitive
-skin matrix palettes.
-
-`Animator`: stateless clip sampling and pose interpolation math.
-
-## Persistence Model
-
-Tracked world data:
-`projects/kage_no_kata_world.kage.json`
-
-Ignored local data:
-`.kage_local/editor_session.json`, `.kage_local/imgui.ini`
-
-Autosave writes private editor state and local test scenes. Use `Save Project`
-for tracked shared film-world changes.
-
-## Module Rule
-
-- imported data belongs in `assets`;
-- world state belongs in `scene`;
-- user-facing edit behavior belongs in `editor`;
-- GPU state belongs in `render`;
-- camera behavior belongs in `camera`;
-- animation sampling belongs in `animation`;
-- cross-system orchestration belongs behind `engine::EngineCore`.
+`Save Project` writes tracked world data. Autosave writes local editor state.

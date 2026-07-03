@@ -15,7 +15,8 @@ struct EntityRecord final {
   NameComponent name;
   TransformComponent transform;
   std::optional<StaticMeshComponent> static_mesh;
-  std::optional<AnimationComponent> animation;
+  std::optional<RigComponent> rig;
+  std::optional<AnimationPlayerComponent> animation_player;
   std::optional<CameraComponent> camera;
   std::optional<LightComponent> light;
   bool alive = true;
@@ -26,7 +27,10 @@ class World final {
   EntityId createEntity(std::string parName);
   EntityId createEntityWithId(std::string parName, EntityId parEntity);
   void setStaticMesh(EntityId parEntity, StaticMeshComponent parStaticMesh);
-  void setAnimation(EntityId parEntity, AnimationComponent parAnimation);
+  void setRig(EntityId parEntity, RigComponent parRig);
+  void setAnimationPlayer(EntityId parEntity,
+                          AnimationPlayerComponent parAnimationPlayer);
+  void clearAnimationPlayer(EntityId parEntity);
   void setCamera(EntityId parEntity, CameraComponent parCamera);
   void setLight(EntityId parEntity, LightComponent parLight);
   void setVisible(EntityId parEntity, bool parVisible);

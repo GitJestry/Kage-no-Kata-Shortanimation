@@ -38,9 +38,23 @@ class EngineCore final {
 
   std::size_t registerStaticAsset(std::string parLabel,
                                   std::filesystem::path parPath);
+  std::size_t registerStaticAsset(std::string parLabel,
+                                  std::filesystem::path parPath,
+                                  std::filesystem::path parSourcePath);
+  std::size_t registerStaticAsset(assets::AssetId parAssetId,
+                                  std::string parLabel,
+                                  std::filesystem::path parPath,
+                                  std::filesystem::path parSourcePath);
   std::size_t registerModelAsset(std::string parLabel,
                                  std::filesystem::path parPath,
                                  assets::ModelAsset parDocument);
+  void loadProjectAssetCatalog(const std::filesystem::path& parCatalogPath);
+  [[nodiscard]] std::optional<std::size_t> importModelAsset(
+      const std::filesystem::path& parSourcePath, std::string parLabel,
+      std::string& parError);
+  [[nodiscard]] bool importAnimationForEntity(
+      scene::EntityId parEntity, const std::filesystem::path& parSourcePath,
+      std::string parLabel, std::string& parError);
   void createDefaultProject();
   bool loadProject();
   void saveProject();
@@ -62,8 +76,6 @@ class EngineCore final {
                                      float parAlpha = 1.0f);
   scene::EntityId createCameraEntityAt(std::string parName,
                                        const glm::vec3& parPosition);
-  scene::EntityId createDirectionalLightEntityAt(
-      std::string parName, const glm::vec3& parPosition);
   scene::EntityId createPointLightEntityAt(std::string parName,
                                            const glm::vec3& parPosition);
   bool deleteEntity(scene::EntityId parEntity);
@@ -77,17 +89,23 @@ class EngineCore final {
                           const math::Transform& parTransform);
   void setEntityCamera(scene::EntityId parEntity,
                        const scene::CameraComponent& parCamera);
-  void resetEditorCameraRoll(scene::EntityId parEntity);
   void setStaticMeshVisible(scene::EntityId parEntity, bool parVisible);
   void setStaticMeshOpacity(scene::EntityId parEntity, float parOpacity);
-  void setAnimation(scene::EntityId parEntity,
-                    const scene::AnimationComponent& parAnimation);
+  void setAnimationPlayer(
+      scene::EntityId parEntity,
+      const scene::AnimationPlayerComponent& parAnimationPlayer);
+  void clearAnimationPlayer(scene::EntityId parEntity);
   void setLight(scene::EntityId parEntity,
                 const scene::LightComponent& parLight);
-  void setAmbientLight(const glm::vec3& parColor);
+  void setSunLightSettings(const scene::SunLightSettings& parSunLight);
+  void setAmbientDiffuse(const glm::vec3& parColor);
+  void setAmbientSpecular(const glm::vec3& parColor);
+  void setExposure(float parExposure);
   void setPlacementGhost(render::PlacementGhost parGhost);
   void clearPlacementGhost();
-  const assets::ModelAsset& prepareAssetForUse(std::size_t parAssetIndex);
+  void setGizmoGuide(render::GizmoGuide parGuide);
+  void clearGizmoGuide();
+  void requestAssetLoad(std::size_t parAssetIndex);
 
   void setSkyPreset(render::SkyPreset parPreset);
   void setFloorGridVisible(bool parVisible);
@@ -119,7 +137,7 @@ class EngineCore final {
   [[nodiscard]] const render::PlacementGhost& getPlacementGhost() const;
   [[nodiscard]] scene::EntityId getSelectedEntity() const;
   [[nodiscard]] scene::EntityId getEditorCameraEntity() const;
-  [[nodiscard]] scene::EntityId getPrimaryLightEntity() const;
+  [[nodiscard]] const scene::SunLightSettings& getSunLightSettings() const;
   [[nodiscard]] std::size_t getActiveSceneIndex() const;
   [[nodiscard]] render::SkyPreset getSkyPreset() const;
   [[nodiscard]] const char* getSkyPresetName() const;
@@ -145,7 +163,8 @@ class EngineCore final {
       const glm::vec2& parViewportSize) const;
 
  private:
-  assets::ModelAsset& ensureAssetLoaded(std::size_t parAssetIndex);
+  void attachLoadedAssetToInstances(std::size_t parAssetIndex);
+  void pollAssetStreaming();
   [[nodiscard]] scene::SceneManager::SceneRecord& getActiveScene();
   [[nodiscard]] const scene::SceneManager::SceneRecord& getActiveScene() const;
   [[nodiscard]] CameraRay makeCameraRay(const glm::vec2& parCursorPixel,
@@ -167,6 +186,7 @@ class EngineCore final {
   render::WorldRenderer m_world_renderer;
   render::EditorRenderSettings m_render_settings;
   render::PlacementGhost m_placement_ghost;
+  render::GizmoGuide m_gizmo_guide;
   FrameTimings m_frame_timings;
   bool m_project_dirty = false;
   float m_local_session_autosave_timer_seconds = 0.0f;

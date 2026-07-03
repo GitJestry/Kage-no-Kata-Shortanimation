@@ -1,12 +1,18 @@
 #include "editor/world_editor.hpp"
 
-#include "engine/project_defaults.hpp"
-
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <utility>
 
 namespace kage::editor {
+
+namespace {
+
+constexpr const char* PROJECT_ASSET_CATALOG_PATH =
+    "projects/kage_no_kata_assets.kage.json";
+
+}  // namespace
 
 WorldEditor::WorldEditor(engine::EngineCore& parEngine)
     : m_engine(parEngine),
@@ -39,7 +45,23 @@ void WorldEditor::update(float parDeltaSeconds,
   if (parInput.key_delete_pressed && !parInput.wants_capture_keyboard &&
       !parInput.wants_capture_mouse) {
     if (!cancelActiveOperation()) {
-      m_engine.deleteEntity(m_engine.getSelectedEntity());
+      const scene::EntityRecord* entity =
+          m_engine.getWorld().findEntity(m_engine.getSelectedEntity());
+      if (entity != nullptr) {
+        const scene::EntityId entity_id = entity->id;
+        ConfirmationDialog::Request request;
+        request.title = "Delete Entity";
+        request.message = "Delete \"" + entity->name.name + "\" (id " +
+                          std::to_string(entity_id.value) +
+                          ")? This cannot be undone.";
+        request.confirm_text = "Delete";
+        request.cancel_text = "Cancel";
+        request.destructive = true;
+        request.on_confirm = [this, entity_id]() {
+          m_engine.deleteEntity(entity_id);
+        };
+        m_confirmation_dialog.request(std::move(request));
+      }
     }
   }
 
@@ -56,35 +78,43 @@ void WorldEditor::buildImGui(const glm::vec2& parViewportSize,
                              float parDeltaSeconds,
                              unsigned int parFrameCount) {
   m_ui.draw(m_engine, m_placement_controller, m_selection_controller,
-            m_gizmo_controller, parViewportSize, parDeltaSeconds,
+            m_gizmo_controller, m_confirmation_dialog, parViewportSize, parDeltaSeconds,
             parFrameCount);
+  m_confirmation_dialog.draw();
 }
 
 bool WorldEditor::cancelActiveOperation() {
   bool cancelled = false;
   cancelled |= m_placement_controller.cancel(m_engine);
+  if (m_confirmation_dialog.isOpen()) {
+    m_confirmation_dialog.cancel();
+    cancelled = true;
+  }
   if (m_gizmo_controller.isActive()) {
     m_gizmo_controller.end();
+    m_engine.clearGizmoGuide();
     cancelled = true;
   }
   return cancelled;
 }
 
 void WorldEditor::registerDefaultAssets() {
-  m_engine.registerStaticAsset(
-      std::string(engine::defaults::SWORD_LABEL),
-      m_runtime_paths.getModelPath(std::string(engine::defaults::SWORD_MODEL)));
-  m_engine.registerStaticAsset(
-      std::string(engine::defaults::TORII_LABEL),
-      m_runtime_paths.getModelPath(std::string(engine::defaults::TORII_MODEL)));
-  const std::filesystem::path samurai_path =
-      m_runtime_paths.getModelPath(std::string(engine::defaults::SAMURAI_MODEL));
-  if (!std::filesystem::exists(samurai_path)) {
+  const std::filesystem::path catalog_path =
+      std::filesystem::current_path() / PROJECT_ASSET_CATALOG_PATH;
+  m_engine.loadProjectAssetCatalog(catalog_path);
+  if (!m_engine.getAssetLibrary().empty()) {
     return;
   }
 
-  m_engine.registerStaticAsset(std::string(engine::defaults::SAMURAI_LABEL),
-                               samurai_path);
+  for (const std::filesystem::directory_entry& entry :
+       std::filesystem::directory_iterator(m_runtime_paths.getAssetDirectory() /
+                                           "models")) {
+    if (!entry.is_regular_file() || entry.path().extension() != ".glb") {
+      continue;
+    }
+    const std::string label = entry.path().stem().string();
+    m_engine.registerStaticAsset(label, entry.path());
+  }
 }
 
 void WorldEditor::applyCameraMovement(
@@ -112,14 +142,22 @@ void WorldEditor::applyCameraMovement(
 
 void WorldEditor::handlePointerInput(
     const input::EditorInputSnapshot& parInput) {
-  const bool viewport_active =
-      parInput.viewport_hovered && !m_ui.isCursorOverPanel(parInput.ui_cursor);
+  const bool cursor_over_panel = m_ui.isCursorOverPanel(parInput.ui_cursor);
+  const bool ui_blocks_left =
+      cursor_over_panel || parInput.wants_capture_mouse ||
+      parInput.ui_item_active || parInput.ui_popup_open;
+  const bool viewport_active = parInput.viewport_hovered && !ui_blocks_left;
+  const bool right_look_start_area =
+      parInput.viewport_hovered && !cursor_over_panel &&
+      !parInput.ui_item_active && !parInput.ui_popup_open;
   if (!parInput.right_mouse_down) {
     m_right_look_active = false;
   }
-  if (parInput.right_mouse_down && viewport_active && !m_right_look_active) {
+  if (parInput.right_mouse_down && right_look_start_area &&
+      !m_right_look_active) {
     m_right_look_active = true;
     m_gizmo_controller.end();
+    m_engine.clearGizmoGuide();
   }
 
   const glm::vec2 ui_viewport_size =
@@ -154,6 +192,7 @@ void WorldEditor::handlePointerInput(
                               parInput.framebuffer_cursor,
                               parInput.framebuffer_size,
                               parInput.left_mouse_down);
+    publishGizmoGuide();
     return;
   }
 
@@ -164,6 +203,7 @@ void WorldEditor::handlePointerInput(
 
   if (m_gizmo_controller.begin(m_engine, parInput.framebuffer_cursor,
                                parInput.framebuffer_size)) {
+    publishGizmoGuide();
     return;
   }
 
@@ -173,6 +213,16 @@ void WorldEditor::handlePointerInput(
       !m_engine.pickEntity(parInput.framebuffer_cursor, parInput.framebuffer_size)
            .has_value()) {
     m_engine.clearSelection();
+  }
+}
+
+void WorldEditor::publishGizmoGuide() {
+  const std::optional<render::GizmoGuide> guide =
+      m_gizmo_controller.getActiveGuide(m_engine);
+  if (guide.has_value()) {
+    m_engine.setGizmoGuide(*guide);
+  } else {
+    m_engine.clearGizmoGuide();
   }
 }
 

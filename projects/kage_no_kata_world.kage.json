@@ -2,7 +2,7 @@
   "version": 1,
   "active_scene": 0,
   "render": {
-    "sky": 3,
+    "sky": 4,
     "floor_grid_visible": true,
     "floor_grid_radius": 80,
     "material_debug_mode": 0,
@@ -12,7 +12,12 @@
     {
       "name": "Kage no Kata World",
       "editor_camera": 0,
-      "primary_light": 1,
+      "sun": {
+        "enabled": true,
+        "direction_to_sun": [0.54944223, 0.62236786, 0.54944223],
+        "color": [1.0, 0.94, 0.84],
+        "intensity": 1.0
+      },
       "entities": [
         {
           "id": 0,
@@ -35,22 +40,6 @@
           }
         },
         {
-          "id": 1,
-          "name": "Sun Light",
-          "transform": {
-            "position": [3.0, 4.0, 3.0],
-            "rotation": [0.87166952, -0.3061791, 0.36105734, 0.12682353],
-            "scale": [1.0, 1.0, 1.0]
-          },
-          "light": {
-            "type": "sun",
-            "enabled": true,
-            "color": [1.0, 0.94, 0.84],
-            "intensity": 1.0,
-            "range": 0.0
-          }
-        },
-        {
           "id": 2,
           "name": "Torii gate 1",
           "transform": {
@@ -59,7 +48,7 @@
             "scale": [1.0, 1.0, 1.0]
           },
           "mesh": {
-            "asset_index": 1,
+            "asset_id": 13563340816392298620,
             "opacity": 1.0,
             "visible": true
           }
@@ -73,7 +62,7 @@
             "scale": [1.0, 1.0, 1.0]
           },
           "mesh": {
-            "asset_index": 0,
+            "asset_id": 9880247405817363066,
             "opacity": 1.0,
             "visible": true
           }

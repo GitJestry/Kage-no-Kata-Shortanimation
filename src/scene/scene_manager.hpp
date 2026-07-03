@@ -17,7 +17,7 @@ class SceneManager final {
     World world;
     EntityId selected_entity;
     EntityId editor_camera_entity;
-    EntityId primary_light_entity;
+    SunLightSettings sun_light;
     bool local_only = false;
   };
 
@@ -32,11 +32,11 @@ class SceneManager final {
   [[nodiscard]] const SceneRecord& getActiveScene() const;
   [[nodiscard]] SceneRecord* getScene(std::size_t parSceneIndex);
   [[nodiscard]] const SceneRecord* getScene(std::size_t parSceneIndex) const;
+  [[nodiscard]] std::span<SceneRecord> getScenes();
   [[nodiscard]] std::span<const SceneRecord> getScenes() const;
   [[nodiscard]] std::size_t getActiveSceneIndex() const;
   [[nodiscard]] EntityId getSelectedEntity() const;
   [[nodiscard]] EntityId getEditorCameraEntity() const;
-  [[nodiscard]] EntityId getPrimaryLightEntity() const;
 
  private:
   std::vector<SceneRecord> m_scenes;

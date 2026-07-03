@@ -1,5 +1,7 @@
 #include "render/world_renderer.hpp"
 
+#include "camera/screen_metrics.hpp"
+
 #include <glad/gl.h>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -7,16 +9,16 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <span>
 #include <utility>
 
 namespace {
 
-constexpr glm::vec3 LIGHT_LOCAL_FORWARD{0.0f, 0.0f, -1.0f};
 constexpr glm::vec3 GRID_COLOR{0.115f, 0.12f, 0.13f};
 constexpr glm::vec3 GRID_AXIS_X_COLOR{0.34f, 0.12f, 0.12f};
 constexpr glm::vec3 GRID_AXIS_Z_COLOR{0.12f, 0.28f, 0.14f};
-constexpr glm::vec4 FLOOR_PLANE_COLOR{0.035f, 0.038f, 0.042f, 0.56f};
+constexpr glm::vec4 FLOOR_PLANE_COLOR{0.020f, 0.022f, 0.026f, 0.18f};
 constexpr glm::vec3 SELECTED_CONTACT_COLOR{1.0f, 1.0f, 1.0f};
 constexpr glm::vec3 FLOOR_INTERSECTION_COLOR{1.0f, 0.18f, 0.12f};
 constexpr glm::vec3 ROTATION_COLOR{1.0f, 0.18f, 0.14f};
@@ -27,6 +29,11 @@ constexpr glm::vec4 AXIS_Z_FILL{0.22f, 0.48f, 1.0f, 0.92f};
 constexpr glm::vec4 ROTATION_FILL{1.0f, 0.18f, 0.14f, 0.70f};
 constexpr float ENTITY_HANDLE_EXTENT = 0.35f;
 constexpr int GRID_LINE_CAP = 240;
+
+struct MeshCenterQuery final {
+  bool found = false;
+  glm::vec3 center{0.0f};
+};
 
 [[nodiscard]] kage::math::Bounds3 makePointBounds(const glm::vec3& parPoint,
                                                   float parExtent) {
@@ -373,36 +380,89 @@ void addLightGizmo(std::vector<kage::render::LineVertex>& parVertices,
                  glm::vec3(0.0f), glm::vec3(1.0f));
   const float radius = 0.16f + std::min(parLight.intensity, 8.0f) * 0.045f;
   addSolidSphere(parSolid, position, radius, glm::vec4(color, 0.95f));
-  addDisk(parGlow, position, parCameraRight, parCameraUp, radius * 2.8f,
-          glm::vec4(color, 0.18f));
-  addDisk(parGlow, position, parCameraRight, parCameraUp, radius * 5.0f,
-          glm::vec4(color, 0.08f));
+  addDisk(parGlow, position, parCameraRight, parCameraUp, radius * 1.35f,
+          glm::vec4(color, 0.16f));
   addCircle(parVertices, position, parCameraRight, parCameraUp,
             std::max(parLight.range, radius * 2.0f), color * 0.42f);
 }
 
-void addSunGizmo(std::vector<kage::render::LineVertex>& parVertices,
-                 std::vector<kage::render::SolidGizmoVertex>& parSolid,
-                 std::vector<kage::render::SolidGizmoVertex>& parGlow,
-                 const kage::math::Transform& parTransform,
-                 const kage::scene::LightComponent& parLight,
-                 const glm::vec3& parCameraRight,
-                 const glm::vec3& parCameraUp) {
-  const glm::vec3 position = parTransform.translation;
-  const glm::vec3 right = parTransform.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
-  const glm::vec3 up = parTransform.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
-  const glm::vec3 forward = parTransform.rotation * LIGHT_LOCAL_FORWARD;
+void addSunOverlay(std::vector<kage::render::LineVertex>& parVertices,
+                   std::vector<kage::render::SolidGizmoVertex>& parSolid,
+                   std::vector<kage::render::SolidGizmoVertex>& parGlow,
+                   const kage::camera::Camera& parCamera,
+                   const glm::vec2& parViewportSize,
+                   const kage::lighting::DirectionalLight& parSun) {
+  if (!parSun.enabled || parSun.intensity <= 0.0f) {
+    return;
+  }
+
+  const float direction_length = glm::length(parSun.direction_to_light);
+  if (direction_length <= 0.0001f) {
+    return;
+  }
+
+  const glm::vec3 direction_to_sun =
+      parSun.direction_to_light / direction_length;
+  const float sky_distance = std::clamp(parCamera.far_plane * 0.22f,
+                                        45.0f, 140.0f);
+  const glm::vec3 sun_position =
+      parCamera.position + direction_to_sun * sky_distance;
   const glm::vec3 color =
-      glm::clamp(parLight.color * (0.45f + parLight.intensity * 0.24f),
+      glm::clamp(parSun.color * (0.55f + parSun.intensity * 0.30f),
                  glm::vec3(0.0f), glm::vec3(1.0f));
-  constexpr float RADIUS = 0.26f;
-  addSolidSphere(parSolid, position, RADIUS * 0.78f, glm::vec4(color, 0.96f));
-  addDisk(parGlow, position, parCameraRight, parCameraUp, RADIUS * 3.2f,
-          glm::vec4(color, 0.16f));
-  addCircle(parVertices, position, right, up, RADIUS, color);
-  addCircle(parVertices, position, right, forward, RADIUS, color);
-  addCircle(parVertices, position, up, forward, RADIUS, color);
-  addLine(parVertices, position, position + forward * 1.6f, color);
+  const float disk_radius = kage::camera::getWorldLengthForPixels(
+      parCamera, sun_position, parViewportSize, 34.0f);
+  const glm::vec4 disk_color(color, 0.92f);
+  const glm::vec4 glow_color(color, 0.20f);
+  addDisk(parSolid, sun_position, parCamera.getRight(), parCamera.getUp(),
+          disk_radius, disk_color);
+  addDisk(parGlow, sun_position, parCamera.getRight(), parCamera.getUp(),
+          disk_radius * 2.2f, glow_color);
+
+  const glm::vec3 ray_color = color * 0.48f;
+  const float ray_length = disk_radius * 8.0f;
+  const float ray_spacing = disk_radius * 1.85f;
+  const std::array<glm::vec2, 5> offsets = {
+      glm::vec2(0.0f), glm::vec2(-1.0f, 0.0f), glm::vec2(1.0f, 0.0f),
+      glm::vec2(0.0f, -1.0f), glm::vec2(0.0f, 1.0f),
+  };
+  for (const glm::vec2& offset : offsets) {
+    const glm::vec3 ray_start =
+        sun_position + parCamera.getRight() * offset.x * ray_spacing +
+        parCamera.getUp() * offset.y * ray_spacing;
+    addLine(parVertices, ray_start,
+            ray_start - direction_to_sun * ray_length, ray_color);
+  }
+}
+
+[[nodiscard]] MeshCenterQuery findNearestMeshCenter(
+    const kage::scene::SceneManager::SceneRecord& parScene,
+    const glm::vec3& parPosition) {
+  MeshCenterQuery result;
+  float best_distance_squared = std::numeric_limits<float>::max();
+  for (const kage::scene::EntityRecord& entity :
+       parScene.world.getEntities()) {
+    if (!entity.alive || !entity.static_mesh.has_value() ||
+        !entity.static_mesh->visible) {
+      continue;
+    }
+
+    const kage::math::Bounds3 bounds = getEntityWorldBounds(entity);
+    if (!bounds.is_valid) {
+      continue;
+    }
+
+    const glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
+    const float distance_squared = glm::dot(center - parPosition,
+                                           center - parPosition);
+    if (!result.found || distance_squared < best_distance_squared) {
+      result.found = true;
+      result.center = center;
+      best_distance_squared = distance_squared;
+    }
+  }
+
+  return result;
 }
 
 void addCameraGizmo(std::vector<kage::render::LineVertex>& parVertices,
@@ -431,6 +491,25 @@ void addCameraGizmo(std::vector<kage::render::LineVertex>& parVertices,
   addLine(parVertices, corners[3], corners[0], CAMERA_GIZMO_COLOR);
 }
 
+[[nodiscard]] float getGizmoLength(const kage::camera::Camera& parCamera,
+                                   const glm::vec2& parViewportSize,
+                                   const kage::scene::EntityRecord& parEntity,
+                                   const kage::math::Bounds3& parBounds) {
+  const bool large_handle =
+      parEntity.light.has_value() || parEntity.camera.has_value();
+  const float pixels = large_handle ? 150.0f : 118.0f;
+  const float screen_length = kage::camera::getWorldLengthForPixels(
+      parCamera, parEntity.transform.transform.translation, parViewportSize,
+      pixels);
+  const float mesh_length =
+      parBounds.is_valid
+          ? std::max({parBounds.getSize().x, parBounds.getSize().y,
+                      parBounds.getSize().z, 1.0f}) *
+                0.18f
+          : 0.0f;
+  return std::clamp(std::max(screen_length, mesh_length), 0.24f, 32.0f);
+}
+
 }  // namespace
 
 namespace kage::render {
@@ -440,6 +519,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                            const camera::CameraSystem& parCameraSystem,
                            const lighting::LightingState& parLighting,
                            const PlacementGhost& parGhost,
+                           const GizmoGuide& parGizmoGuide,
                            const EditorRenderSettings& parSettings,
                            const glm::vec2& parViewportSize) {
   glEnable(GL_DEPTH_TEST);
@@ -469,10 +549,10 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     }
 
     std::span<const std::vector<glm::mat4>> skin_matrices;
-    if (entity.animation.has_value()) {
-      skin_matrices = entity.animation->primitive_skin_matrices;
+    if (entity.rig.has_value()) {
+      skin_matrices = entity.rig->primitive_skin_matrices;
     }
-    m_static_mesh_renderer.draw(*mesh, view_projection,
+    m_mesh_renderer.draw(*mesh, view_projection,
                                 camera.position,
                                 entity.transform.transform.toMatrix(),
                                 parLighting, skin_matrices,
@@ -483,7 +563,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset) {
     const GpuMesh* mesh = parMeshResources.getStaticMesh(parGhost.mesh_handle);
     if (mesh != nullptr) {
-      m_static_mesh_renderer.draw(*mesh, view_projection,
+      m_mesh_renderer.draw(*mesh, view_projection,
                                   camera.position,
                                   parGhost.transform.toMatrix(),
                                   parLighting, {}, parGhost.opacity,
@@ -503,11 +583,15 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
           std::clamp(std::max({selected_bounds.getSize().x,
                                selected_bounds.getSize().y,
                                selected_bounds.getSize().z, 1.0f}) *
-                         0.0024f,
-                     0.0025f, 0.014f);
-      m_static_mesh_renderer.drawOutline(
+                         0.0016f,
+                     0.0018f, 0.009f);
+      m_mesh_renderer.drawOutline(
           *mesh, view_projection,
           selected_entity->transform.transform.toMatrix(),
+          selected_entity->rig.has_value()
+              ? std::span<const std::vector<glm::mat4>>(
+                    selected_entity->rig->primitive_skin_matrices)
+              : std::span<const std::vector<glm::mat4>>{},
           glm::vec4(1.0f), outline_thickness);
     }
   }
@@ -522,28 +606,45 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   m_solid_vertices.reserve(512);
   m_glow_vertices.clear();
   m_glow_vertices.reserve(256);
+  addSunOverlay(m_line_vertices, m_solid_vertices, m_glow_vertices, camera,
+                parViewportSize, parLighting.sun);
   if (parSettings.floor_grid_visible) {
     addFloorPlane(m_floor_vertices, camera.position,
                   parSettings.floor_grid_radius);
     addFloorGrid(m_grid_line_vertices, camera.position,
                  parSettings.floor_grid_radius);
   }
+  if (parGhost.kind == PlacementGhost::Kind::StaticAsset &&
+      parMeshResources.getStaticMesh(parGhost.mesh_handle) == nullptr) {
+    addCube(m_solid_vertices,
+            parGhost.transform.translation + glm::vec3(0.0f, 0.5f, 0.0f),
+            1.0f, glm::vec4(0.55f, 0.68f, 0.82f, parGhost.opacity));
+  }
   for (const scene::EntityRecord& entity : parScene.world.getEntities()) {
     if (!entity.alive) {
       continue;
     }
+    if (entity.static_mesh.has_value() && entity.static_mesh->visible &&
+        parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle) ==
+            nullptr) {
+      const math::Bounds3 bounds = getEntityWorldBounds(entity);
+      const glm::vec3 center =
+          bounds.is_valid ? (bounds.min + bounds.max) * 0.5f
+                          : entity.transform.transform.translation;
+      const glm::vec3 size =
+          bounds.is_valid ? bounds.getSize() : glm::vec3(1.0f);
+      addCube(m_solid_vertices, center,
+              std::max({size.x, size.y, size.z, 1.0f}),
+              glm::vec4(0.55f, 0.68f, 0.82f, 0.30f));
+    }
     if (entity.light.has_value()) {
-      if (entity.light->type == scene::LightType::Sun) {
-        addSunGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
-                    entity.transform.transform, *entity.light,
-                    camera.getRight(), camera.getUp());
-      } else {
+      if (entity.light->type == scene::LightType::Point) {
         addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
                       entity.transform.transform, *entity.light,
                       camera.getRight(), camera.getUp());
       }
     }
-    if (entity.camera.has_value()) {
+    if (entity.camera.has_value() && entity.id != parScene.editor_camera_entity) {
       addCameraGizmo(m_line_vertices, entity.transform.transform);
     }
   }
@@ -556,14 +657,6 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                   parGhost.transform, light, camera.getRight(),
                   camera.getUp());
   }
-  if (parGhost.kind == PlacementGhost::Kind::SunLight) {
-    scene::LightComponent light;
-    light.type = scene::LightType::Sun;
-    light.color = parGhost.light_color;
-    light.intensity = parGhost.light_intensity;
-    addSunGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
-                parGhost.transform, light, camera.getRight(), camera.getUp());
-  }
   if (parGhost.kind == PlacementGhost::Kind::Camera) {
     addCameraGizmo(m_line_vertices, parGhost.transform);
   }
@@ -572,10 +665,8 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     const math::Bounds3 world_bounds = getEntityWorldBounds(*selected_entity);
     addFloorContactCue(m_grid_line_vertices, world_bounds,
                        selected_entity->transform.transform.translation);
-    const float axis_length =
-        std::max({world_bounds.getSize().x, world_bounds.getSize().y,
-                  world_bounds.getSize().z, 1.0f}) *
-        0.27f;
+    const float axis_length = getGizmoLength(camera, parViewportSize,
+                                             *selected_entity, world_bounds);
     addTransformAxes(m_line_vertices, m_solid_vertices,
                      selected_entity->transform.transform, axis_length,
                      parSettings.gizmo_axis_space);
@@ -584,6 +675,26 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                     selected_entity->transform.transform.translation,
                     axis_length * 0.07f);
     }
+    if (selected_entity->light.has_value() &&
+        selected_entity->light->type == scene::LightType::Point) {
+      const MeshCenterQuery nearest_mesh = findNearestMeshCenter(
+          parScene, selected_entity->transform.transform.translation);
+      if (nearest_mesh.found) {
+        const glm::vec3 color =
+            glm::clamp(selected_entity->light->color, glm::vec3(0.0f),
+                       glm::vec3(1.0f));
+        addLine(m_line_vertices,
+                selected_entity->transform.transform.translation,
+                nearest_mesh.center, color);
+      }
+    }
+  }
+  if (parGizmoGuide.active) {
+    const glm::vec3 axis = glm::normalize(parGizmoGuide.axis);
+    addLine(m_line_vertices,
+            parGizmoGuide.origin - axis * parGizmoGuide.half_length,
+            parGizmoGuide.origin + axis * parGizmoGuide.half_length,
+            parGizmoGuide.color);
   }
 
   if (!m_floor_vertices.empty()) {
@@ -616,6 +727,8 @@ const char* WorldRenderer::getSkyPresetName(SkyPreset parPreset) {
       return "Warm dusk";
     case SkyPreset::DarkStudio:
       return "Dark studio";
+    case SkyPreset::DarkVoid:
+      return "Dark void";
   }
 
   return "Unknown";
@@ -631,6 +744,8 @@ glm::vec3 WorldRenderer::getClearColor(SkyPreset parPreset) {
       return glm::vec3(0.45f, 0.40f, 0.36f);
     case SkyPreset::DarkStudio:
       return glm::vec3(0.025f, 0.035f, 0.055f);
+    case SkyPreset::DarkVoid:
+      return glm::vec3(0.0f);
   }
 
   return glm::vec3(0.025f, 0.035f, 0.055f);

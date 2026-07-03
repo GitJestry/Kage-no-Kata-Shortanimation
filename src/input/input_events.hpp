@@ -62,6 +62,8 @@ struct EditorInputSnapshot final {
   bool key_tab_pressed = false;
   bool wants_capture_mouse = false;
   bool wants_capture_keyboard = false;
+  bool ui_item_active = false;
+  bool ui_popup_open = false;
   bool viewport_hovered = false;
   float scroll_y = 0.0f;
 };

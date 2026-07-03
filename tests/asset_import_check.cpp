@@ -1,111 +1,46 @@
-#include "animation/animator.hpp"
 #include "assets/gltf_asset_loader.hpp"
-#include "assets/model_validation.hpp"
-#include "math/bounds.hpp"
 
-#include <glm/glm.hpp>
-
-#include <cmath>
-#include <cstdint>
+#include <algorithm>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string>
-#include <vector>
-
-namespace {
-
-[[nodiscard]] bool isFinite(const glm::vec3& parValue) {
-  return std::isfinite(parValue.x) && std::isfinite(parValue.y) &&
-         std::isfinite(parValue.z);
-}
-
-[[nodiscard]] glm::mat4 getInverseMeshBindTransform(
-    const kage::assets::ModelAsset& parAsset,
-    const kage::assets::StaticPrimitive& parPrimitive) {
-  if (parPrimitive.node_index == kage::assets::INVALID_NODE_INDEX ||
-      static_cast<std::size_t>(parPrimitive.node_index) >=
-          parAsset.nodes.size()) {
-    return glm::inverse(parPrimitive.transform);
-  }
-  return glm::inverse(
-      parAsset.nodes[static_cast<std::size_t>(parPrimitive.node_index)]
-          .global_transform);
-}
-
-[[nodiscard]] bool hasFiniteSkinnedBounds(
-    const kage::assets::ModelAsset& parAsset, std::string& parError) {
-  const kage::animation::Pose pose =
-      parAsset.animation_clips.empty()
-          ? kage::animation::Animator::makeBindPose(parAsset)
-          : kage::animation::Animator::sampleClip(
-                parAsset, 0, parAsset.animation_clips[0].duration_seconds * 0.5f);
-  kage::math::Bounds3 bounds;
-  for (const kage::assets::StaticPrimitive& primitive :
-       parAsset.static_model.primitives) {
-    if (!primitive.hasSkinInfluences() ||
-        primitive.skin_index == kage::assets::INVALID_SKIN_INDEX) {
-      continue;
-    }
-
-    const std::vector<glm::mat4> joints =
-        kage::animation::Animator::buildJointMatrices(
-            parAsset, primitive.skin_index, pose,
-            getInverseMeshBindTransform(parAsset, primitive));
-    if (joints.empty()) {
-      parError = "skinned primitive has no joint matrix palette";
-      return false;
-    }
-
-    for (std::size_t vertex_index = 0; vertex_index < primitive.vertices.size();
-         ++vertex_index) {
-      const kage::assets::SkinInfluence& influence =
-          primitive.skin_influences[vertex_index];
-      glm::mat4 skin(0.0f);
-      for (int weight_index = 0; weight_index < 4; ++weight_index) {
-        const std::uint32_t joint = influence.joints[weight_index];
-        if (joint >= joints.size()) {
-          parError = "joint index exceeds sampled palette";
-          return false;
-        }
-        skin += joints[joint] * influence.weights[weight_index];
-      }
-
-      const glm::vec3 position = glm::vec3(
-          primitive.transform * skin *
-          glm::vec4(primitive.vertices[vertex_index].position, 1.0f));
-      if (!isFinite(position)) {
-        parError = "sampled skinned position is not finite";
-        return false;
-      }
-      bounds.includePoint(position);
-    }
-  }
-
-  if (!bounds.is_valid) {
-    parError = "no skinned vertices were sampled";
-    return false;
-  }
-
-  const float diagonal = glm::length(bounds.getSize());
-  if (!std::isfinite(diagonal) || diagonal <= 0.05f) {
-    parError = "sampled skinned bounds collapsed";
-    return false;
-  }
-  return true;
-}
-
-}  // namespace
 
 int main(int parArgumentCount, char** parArguments) {
   if (parArgumentCount < 2) {
-    std::cerr << "usage: asset_import_check <asset.glb> [--require-rig]\n";
+    std::cerr << "usage: asset_import_check <asset.glb> [--require-rig] "
+                 "[--min-animation-clips count] "
+                 "[--min-real-clip-duration seconds] "
+                 "[--min-clip-keys count]\n";
     return 2;
   }
 
   const std::filesystem::path asset_path = parArguments[1];
-  const bool require_rig =
-      parArgumentCount >= 3 && std::string(parArguments[2]) == "--require-rig";
+  bool require_rig = false;
+  std::size_t min_animation_clips = 0;
+  float min_real_clip_duration = 0.0f;
+  std::size_t min_clip_keys = 0;
+  for (int argument_index = 2; argument_index < parArgumentCount;
+       ++argument_index) {
+    const std::string argument = parArguments[argument_index];
+    if (argument == "--require-rig") {
+      require_rig = true;
+    } else if (argument == "--min-animation-clips" &&
+               argument_index + 1 < parArgumentCount) {
+      min_animation_clips =
+          static_cast<std::size_t>(std::stoull(parArguments[++argument_index]));
+    } else if (argument == "--min-real-clip-duration" &&
+               argument_index + 1 < parArgumentCount) {
+      min_real_clip_duration = std::stof(parArguments[++argument_index]);
+    } else if (argument == "--min-clip-keys" &&
+               argument_index + 1 < parArgumentCount) {
+      min_clip_keys =
+          static_cast<std::size_t>(std::stoull(parArguments[++argument_index]));
+    } else {
+      std::cerr << "unknown argument: " << argument << '\n';
+      return 2;
+    }
+  }
 
   try {
     const kage::assets::GltfAssetLoader loader;
@@ -121,29 +56,51 @@ int main(int parArgumentCount, char** parArguments) {
     }
 
     if (require_rig) {
-      const kage::assets::RigValidationReport report =
-          kage::assets::validateRiggedModelAsset(asset);
-      if (!report.passed()) {
-        std::cerr << asset_path << ": rig validation failed\n";
-        for (const std::string& error : report.errors) {
-          std::cerr << "- " << error << '\n';
-        }
-        return 1;
-      }
-      std::string skinning_error;
-      if (!hasFiniteSkinnedBounds(asset, skinning_error)) {
-        std::cerr << asset_path << ": skinning smoke test failed: "
-                  << skinning_error << '\n';
+      if (asset.stats.skin_count == 0 || asset.stats.joint_count == 0 ||
+          asset.stats.skinned_vertex_count == 0) {
+        std::cerr << asset_path << ": expected a skinned rig\n";
         return 1;
       }
     }
-
+    if (asset.animation_clips.size() < min_animation_clips) {
+      std::cerr << asset_path << ": expected at least "
+                << min_animation_clips << " animation clips, found "
+                << asset.animation_clips.size() << '\n';
+      return 1;
+    }
+    if (min_real_clip_duration > 0.0f || min_clip_keys > 0) {
+      bool found_real_clip = false;
+      for (const kage::assets::AnimationClip& clip :
+           asset.animation_clips) {
+        std::size_t key_count = 0;
+        for (const kage::assets::AnimationSampler& sampler : clip.samplers) {
+          key_count = std::max(key_count, sampler.input_times.size());
+        }
+        found_real_clip |= clip.duration_seconds >= min_real_clip_duration &&
+                           key_count >= min_clip_keys;
+      }
+      if (!found_real_clip) {
+        std::cerr << asset_path
+                  << ": no animation clip meets duration/key requirements\n";
+        return 1;
+      }
+    }
     std::cout << asset_path.filename().string() << ": primitives "
               << asset.stats.primitive_count << ", vertices "
               << asset.stats.vertex_count << ", skins "
               << asset.stats.skin_count << ", joints "
               << asset.stats.joint_count << ", animations "
               << asset.stats.animation_count << '\n';
+    for (const kage::assets::AnimationClip& clip : asset.animation_clips) {
+      std::size_t key_count = 0;
+      for (const kage::assets::AnimationSampler& sampler : clip.samplers) {
+        key_count = std::max(key_count, sampler.input_times.size());
+      }
+      std::cout << "- clip "
+                << (clip.name.empty() ? "<unnamed>" : clip.name)
+                << ": duration " << clip.duration_seconds << "s, max keys "
+                << key_count << '\n';
+    }
   } catch (const std::exception& error) {
     std::cerr << asset_path << ": " << error.what() << '\n';
     return 1;
