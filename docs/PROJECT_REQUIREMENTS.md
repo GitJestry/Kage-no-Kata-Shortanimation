@@ -33,6 +33,28 @@ The project covers 240 points across categories 0, 1, and 4. Shared rigging cont
 
 The report contains architecture diagrams, debug screenshots, performance data, a concept-to-result comparison, resolved technical problems, and individual reflections. The presentation demonstrates each feature separately and then within the complete film.
 
+## Rigging and Blending Evidence
+
+Current engine support:
+
+- imports GLB skins, joints, inverse bind matrices, joint indices, and weights;
+- validates normalized weights, finite joint matrices, and sampled skinned
+  bounds through CTest;
+- samples translation, rotation, and scale channels;
+- keeps rigged entities in bind pose until the Timeline starts playback;
+- blends two sampled poses when at least two clips are available;
+- uploads joint indices and weights with mesh vertices;
+- renders skinned meshes with a 128-joint matrix palette.
+
+Current samurai asset evidence:
+
+- `samurai.glb` imports as 84 primitives, 126,600 vertices, 1 skin, 49 joints,
+  and two authored actions: `ReadyIdle` and `ArmAction`;
+- `asset_import_samurai_rig` validates rig data and sampled skinned bounds;
+- `animation_playback_samurai` proves `ArmAction` changes joint matrices over
+  time;
+- the Timeline can play both clips and cross-fade between them.
+
 ## Sources
 
 - [Official project brief](../assets/reference/cgintro-animation-project-info.pdf)

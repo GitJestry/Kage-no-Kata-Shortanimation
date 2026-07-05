@@ -1,0 +1,2 @@
+assets/models/samurai.glb filter=lfs diff=lfs merge=lfs -text
+assets/source_blender/samurai_rig/samurai.blend filter=lfs diff=lfs merge=lfs -text

@@ -1,52 +1,40 @@
-# Blender and Asset Pipeline
+# Asset Pipeline
 
-## Handoff
+Runtime assets are GLB/GLTF files. `.blend` files are source assets and grading
+evidence, not runtime files.
 
-Blender authors geometry, UVs, materials, armatures, skin weights, and animation clips. The C++ runtime creates GPU resources, evaluates skeletons, blends poses, and drives simulation.
+## Folders
 
-- `assets/source_blender/`: `.blend` source files.
-- `assets/models/`: runtime `.glb` exports.
-- `assets/textures/`: external runtime textures.
-- `assets/audio/`: ambience and event samples.
-- `assets/reference/`: concepts, storyboard, and course material.
+- `assets/models/`: bundled and imported model GLBs.
+- `assets/animations/`: imported compatible animation GLBs.
+- `assets/source_blender/`: Blender source files.
+- `projects/kage_no_kata_assets.kage.json`: tracked asset catalog.
 
-GLB/glTF 2.0 carries meshes, materials, textures, node hierarchies, skins, and named animations.
+There is no separate `imported` folder. Once accepted, an imported file is a
+normal project asset.
 
-## Shared Conventions
+## Blender Export Rules
 
-- Blender unit scale: `1.0`, measured in metres.
-- Character reference height: approximately `1.75 m`.
-- Axis conversion: Blender glTF export with Y Up.
-- File names: lowercase with underscores.
-- Skinning: four normalized bone weights per vertex.
-- Animation sampling: 30 FPS.
-- Materials: Principled BSDF values and image textures.
+- Apply object transforms before export.
+- Export as glTF 2.0 GLB, Y-up.
+- Use Principled BSDF material inputs that glTF can export.
+- Export armature, skinning, inverse bind matrices, and all actions for rigged
+  characters.
+- Keep clip names clear; the Samurai currently exports `ReadyIdle` and
+  `ArmAction`.
 
-Use `glTF Binary (.glb)`, animation mode `Actions`, enabled skinning, four bone influences, and deformation bones only.
+## Engine Import
 
-## Character Actions
+`Import Model...` validates GLB/GLTF, copies it into `assets/models/`, registers
+it in the project catalog, and starts placement.
 
-| Action | Purpose |
-| --- | --- |
-| `Idle` | Resting pose |
-| `LookAtPicture` | Family portrait beat |
-| `Kneel` | Move into training position |
-| `Draw` | Draw the sword |
-| `Ready` | Stable starting and ending pose for procedural strikes |
+`Import Animation...` is available for a selected rigged entity. It validates
+joint names and hierarchy against the selected skeleton, copies the file into
+`assets/animations/`, and adds compatible clips to the Timeline.
 
-The runtime generates each strike and recovery from the requested cut using
-parametric sword motion and IK. Character, clothing, and yellow ribbon use one
-armature.
+## Checks
 
-## Environment Assets
-
-The bamboo export contains named rigid segments and joint points. Runtime physics assigns mass, inertia, and constraints. The hut, gate, sword, and family portrait load as static GLB assets. C++ generates terrain and places vegetation from height, slope, and seed.
-
-## Export Check
-
-- Scale and axes match the reference character.
-- Meshes contain UVs, normals, and complete material assignments.
-- Skin weights sum to one and use up to four joints.
-- GLB animation names and time ranges match the action table.
-- The `Ready` pose keeps both hands on the hilt and both feet planted.
-- Texture and model licenses are recorded.
+```bash
+ctest --test-dir build --output-on-failure
+build/asset_import_check assets/models/samurai.glb --require-rig --min-animation-clips 2 --min-real-clip-duration 1.0 --min-clip-keys 3
+```

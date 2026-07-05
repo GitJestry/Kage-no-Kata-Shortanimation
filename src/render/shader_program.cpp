@@ -1,0 +1,210 @@
+#include "render/shader_program.hpp"
+
+#include <glm/gtc/type_ptr.hpp>
+
+#include <stdexcept>
+#include <string>
+#include <utility>
+
+namespace {
+
+[[nodiscard]] std::string getShaderInfoLog(GLuint parShader) {
+  GLint log_length = 0;
+  glGetShaderiv(parShader, GL_INFO_LOG_LENGTH, &log_length);
+  if (log_length <= 1) {
+    return "no compiler log";
+  }
+
+  std::string log(static_cast<std::size_t>(log_length), '\0');
+  glGetShaderInfoLog(parShader, log_length, nullptr, log.data());
+  return log;
+}
+
+[[nodiscard]] std::string getProgramInfoLog(GLuint parProgram) {
+  GLint log_length = 0;
+  glGetProgramiv(parProgram, GL_INFO_LOG_LENGTH, &log_length);
+  if (log_length <= 1) {
+    return "no linker log";
+  }
+
+  std::string log(static_cast<std::size_t>(log_length), '\0');
+  glGetProgramInfoLog(parProgram, log_length, nullptr, log.data());
+  return log;
+}
+
+[[nodiscard]] GLuint compileShader(GLenum parType,
+                                   std::string_view parSource) {
+  const GLuint shader = glCreateShader(parType);
+  if (shader == 0) {
+    throw std::runtime_error("Failed to create OpenGL shader");
+  }
+
+  const char* source = parSource.data();
+  const GLint source_length = static_cast<GLint>(parSource.size());
+  glShaderSource(shader, 1, &source, &source_length);
+  glCompileShader(shader);
+
+  GLint compiled = GL_FALSE;
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+  if (compiled != GL_TRUE) {
+    const std::string log = getShaderInfoLog(shader);
+    glDeleteShader(shader);
+    throw std::runtime_error("Failed to compile OpenGL shader: " + log);
+  }
+
+  return shader;
+}
+
+}  // namespace
+
+namespace kage::render {
+
+ShaderProgram::ShaderProgram(std::string_view parVertexSource,
+                             std::string_view parFragmentSource) {
+  create(parVertexSource, parFragmentSource);
+}
+
+ShaderProgram::ShaderProgram(ShaderProgram&& parOther) noexcept
+    : m_handle(std::exchange(parOther.m_handle, 0)),
+      m_uniform_locations(std::move(parOther.m_uniform_locations)) {}
+
+ShaderProgram& ShaderProgram::operator=(ShaderProgram&& parOther) noexcept {
+  if (this != &parOther) {
+    release();
+    m_handle = std::exchange(parOther.m_handle, 0);
+    m_uniform_locations = std::move(parOther.m_uniform_locations);
+  }
+
+  return *this;
+}
+
+ShaderProgram::~ShaderProgram() {
+  release();
+}
+
+void ShaderProgram::create(std::string_view parVertexSource,
+                           std::string_view parFragmentSource) {
+  release();
+
+  GLuint vertex_shader = 0;
+  GLuint fragment_shader = 0;
+  try {
+    vertex_shader = compileShader(GL_VERTEX_SHADER, parVertexSource);
+    fragment_shader = compileShader(GL_FRAGMENT_SHADER, parFragmentSource);
+  } catch (...) {
+    if (vertex_shader != 0) {
+      glDeleteShader(vertex_shader);
+    }
+    throw;
+  }
+
+  m_handle = glCreateProgram();
+  if (m_handle == 0) {
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
+    throw std::runtime_error("Failed to create OpenGL shader program");
+  }
+
+  glAttachShader(m_handle, vertex_shader);
+  glAttachShader(m_handle, fragment_shader);
+  glLinkProgram(m_handle);
+
+  GLint linked = GL_FALSE;
+  glGetProgramiv(m_handle, GL_LINK_STATUS, &linked);
+
+  glDetachShader(m_handle, vertex_shader);
+  glDetachShader(m_handle, fragment_shader);
+  glDeleteShader(vertex_shader);
+  glDeleteShader(fragment_shader);
+
+  if (linked != GL_TRUE) {
+    const std::string log = getProgramInfoLog(m_handle);
+    release();
+    throw std::runtime_error("Failed to link OpenGL shader program: " + log);
+  }
+
+  m_uniform_locations.clear();
+}
+
+void ShaderProgram::use() const {
+  if (m_handle == 0) {
+    throw std::runtime_error("Cannot use an empty OpenGL shader program");
+  }
+
+  glUseProgram(m_handle);
+}
+
+void ShaderProgram::release() {
+  if (m_handle != 0) {
+    glDeleteProgram(m_handle);
+    m_handle = 0;
+  }
+  m_uniform_locations.clear();
+}
+
+void ShaderProgram::setMat4(const char* parName,
+                            const glm::mat4& parValue) const {
+  glUniformMatrix4fv(getUniformLocation(parName), 1, GL_FALSE,
+                     glm::value_ptr(parValue));
+}
+
+void ShaderProgram::setMat4Array(const char* parName,
+                                 const glm::mat4* parValues,
+                                 GLsizei parCount) const {
+  if (parValues == nullptr || parCount <= 0) {
+    return;
+  }
+  glUniformMatrix4fv(getUniformLocation(parName), parCount, GL_FALSE,
+                     glm::value_ptr(parValues[0]));
+}
+
+void ShaderProgram::setFloat(const char* parName, float parValue) const {
+  glUniform1f(getUniformLocation(parName), parValue);
+}
+
+void ShaderProgram::setInt(const char* parName, int parValue) const {
+  glUniform1i(getUniformLocation(parName), parValue);
+}
+
+void ShaderProgram::setVec2(const char* parName,
+                            const glm::vec2& parValue) const {
+  glUniform2f(getUniformLocation(parName), parValue.x, parValue.y);
+}
+
+void ShaderProgram::setVec3(const char* parName,
+                            const glm::vec3& parValue) const {
+  glUniform3f(getUniformLocation(parName), parValue.x, parValue.y,
+              parValue.z);
+}
+
+void ShaderProgram::setVec4(const char* parName,
+                            const glm::vec4& parValue) const {
+  glUniform4f(getUniformLocation(parName), parValue.x, parValue.y, parValue.z,
+              parValue.w);
+}
+
+GLuint ShaderProgram::getHandle() const {
+  return m_handle;
+}
+
+bool ShaderProgram::isValid() const {
+  return m_handle != 0;
+}
+
+GLint ShaderProgram::getUniformLocation(const char* parName) const {
+  if (m_handle == 0) {
+    throw std::runtime_error("Cannot query an empty OpenGL shader program");
+  }
+
+  const std::string uniform_name(parName);
+  const auto cached_location = m_uniform_locations.find(uniform_name);
+  if (cached_location != m_uniform_locations.end()) {
+    return cached_location->second;
+  }
+
+  const GLint location = glGetUniformLocation(m_handle, parName);
+  m_uniform_locations.emplace(std::move(uniform_name), location);
+  return location;
+}
+
+}  // namespace kage::render

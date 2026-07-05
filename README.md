@@ -1,40 +1,48 @@
-# Kage no Kata - The Final Cut
+# KageEngine
 
-Interactive computer animation project at the University of Bonn by Julian Meyer and Faouzi Homsani.
+KageEngine is the C++ OpenGL editor/runtime for **Kage no Kata - The Final
+Cut**, a University of Bonn short animation project by Julian Meyer and Faouzi
+Homsani.
 
-The film follows the last heir of a Shinobi sword school during a morning training ritual. The user draws a cut across a bamboo target. Angle, height, direction, and drawing speed drive the sword animation, fracture response, particles, and sound.
-
-![Hand-drawn storyboard](assets/storyboard/storyboard-1.png)
-
-## Production Model
-
-Blender provides meshes, UVs, materials, armatures, skin weights, and named animation clips. The C++ application imports glTF 2.0 data, samples keyframes, blends poses, performs GPU skinning, and connects animation with interaction, physics, particles, audio, and rendering.
-
-The runtime targets OpenGL 4.1 on macOS and Windows. The university framework
-`julcst/gltemplate` v1.7b provides window, context, input, and ImGui integration;
-project-owned types implement the rendering and runtime systems.
+Current scope: load Blender GLB assets, edit the film world, validate and render
+the samurai rig, play authored animation clips, import model/animation GLBs, and
+keep shared scene data in
+`projects/kage_no_kata_world.kage.json`.
 
 ## Build
+
+Large assets use Git LFS:
+
+```bash
+git lfs install
+git lfs pull
+```
 
 ```bash
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-CMake fetches the pinned framework version. Visual Studio or Ninja build the project on Windows; Xcode, Make, or Ninja build the same sources on macOS.
+CMake fetches the pinned framework version. Run from the project root:
 
-## Documentation
+```bash
+build/kage_engine
+```
 
-- [Story and visual concept](docs/CONCEPT.md)
-- [Runtime architecture](docs/TECHNICAL_PLAN.md)
-- [University framework boundary](docs/FRAMEWORK_BOUNDARY.md)
-- [Code style](docs/CODE_STYLE.md)
-- [Platform independence](docs/PLATFORM_INDEPENDENCE.md)
-- [Development log and milestone evidence](docs/DEVELOPMENT_LOG.md)
-- [Blender and asset pipeline](docs/ASSET_PIPELINE.md)
-- [Interaction design](docs/INPUT_DECISION.md)
-- [Requirements, scoring, and ownership](docs/PROJECT_REQUIREMENTS.md)
-- [Four-week schedule](docs/TODO.md)
+Import checks:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+## Where To Look
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Engineering contract](docs/ENGINEERING_CONTRACT.md)
+- [Asset pipeline](docs/ASSET_PIPELINE.md)
+- [Requirements and evidence](docs/PROJECT_REQUIREMENTS.md)
+- [Editor workflow](docs/EDITOR_WORKFLOW.md)
+- [Milestone checklist](docs/TODO.md)
 
 ## References
 
@@ -43,6 +51,4 @@ CMake fetches the pinned framework version. Visual Studio or Ninja build the pro
 - [Official project brief](assets/reference/cgintro-animation-project-info.pdf)
 - [Official assessment sheet](assets/reference/cgintro-bewertungsbogen.pdf)
 
-## Current Milestone
-
-The repository contains the agreed architecture, asset contract, feature scope, and delivery schedule. The first runtime milestone loads a GLB test character and plays one skinned animation clip.
+Local editor state and local test scenes stay in `.kage_local/`.
