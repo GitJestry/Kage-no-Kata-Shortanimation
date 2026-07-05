@@ -108,8 +108,8 @@ std::optional<UiPanelRect> drawTimelinePanel(engine::EngineCore& parEngine,
                    parImportLabelBuffer.data(), parImportLabelBuffer.size());
   ImGui::SameLine();
   if (ImGui::Button("Import Animation...")) {
-    parImportBrowser.open("Import Animation", std::filesystem::current_path() /
-                                                  "assets");
+    parImportBrowser.open(
+        "Import Animation", parEngine.getRuntimePaths().getAnimationDirectory());
   }
   if (!parImportError.empty()) {
     ImGui::TextWrapped("Import error: %s", parImportError.c_str());

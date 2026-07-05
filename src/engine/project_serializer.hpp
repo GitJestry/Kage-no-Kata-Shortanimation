@@ -14,8 +14,6 @@ class ProjectSerializer final {
   [[nodiscard]] static bool loadLocalSession(EngineCore& parEngine);
   static void saveLocalSession(const EngineCore& parEngine);
 
-  [[nodiscard]] static std::filesystem::path getProjectPath();
-  [[nodiscard]] static std::filesystem::path getLocalSessionPath();
 };
 
 }  // namespace kage::engine
