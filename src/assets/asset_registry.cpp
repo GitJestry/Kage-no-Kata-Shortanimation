@@ -4,11 +4,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace kage::assets {
@@ -37,6 +40,115 @@ namespace {
   }
   return found_asset_root ? asset_relative.generic_string()
                           : normalized.generic_string();
+}
+
+
+[[nodiscard]] std::filesystem::path canonicalPathKey(
+    const std::filesystem::path& parPath) {
+  std::error_code error_code;
+  const std::filesystem::path canonical_path =
+      std::filesystem::weakly_canonical(parPath, error_code);
+  if (!error_code) {
+    return canonical_path.lexically_normal();
+  }
+  return std::filesystem::absolute(parPath).lexically_normal();
+}
+
+[[nodiscard]] bool isSamePath(const std::filesystem::path& parLeft,
+                              const std::filesystem::path& parRight) {
+  return canonicalPathKey(parLeft).generic_string() ==
+         canonicalPathKey(parRight).generic_string();
+}
+
+[[nodiscard]] std::string normalizedTextKey(std::string_view parText) {
+  std::string key;
+  key.reserve(parText.size());
+  for (const unsigned char character : parText) {
+    if (std::isalnum(character) != 0) {
+      key.push_back(static_cast<char>(std::tolower(character)));
+    }
+  }
+  return key;
+}
+
+[[nodiscard]] std::string makeImportedClipName(std::string_view parPackLabel,
+                                               const AnimationClip& parClip) {
+  const std::string source_name =
+      parClip.name.empty() ? "Imported clip" : parClip.name;
+  if (parPackLabel.empty()) {
+    return source_name;
+  }
+  return std::string(parPackLabel) + " / " + source_name;
+}
+
+[[nodiscard]] bool hasClipNamed(const ModelAsset& parAsset,
+                                std::string_view parClipName) {
+  const std::string clip_key = normalizedTextKey(parClipName);
+  for (const AnimationClip& clip : parAsset.animation_clips) {
+    if (normalizedTextKey(clip.name) == clip_key) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool hasAnimationPackPath(
+    const AssetRegistry::AssetLibraryEntry& parAsset,
+    const std::filesystem::path& parPath) {
+  for (const AssetRegistry::AnimationPackEntry& pack : parAsset.animation_packs) {
+    if (isSamePath(pack.path, parPath)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
+  std::vector<AssetRegistry::AnimationPackEntry> unique_packs;
+  unique_packs.reserve(parAsset.animation_packs.size());
+  std::unordered_set<std::string> seen_paths;
+
+  for (AssetRegistry::AnimationPackEntry& pack : parAsset.animation_packs) {
+    const std::string path_key = canonicalPathKey(pack.path).generic_string();
+    if (seen_paths.insert(path_key).second) {
+      unique_packs.push_back(std::move(pack));
+    }
+  }
+
+  parAsset.animation_packs = std::move(unique_packs);
+}
+
+[[nodiscard]] std::vector<const AnimationClip*> selectImportedAnimationClips(
+    const ModelAsset& parSource, std::string_view parPackLabel) {
+  std::vector<const AnimationClip*> clips;
+  const std::string label_key = normalizedTextKey(parPackLabel);
+
+  if (!label_key.empty()) {
+    for (const AnimationClip& clip : parSource.animation_clips) {
+      if (!clip.channels.empty() && normalizedTextKey(clip.name) == label_key) {
+        clips.push_back(&clip);
+      }
+    }
+    if (!clips.empty()) {
+      return clips;
+    }
+  }
+
+  const AnimationClip* longest_clip = nullptr;
+  for (const AnimationClip& clip : parSource.animation_clips) {
+    if (clip.channels.empty()) {
+      continue;
+    }
+    if (longest_clip == nullptr ||
+        clip.duration_seconds > longest_clip->duration_seconds) {
+      longest_clip = &clip;
+    }
+  }
+  if (longest_clip != nullptr) {
+    clips.push_back(longest_clip);
+  }
+
+  return clips;
 }
 
 [[nodiscard]] std::optional<std::uint32_t> findNodeByName(
@@ -109,10 +221,17 @@ namespace {
     ModelAsset& parTarget, const ModelAsset& parSource,
     std::string_view parPackLabel, std::string& parError) {
   std::size_t appended_count = 0;
-  for (const AnimationClip& source_clip : parSource.animation_clips) {
-    AnimationClip clip = source_clip;
+  const std::vector<const AnimationClip*> source_clips =
+      selectImportedAnimationClips(parSource, parPackLabel);
+  if (source_clips.empty()) {
+    parError = "imported animation contains no usable animation channels";
+    return appended_count;
+  }
+
+  for (const AnimationClip* source_clip : source_clips) {
+    AnimationClip clip = *source_clip;
     clip.channels.clear();
-    for (const AnimationChannel& source_channel : source_clip.channels) {
+    for (const AnimationChannel& source_channel : source_clip->channels) {
       if (source_channel.target_node >= parSource.nodes.size()) {
         parError = "imported animation channel targets an invalid node";
         return appended_count;
@@ -134,10 +253,12 @@ namespace {
     if (clip.channels.empty()) {
       continue;
     }
-    if (!parPackLabel.empty()) {
-      clip.name = std::string(parPackLabel) + " / " +
-                  (clip.name.empty() ? "Imported clip" : clip.name);
+
+    clip.name = makeImportedClipName(parPackLabel, clip);
+    if (hasClipNamed(parTarget, clip.name)) {
+      continue;
     }
+
     parTarget.animation_clips.push_back(std::move(clip));
     ++appended_count;
   }
@@ -145,7 +266,6 @@ namespace {
   parTarget.stats.animation_count = parTarget.animation_clips.size();
   return appended_count;
 }
-
 }  // namespace
 
 AssetId makeStableAssetId(std::string_view parNamespace,
@@ -214,8 +334,21 @@ std::size_t AssetRegistry::registerStaticAsset(
 std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
                                               std::filesystem::path parPath,
                                               ModelAsset parDocument) {
+  const AssetId asset_id = makeStableAssetId("asset", parPath);
+  if (const std::optional<std::size_t> existing = getAssetIndexById(asset_id);
+      existing.has_value()) {
+    AssetLibraryEntry& entry = m_asset_library[*existing];
+    entry.label = std::move(parLabel);
+    entry.path = std::move(parPath);
+    entry.document = std::move(parDocument);
+    entry.pending_document.reset();
+    entry.load_state = AssetLoadState::Ready;
+    entry.load_error.clear();
+    return *existing;
+  }
+
   AssetLibraryEntry entry;
-  entry.id = makeStableAssetId("asset", parPath);
+  entry.id = asset_id;
   entry.label = std::move(parLabel);
   entry.path = std::move(parPath);
   entry.document = std::move(parDocument);
@@ -232,6 +365,12 @@ bool AssetRegistry::addAnimationPack(AssetId parAssetId, std::string parLabel,
   AssetLibraryEntry* asset = getAssetLibraryEntryById(parAssetId);
   if (asset == nullptr) {
     parError = "target asset was not found";
+    return false;
+  }
+
+  deduplicateAnimationPacks(*asset);
+  if (hasAnimationPackPath(*asset, parPath)) {
+    parError = "animation pack is already imported for this asset";
     return false;
   }
 
@@ -265,11 +404,6 @@ bool AssetRegistry::addAnimationPack(AssetId parAssetId, std::string parLabel,
     return false;
   }
 
-  for (const AnimationPackEntry& pack : asset->animation_packs) {
-    if (pack.path == parPath) {
-      return true;
-    }
-  }
   asset->animation_packs.push_back({std::move(parLabel), std::move(parPath)});
   return true;
 }
@@ -506,6 +640,7 @@ void AssetRegistry::applyAnimationPacks(AssetLibraryEntry& parAsset) {
     return;
   }
 
+  deduplicateAnimationPacks(parAsset);
   for (const AnimationPackEntry& pack : parAsset.animation_packs) {
     try {
       GltfAssetLoader loader;

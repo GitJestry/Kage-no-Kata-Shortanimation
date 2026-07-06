@@ -191,6 +191,8 @@ class EngineCore final {
   render::PlacementGhost m_placement_ghost;
   render::GizmoGuide m_gizmo_guide;
   FrameTimings m_frame_timings;
+
+
   bool m_project_dirty = false;
   float m_local_session_autosave_timer_seconds = 0.0f;
 };

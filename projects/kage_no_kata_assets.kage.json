@@ -4,15 +4,15 @@
       "animation_packs": [],
       "glb": "assets/models/sword.glb",
       "id": 9880247405817363066,
-      "label": "Sword",
-      "source": "assets/source_blender/sword/sword.blend"
+      "label": "sword",
+      "source": "assets/models/sword.glb"
     },
     {
       "animation_packs": [],
       "glb": "assets/models/torii_gate.glb",
       "id": 13563340816392298620,
-      "label": "Torii gate",
-      "source": "assets/source_blender/torii_gate/torii_gate.blend"
+      "label": "torii_gate",
+      "source": "assets/models/torii_gate.glb"
     },
     {
       "animation_packs": [
