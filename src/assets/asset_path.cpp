@@ -59,10 +59,8 @@ std::filesystem::path makeUniqueDestination(
 std::filesystem::path copyIntoProjectAssets(
     const std::filesystem::path& parSourcePath,
     const std::filesystem::path& parDestinationDirectory,
-    std::string& parError) {
-  const std::filesystem::path asset_root =
-      std::filesystem::current_path() / "assets";
-  if (isInsideDirectory(parSourcePath, asset_root)) {
+    const std::filesystem::path& parAssetRoot, std::string& parError) {
+  if (isInsideDirectory(parSourcePath, parAssetRoot)) {
     return std::filesystem::weakly_canonical(parSourcePath);
   }
 

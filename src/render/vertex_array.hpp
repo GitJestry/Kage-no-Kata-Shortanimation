@@ -36,3 +36,5 @@ class VertexArray final {
 };
 
 }  // namespace kage::render
+
+

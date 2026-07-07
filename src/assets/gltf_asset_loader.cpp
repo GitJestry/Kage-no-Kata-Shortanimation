@@ -6,6 +6,7 @@
 #include <tiny_gltf.h>
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -1184,8 +1185,18 @@ GltfDocument GltfAssetLoader::loadDocument(
   std::string error;
   std::string warning;
 
-  const bool loaded = loader.LoadBinaryFromFile(
-      &gltf_model, &error, &warning, parPath.string());
+  std::string extension = parPath.extension().string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](unsigned char parCharacter) {
+                   return static_cast<char>(std::tolower(parCharacter));
+                 });
+
+  const bool loaded =
+      extension == ".gltf"
+          ? loader.LoadASCIIFromFile(&gltf_model, &error, &warning,
+                                     parPath.string())
+          : loader.LoadBinaryFromFile(&gltf_model, &error, &warning,
+                                      parPath.string());
   if (!loaded) {
     throw makeImportError(parPath, error.empty() ? "unknown loader error"
                                                 : error);

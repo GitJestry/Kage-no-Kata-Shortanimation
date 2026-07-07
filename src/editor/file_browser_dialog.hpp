@@ -24,6 +24,7 @@ class FileBrowserDialog final {
 
   std::string m_title;
   std::filesystem::path m_current_directory;
+  std::filesystem::path m_asset_directory;
   std::optional<std::filesystem::path> m_selected_file;
   std::vector<Entry> m_entries;
   bool m_open = false;

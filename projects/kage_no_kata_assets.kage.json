@@ -1,23 +1,31 @@
 {
-  "version": 1,
   "assets": [
     {
-      "label": "Sword",
+      "animation_packs": [],
       "glb": "assets/models/sword.glb",
-      "source": "assets/source_blender/sword/sword.blend",
-      "animation_packs": []
+      "id": 9880247405817363066,
+      "label": "sword",
+      "source": "assets/models/sword.glb"
     },
     {
-      "label": "Torii gate",
+      "animation_packs": [],
       "glb": "assets/models/torii_gate.glb",
-      "source": "assets/source_blender/torii_gate/torii_gate.blend",
-      "animation_packs": []
+      "id": 13563340816392298620,
+      "label": "torii_gate",
+      "source": "assets/models/torii_gate.glb"
     },
     {
-      "label": "Samurai",
+      "animation_packs": [
+        {
+          "label": "samurai_bow",
+          "path": "assets/animations/samurai_bow.glb"
+        }
+      ],
       "glb": "assets/models/samurai.glb",
-      "source": "assets/source_blender/samurai_rig/samurai.blend",
-      "animation_packs": []
+      "id": 6983023483631705405,
+      "label": "Samurai",
+      "source": "assets/source_blender/samurai_rig/samurai.blend"
     }
-  ]
+  ],
+  "version": 1
 }

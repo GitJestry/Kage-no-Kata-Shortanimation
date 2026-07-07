@@ -209,7 +209,8 @@ using Clock = std::chrono::steady_clock;
 
 namespace kage::engine {
 
-EngineCore::EngineCore() = default;
+EngineCore::EngineCore()
+    : m_runtime_paths(platform::RuntimePaths::fromExecutable()) {}
 
 std::size_t EngineCore::registerStaticAsset(std::string parLabel,
                                             std::filesystem::path parPath) {
@@ -356,12 +357,16 @@ bool EngineCore::isProjectDirty() const {
   return m_project_dirty;
 }
 
+const platform::RuntimePaths& EngineCore::getRuntimePaths() const {
+  return m_runtime_paths;
+}
+
 std::filesystem::path EngineCore::getProjectSavePath() const {
-  return ProjectSerializer::getProjectPath();
+  return m_runtime_paths.getProjectWorldPath();
 }
 
 std::filesystem::path EngineCore::getLocalSessionSavePath() const {
-  return ProjectSerializer::getLocalSessionPath();
+  return m_runtime_paths.getLocalSessionPath();
 }
 
 void EngineCore::update(float parDeltaSeconds) {

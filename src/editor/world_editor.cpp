@@ -1,22 +1,17 @@
 #include "editor/world_editor.hpp"
 
+#include "assets/asset_path.hpp"
+
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace kage::editor {
 
-namespace {
-
-constexpr const char* PROJECT_ASSET_CATALOG_PATH =
-    "projects/kage_no_kata_assets.kage.json";
-
-}  // namespace
-
 WorldEditor::WorldEditor(engine::EngineCore& parEngine)
-    : m_engine(parEngine),
-      m_runtime_paths(platform::RuntimePaths::fromExecutable()) {
+    : m_engine(parEngine) {
   registerDefaultAssets();
   if (!m_engine.loadProject()) {
     m_engine.createDefaultProject();
@@ -99,17 +94,22 @@ bool WorldEditor::cancelActiveOperation() {
 }
 
 void WorldEditor::registerDefaultAssets() {
-  const std::filesystem::path catalog_path =
-      std::filesystem::current_path() / PROJECT_ASSET_CATALOG_PATH;
-  m_engine.loadProjectAssetCatalog(catalog_path);
+  const platform::RuntimePaths& paths = m_engine.getRuntimePaths();
+  m_engine.loadProjectAssetCatalog(paths.getProjectAssetCatalogPath());
   if (!m_engine.getAssetLibrary().empty()) {
     return;
   }
 
+  std::error_code error_code;
   for (const std::filesystem::directory_entry& entry :
-       std::filesystem::directory_iterator(m_runtime_paths.getAssetDirectory() /
-                                           "models")) {
-    if (!entry.is_regular_file() || entry.path().extension() != ".glb") {
+       std::filesystem::directory_iterator(paths.getModelDirectory(),
+                                           error_code)) {
+    if (error_code) {
+      return;
+    }
+    if (!entry.is_regular_file(error_code) || error_code ||
+        !assets::hasGltfExtension(entry.path())) {
+      error_code.clear();
       continue;
     }
     const std::string label = entry.path().stem().string();

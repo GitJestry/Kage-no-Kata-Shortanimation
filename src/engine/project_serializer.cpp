@@ -25,10 +25,6 @@ namespace {
 
 using json = nlohmann::json;
 
-constexpr const char* PROJECT_WORLD_PATH =
-    "projects/kage_no_kata_world.kage.json";
-constexpr const char* LOCAL_SESSION_PATH = ".kage_local/editor_session.json";
-
 [[nodiscard]] json toJson(const glm::vec3& parValue) {
   return json::array({parValue.x, parValue.y, parValue.z});
 }
@@ -338,7 +334,7 @@ namespace kage::engine {
 
 bool ProjectSerializer::loadProject(EngineCore& parEngine) {
   json document;
-  if (!loadJsonFile(getProjectPath(), document)) {
+  if (!loadJsonFile(parEngine.m_runtime_paths.getProjectWorldPath(), document)) {
     return false;
   }
 
@@ -452,7 +448,8 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
 
 void ProjectSerializer::saveProject(EngineCore& parEngine) {
   parEngine.syncEditorCameraEntity();
-  const std::filesystem::path save_path = getProjectPath();
+  const std::filesystem::path save_path =
+      parEngine.m_runtime_paths.getProjectWorldPath();
   std::filesystem::create_directories(save_path.parent_path());
 
   json document;
@@ -499,7 +496,7 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
 
 bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
   json document;
-  if (!loadJsonFile(getLocalSessionPath(), document)) {
+  if (!loadJsonFile(parEngine.m_runtime_paths.getLocalSessionPath(), document)) {
     return false;
   }
 
@@ -590,7 +587,8 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
 }
 
 void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
-  const std::filesystem::path save_path = getLocalSessionPath();
+  const std::filesystem::path save_path =
+      parEngine.m_runtime_paths.getLocalSessionPath();
   std::filesystem::create_directories(save_path.parent_path());
 
   json document;
@@ -613,14 +611,6 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
 
   std::ofstream output(save_path);
   output << document.dump(2);
-}
-
-std::filesystem::path ProjectSerializer::getProjectPath() {
-  return std::filesystem::current_path() / PROJECT_WORLD_PATH;
-}
-
-std::filesystem::path ProjectSerializer::getLocalSessionPath() {
-  return std::filesystem::current_path() / LOCAL_SESSION_PATH;
 }
 
 }  // namespace kage::engine

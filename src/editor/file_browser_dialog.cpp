@@ -8,14 +8,57 @@
 #include <system_error>
 #include <utility>
 
+namespace {
+
+[[nodiscard]] std::filesystem::path canonicalOrAbsolute(
+    const std::filesystem::path& parPath) {
+  std::error_code error_code;
+  const std::filesystem::path canonical_path =
+      std::filesystem::weakly_canonical(parPath, error_code);
+  if (!error_code) {
+    return canonical_path;
+  }
+  return std::filesystem::absolute(parPath);
+}
+
+[[nodiscard]] std::filesystem::path fallbackDirectory() {
+  return canonicalOrAbsolute(std::filesystem::current_path());
+}
+
+[[nodiscard]] std::filesystem::path resolveStartDirectory(
+    const std::filesystem::path& parStartDirectory) {
+  std::error_code error_code;
+  if (std::filesystem::is_directory(parStartDirectory, error_code)) {
+    return canonicalOrAbsolute(parStartDirectory);
+  }
+  return fallbackDirectory();
+}
+
+[[nodiscard]] std::filesystem::path findAssetDirectory(
+    std::filesystem::path parDirectory) {
+  parDirectory = canonicalOrAbsolute(std::move(parDirectory));
+  while (!parDirectory.empty()) {
+    if (parDirectory.filename() == "assets") {
+      return parDirectory;
+    }
+    const std::filesystem::path parent = parDirectory.parent_path();
+    if (parent == parDirectory) {
+      break;
+    }
+    parDirectory = parent;
+  }
+  return fallbackDirectory();
+}
+
+}  // namespace
+
 namespace kage::editor {
 
 void FileBrowserDialog::open(std::string parTitle,
                              std::filesystem::path parStartDirectory) {
   m_title = std::move(parTitle);
-  m_current_directory =
-      std::filesystem::exists(parStartDirectory) ? std::move(parStartDirectory)
-                                                 : std::filesystem::current_path();
+  m_current_directory = resolveStartDirectory(parStartDirectory);
+  m_asset_directory = findAssetDirectory(m_current_directory);
   m_selected_file.reset();
   m_open = true;
   m_open_requested = true;
@@ -47,7 +90,7 @@ std::optional<std::filesystem::path> FileBrowserDialog::draw() {
     }
     ImGui::SameLine();
     if (ImGui::Button("Project Assets")) {
-      m_current_directory = std::filesystem::current_path() / "assets";
+      m_current_directory = m_asset_directory;
       m_selected_file.reset();
       refreshEntries();
     }
@@ -107,6 +150,7 @@ void FileBrowserDialog::refreshEntries() {
     }
     const bool directory = entry.is_directory(error_code);
     if (error_code) {
+      error_code.clear();
       continue;
     }
     if (!directory && !assets::hasGltfExtension(entry.path())) {

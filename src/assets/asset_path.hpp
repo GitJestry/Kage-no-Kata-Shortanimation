@@ -16,6 +16,6 @@ namespace kage::assets {
 [[nodiscard]] std::filesystem::path copyIntoProjectAssets(
     const std::filesystem::path& parSourcePath,
     const std::filesystem::path& parDestinationDirectory,
-    std::string& parError);
+    const std::filesystem::path& parAssetRoot, std::string& parError);
 
 }  // namespace kage::assets

@@ -7,7 +7,6 @@
 #include "editor/selection_controller.hpp"
 #include "engine/engine_core.hpp"
 #include "input/input_events.hpp"
-#include "platform/runtime_paths.hpp"
 
 #include <glm/glm.hpp>
 
@@ -35,7 +34,6 @@ class WorldEditor final {
   void publishGizmoGuide();
 
   engine::EngineCore& m_engine;
-  platform::RuntimePaths m_runtime_paths;
   EditorUi m_ui;
   ConfirmationDialog m_confirmation_dialog;
   PlacementController m_placement_controller;

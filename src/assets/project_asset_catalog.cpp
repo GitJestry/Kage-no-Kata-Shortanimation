@@ -10,11 +10,23 @@
 #endif
 
 #include <fstream>
+#include <system_error>
 #include <utility>
 
 namespace {
 
 using json = nlohmann::json;
+
+[[nodiscard]] std::filesystem::path projectRootFromCatalogPath(
+    const std::filesystem::path& parCatalogPath) {
+  std::error_code error_code;
+  const std::filesystem::path absolute_catalog_path =
+      std::filesystem::weakly_canonical(parCatalogPath, error_code);
+  const std::filesystem::path catalog_path =
+      error_code ? std::filesystem::absolute(parCatalogPath)
+                 : absolute_catalog_path;
+  return catalog_path.parent_path().parent_path();
+}
 
 [[nodiscard]] std::filesystem::path readPath(const json& parJson,
                                              const char* parName,
@@ -40,7 +52,8 @@ ProjectAssetCatalog loadProjectAssetCatalog(
 
   json document;
   input >> document;
-  const std::filesystem::path project_root = std::filesystem::current_path();
+  const std::filesystem::path project_root =
+      projectRootFromCatalogPath(parCatalogPath);
   for (const json& asset_json : document.value("assets", json::array())) {
     ProjectAssetEntry asset;
     asset.id.value = asset_json.value("id", AssetId{}.value);

@@ -4,6 +4,7 @@
 #include "animation/animation_system.hpp"
 #include "camera/camera_system.hpp"
 #include "lighting/lighting_system.hpp"
+#include "platform/runtime_paths.hpp"
 #include "render/mesh_resource_cache.hpp"
 #include "render/world_renderer.hpp"
 #include "scene/scene_manager.hpp"
@@ -62,6 +63,7 @@ class EngineCore final {
   void saveLocalSession() const;
   void markProjectDirty();
   [[nodiscard]] bool isProjectDirty() const;
+  [[nodiscard]] const platform::RuntimePaths& getRuntimePaths() const;
   [[nodiscard]] std::filesystem::path getProjectSavePath() const;
   [[nodiscard]] std::filesystem::path getLocalSessionSavePath() const;
 
@@ -177,6 +179,7 @@ class EngineCore final {
 
   friend class ProjectSerializer;
 
+  platform::RuntimePaths m_runtime_paths;
   assets::AssetRegistry m_asset_registry;
   animation::AnimationSystem m_animation_system;
   scene::SceneManager m_scene_manager;
@@ -188,6 +191,8 @@ class EngineCore final {
   render::PlacementGhost m_placement_ghost;
   render::GizmoGuide m_gizmo_guide;
   FrameTimings m_frame_timings;
+
+
   bool m_project_dirty = false;
   float m_local_session_autosave_timer_seconds = 0.0f;
 };

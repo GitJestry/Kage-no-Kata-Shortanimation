@@ -11,19 +11,11 @@
 
 namespace {
 
-constexpr const char* PROJECT_ASSET_CATALOG_PATH =
-    "projects/kage_no_kata_assets.kage.json";
-constexpr const char* MODEL_DIRECTORY = "assets/models";
-constexpr const char* ANIMATION_DIRECTORY = "assets/animations";
-
-[[nodiscard]] std::filesystem::path catalogPath() {
-  return std::filesystem::current_path() / PROJECT_ASSET_CATALOG_PATH;
-}
-
 [[nodiscard]] kage::assets::ProjectAssetCatalog buildCatalog(
-    const kage::assets::AssetRegistry& parRegistry) {
+    const kage::assets::AssetRegistry& parRegistry,
+    const std::filesystem::path& parRegistryProjectRoot) {
   kage::assets::ProjectAssetCatalog catalog;
-  const std::filesystem::path project_root = std::filesystem::current_path();
+  const std::filesystem::path project_root = parRegistryProjectRoot;
   const auto project_relative = [&](const std::filesystem::path& parPath) {
     std::error_code error_code;
     const std::filesystem::path relative =
@@ -105,8 +97,8 @@ std::optional<std::size_t> EngineCore::importModelAsset(
   }
 
   const std::filesystem::path destination = assets::copyIntoProjectAssets(
-      parSourcePath, std::filesystem::current_path() / MODEL_DIRECTORY,
-      parError);
+      parSourcePath, m_runtime_paths.getModelDirectory(),
+      m_runtime_paths.getAssetDirectory(), parError);
   if (destination.empty()) {
     return std::nullopt;
   }
@@ -118,7 +110,9 @@ std::optional<std::size_t> EngineCore::importModelAsset(
   if (asset != nullptr) {
     asset->source_path = parSourcePath;
   }
-  assets::saveProjectAssetCatalog(catalogPath(), buildCatalog(m_asset_registry));
+  assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
+                                  buildCatalog(m_asset_registry,
+                                               m_runtime_paths.getProjectRoot()));
   markProjectDirty();
   return asset_index;
 }
@@ -153,8 +147,8 @@ bool EngineCore::importAnimationForEntity(
   }
 
   const std::filesystem::path destination = assets::copyIntoProjectAssets(
-      parSourcePath,
-      std::filesystem::current_path() / ANIMATION_DIRECTORY, parError);
+      parSourcePath, m_runtime_paths.getAnimationDirectory(),
+      m_runtime_paths.getAssetDirectory(), parError);
   if (destination.empty()) {
     return false;
   }
@@ -163,7 +157,9 @@ bool EngineCore::importAnimationForEntity(
                                          parError)) {
     return false;
   }
-  assets::saveProjectAssetCatalog(catalogPath(), buildCatalog(m_asset_registry));
+  assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
+                                  buildCatalog(m_asset_registry,
+                                               m_runtime_paths.getProjectRoot()));
   markProjectDirty();
   return true;
 }

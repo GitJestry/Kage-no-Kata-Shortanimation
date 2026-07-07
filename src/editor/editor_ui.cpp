@@ -534,8 +534,8 @@ void EditorUi::drawCreationPalette(
                    m_model_import_label_buffer.data(),
                    m_model_import_label_buffer.size());
   if (ImGui::Button("Import Model...", ImVec2(-1.0f, 0.0f))) {
-    m_model_import_browser.open("Import Model", std::filesystem::current_path() /
-                                                    "assets");
+    m_model_import_browser.open("Import Model",
+                                parEngine.getRuntimePaths().getModelDirectory());
   }
   if (!m_model_import_error.empty()) {
     ImGui::TextWrapped("Import error: %s", m_model_import_error.c_str());
