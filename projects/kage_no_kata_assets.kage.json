@@ -25,6 +25,125 @@
       "id": 6983023483631705405,
       "label": "Samurai",
       "source": "assets/source_blender/samurai_rig/samurai.blend"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/house.glb",
+      "id": 7361452353719960219,
+      "label": "house",
+      "source": "assets/models/house.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/banner.glb",
+      "id": 4216536852233760045,
+      "label": "banner",
+      "source": "assets/models/banner.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/barrel.glb",
+      "id": 2938495946224025875,
+      "label": "barrel",
+      "source": "assets/models/barrel.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/box.glb",
+      "id": 9913886901207363034,
+      "label": "box",
+      "source": "assets/models/box.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/korb.glb",
+      "id": 9414820161643609261,
+      "label": "korb",
+      "source": "assets/models/korb.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/vase.glb",
+      "id": 16476955967298097454,
+      "label": "vase",
+      "source": "assets/models/vase.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/zaun.glb",
+      "id": 14072654600327888785,
+      "label": "zaun",
+      "source": "assets/models/zaun.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/trunk_dirt.glb",
+      "id": 6642783376236900589,
+      "label": "trunk_dirt",
+      "source": "assets/models/trunk_dirt.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/treetrunk.glb",
+      "id": 4826960397216529553,
+      "label": "treetrunk",
+      "source": "assets/models/treetrunk.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/lantern.glb",
+      "id": 3522100918777839163,
+      "label": "lantern",
+      "source": "assets/models/lantern.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/stone_group.glb",
+      "id": 17974127686275345534,
+      "label": "stone_group",
+      "source": "assets/models/stone_group.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/ground_rock_dirt.glb",
+      "id": 13659651275966119112,
+      "label": "ground_rock_dirt",
+      "source": "assets/models/ground_rock_dirt.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/shrine.glb",
+      "id": 8619211858720671204,
+      "label": "shrine",
+      "source": "assets/models/shrine.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/banner_pole.glb",
+      "id": 17116566253912930150,
+      "label": "banner_pole",
+      "source": "assets/models/banner_pole.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/tree_yellow_full.glb",
+      "id": 1862975590619154340,
+      "label": "tree_yellow_full",
+      "source": "assets/models/tree_yellow_full.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/grasspatch.glb",
+      "id": 4229603891991036415,
+      "label": "grasspatch",
+      "source": "assets/models/grasspatch.glb"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/tree_yellow_few.glb",
+      "id": 12406930762824764527,
+      "label": "tree_yellow_few",
+      "source": "assets/models/tree_yellow_few.glb"
     }
   ],
   "version": 1
