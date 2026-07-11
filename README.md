@@ -38,6 +38,7 @@ ctest --test-dir build --output-on-failure
 ## Where To Look
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Performance baseline](docs/PERFORMANCE.md)
 - [Engineering contract](docs/ENGINEERING_CONTRACT.md)
 - [Asset pipeline](docs/ASSET_PIPELINE.md)
 - [Requirements and evidence](docs/PROJECT_REQUIREMENTS.md)
