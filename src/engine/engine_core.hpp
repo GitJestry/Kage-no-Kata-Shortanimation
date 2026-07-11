@@ -115,6 +115,7 @@ class EngineCore final {
   void setEditorViewDistance(float parFarPlane);
   void setMaterialDebugMode(render::MaterialDebugMode parMode);
   void setGizmoAxisSpace(render::GizmoAxisSpace parAxisSpace);
+  void setViewportMode(render::ViewportMode parMode);
 
   void update(float parDeltaSeconds);
   void render(const glm::vec2& parViewportSize);
@@ -148,6 +149,8 @@ class EngineCore final {
   [[nodiscard]] float getEditorViewDistance() const;
   [[nodiscard]] render::MaterialDebugMode getMaterialDebugMode() const;
   [[nodiscard]] render::GizmoAxisSpace getGizmoAxisSpace() const;
+  [[nodiscard]] render::ViewportMode getViewportMode() const;
+  [[nodiscard]] const render::RenderFrameStats& getRenderFrameStats() const;
   [[nodiscard]] math::Bounds3 getEntityWorldBounds(
       scene::EntityId parEntity) const;
   [[nodiscard]] std::optional<scene::EntityId> pickEntity(

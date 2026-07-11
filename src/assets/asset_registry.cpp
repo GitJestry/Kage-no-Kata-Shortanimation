@@ -18,6 +18,8 @@ namespace kage::assets {
 
 namespace {
 
+constexpr std::size_t MAX_CONCURRENT_ASSET_LOADS = 2;
+
 [[nodiscard]] float elapsedMilliseconds(
     std::chrono::steady_clock::time_point parStart,
     std::chrono::steady_clock::time_point parEnd) {
@@ -134,18 +136,10 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
     }
   }
 
-  const AnimationClip* longest_clip = nullptr;
   for (const AnimationClip& clip : parSource.animation_clips) {
-    if (clip.channels.empty()) {
-      continue;
+    if (!clip.channels.empty()) {
+      clips.push_back(&clip);
     }
-    if (longest_clip == nullptr ||
-        clip.duration_seconds > longest_clip->duration_seconds) {
-      longest_clip = &clip;
-    }
-  }
-  if (longest_clip != nullptr) {
-    clips.push_back(longest_clip);
   }
 
   return clips;
@@ -286,8 +280,12 @@ const char* getAssetLoadStateLabel(AssetLoadState parState) {
   switch (parState) {
     case AssetLoadState::MetadataReady:
       return "Metadata";
-    case AssetLoadState::Loading:
-      return "Loading";
+    case AssetLoadState::Queued:
+      return "Queued";
+    case AssetLoadState::CpuLoading:
+      return "CPU";
+    case AssetLoadState::GpuUploading:
+      return "GPU";
     case AssetLoadState::Ready:
       return "Ready";
     case AssetLoadState::Error:
@@ -438,7 +436,7 @@ ModelAsset& AssetRegistry::loadAsset(std::size_t parAssetIndex) {
   if (!asset.document.has_value()) {
     try {
       GltfAssetLoader loader;
-      asset.load_state = AssetLoadState::Loading;
+      asset.load_state = AssetLoadState::CpuLoading;
       asset.load_started_at = std::chrono::steady_clock::now();
       asset.document = loader.loadDocument(asset.path);
       asset.last_cpu_import_ms =
@@ -469,15 +467,10 @@ void AssetRegistry::requestLoad(std::size_t parAssetIndex) {
     return;
   }
 
-  asset.load_state = AssetLoadState::Loading;
+  asset.load_state = AssetLoadState::Queued;
   asset.load_error.clear();
   asset.last_cpu_import_ms = 0.0f;
   asset.load_started_at = std::chrono::steady_clock::now();
-  const std::filesystem::path path = asset.path;
-  asset.pending_document = std::async(std::launch::async, [path]() {
-    GltfAssetLoader loader;
-    return loader.loadDocument(path);
-  });
 }
 
 bool AssetRegistry::pollLoad(std::size_t parAssetIndex) {
@@ -486,6 +479,23 @@ bool AssetRegistry::pollLoad(std::size_t parAssetIndex) {
   }
 
   AssetLibraryEntry& asset = m_asset_library[parAssetIndex];
+  if (asset.load_state == AssetLoadState::Queued) {
+    const std::size_t active_loads = static_cast<std::size_t>(std::count_if(
+        m_asset_library.begin(), m_asset_library.end(),
+        [](const AssetLibraryEntry& entry) {
+          return entry.pending_document.has_value();
+        }));
+    if (active_loads < MAX_CONCURRENT_ASSET_LOADS) {
+      const std::filesystem::path path = asset.path;
+      asset.load_state = AssetLoadState::CpuLoading;
+      asset.load_started_at = std::chrono::steady_clock::now();
+      asset.pending_document = std::async(std::launch::async, [path]() {
+        GltfAssetLoader loader;
+        return loader.loadDocument(path);
+      });
+    }
+    return false;
+  }
   if (!asset.pending_document.has_value()) {
     return false;
   }
@@ -501,7 +511,7 @@ bool AssetRegistry::pollLoad(std::size_t parAssetIndex) {
     asset.last_cpu_import_ms =
         elapsedMilliseconds(asset.load_started_at,
                             std::chrono::steady_clock::now());
-    asset.load_state = AssetLoadState::Ready;
+    asset.load_state = AssetLoadState::GpuUploading;
     asset.load_error.clear();
     applyAnimationPacks(asset);
   } catch (const std::exception& error) {
@@ -513,6 +523,13 @@ bool AssetRegistry::pollLoad(std::size_t parAssetIndex) {
     asset.load_error = error.what();
   }
   return true;
+}
+
+void AssetRegistry::completeGpuUpload(std::size_t parAssetIndex) {
+  AssetLibraryEntry* asset = getAssetLibraryEntry(parAssetIndex);
+  if (asset != nullptr && asset->load_state == AssetLoadState::GpuUploading) {
+    asset->load_state = AssetLoadState::Ready;
+  }
 }
 
 std::string AssetRegistry::reserveInstanceName(std::size_t parAssetIndex) {

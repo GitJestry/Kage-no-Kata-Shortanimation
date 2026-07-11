@@ -37,6 +37,11 @@ void WorldEditor::update(float parDeltaSeconds,
   if (parInput.key_tab_pressed && !parInput.wants_capture_keyboard) {
     m_ui.togglePanelVisibility();
   }
+  if (parInput.key_z_pressed && !parInput.wants_capture_keyboard) {
+    const int current = static_cast<int>(m_engine.getViewportMode());
+    m_engine.setViewportMode(
+        static_cast<render::ViewportMode>((current + 1) % 4));
+  }
   if (parInput.key_delete_pressed && !parInput.wants_capture_keyboard &&
       !parInput.wants_capture_mouse) {
     if (!cancelActiveOperation()) {

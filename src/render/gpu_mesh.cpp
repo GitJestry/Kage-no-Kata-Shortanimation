@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <meshoptimizer.h>
 
 namespace {
 
@@ -188,7 +189,31 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
 
     PrimitiveGpuData gpu_primitive;
     gpu_primitive.transform = primitive.transform;
-    gpu_primitive.index_count = checkedIndexCount(primitive.indices.size());
+    std::vector<std::uint32_t> lod0 = primitive.indices;
+    meshopt_optimizeVertexCache(lod0.data(), primitive.indices.data(),
+                                primitive.indices.size(),
+                                primitive.vertices.size());
+    std::array<std::vector<std::uint32_t>, 3> lod_indices;
+    lod_indices[0] = std::move(lod0);
+    const std::array<float, 3> ratios{1.0f, 0.5f, 0.15f};
+    const std::array<float, 3> errors{0.0f, 0.02f, 0.08f};
+    for (std::size_t lod = 1; lod < lod_indices.size(); ++lod) {
+      const std::size_t target =
+          std::max<std::size_t>(3, (primitive.indices.size() *
+                                    static_cast<std::size_t>(ratios[lod] * 100.0f) /
+                                    100) / 3 * 3);
+      lod_indices[lod].resize(primitive.indices.size());
+      float result_error = 0.0f;
+      const std::size_t count = meshopt_simplify(
+          lod_indices[lod].data(), lod_indices[0].data(),
+          lod_indices[0].size(), &primitive.vertices[0].position.x,
+          primitive.vertices.size(), sizeof(assets::StaticVertex), target,
+          errors[lod], 0, &result_error);
+      lod_indices[lod].resize(count > 0 ? count : lod_indices[0].size());
+      if (count == 0) {
+        lod_indices[lod] = lod_indices[0];
+      }
+    }
     gpu_primitive.has_skin = primitive.hasSkinInfluences();
     gpu_primitive.skin_index = primitive.skin_index;
     gpu_primitive.primitive_index = primitive_index;
@@ -221,15 +246,21 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
 
     gpu_primitive.vertex_array.create();
     gpu_primitive.vertex_buffer.create(GL_ARRAY_BUFFER);
-    gpu_primitive.index_buffer.create(GL_ELEMENT_ARRAY_BUFFER);
+    for (GpuBuffer& index_buffer : gpu_primitive.index_buffers) {
+      index_buffer.create(GL_ELEMENT_ARRAY_BUFFER);
+    }
 
     gpu_primitive.vertex_array.bind();
     const std::vector<MeshVertex> vertices = buildVertices(primitive);
     gpu_primitive.vertex_buffer.setData(
         vertices.size() * sizeof(MeshVertex), vertices.data(), GL_STATIC_DRAW);
-    gpu_primitive.index_buffer.setData(
-        primitive.indices.size() * sizeof(std::uint32_t),
-        primitive.indices.data(), GL_STATIC_DRAW);
+    for (std::size_t lod = 0; lod < lod_indices.size(); ++lod) {
+      gpu_primitive.index_buffers[lod].setData(
+          lod_indices[lod].size() * sizeof(std::uint32_t),
+          lod_indices[lod].data(), GL_STATIC_DRAW);
+      gpu_primitive.index_counts[lod] = checkedIndexCount(lod_indices[lod].size());
+      m_index_counts[lod] += lod_indices[lod].size();
+    }
 
     gpu_primitive.vertex_array.setFloatAttribute(
         POSITION_ATTRIBUTE, 3, GL_FLOAT, MESH_VERTEX_STRIDE,
@@ -250,7 +281,6 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
         WEIGHTS_ATTRIBUTE, 4, GL_FLOAT, MESH_VERTEX_STRIDE,
         offsetof(MeshVertex, weights));
 
-    m_index_count += primitive.indices.size();
     m_primitives.push_back(std::move(gpu_primitive));
   }
 
@@ -266,7 +296,9 @@ void GpuMesh::draw(const ShaderProgram& parShader,
                    const lighting::LightingState& parLighting,
                    std::span<const std::vector<glm::mat4>> parSkinMatrices,
                    float parEntityOpacity,
-                   MaterialDebugMode parDebugMode) const {
+                   MaterialDebugMode parDebugMode,
+                   bool parSolidMode,
+                   std::size_t parLod) const {
   if (m_primitives.empty()) {
     return;
   }
@@ -306,7 +338,9 @@ void GpuMesh::draw(const ShaderProgram& parShader,
   }
   parShader.setInt("u_material_debug_mode",
                    static_cast<int>(parDebugMode));
+  parShader.setInt("u_solid_mode", parSolidMode ? 1 : 0);
 
+  const std::size_t lod = std::min<std::size_t>(parLod, 2);
   for (const PrimitiveGpuData& primitive : m_primitives) {
     parShader.setMat4("u_model", parEntityTransform * primitive.transform);
     parShader.setVec4("u_base_color_factor", primitive.base_color_factor);
@@ -324,7 +358,7 @@ void GpuMesh::draw(const ShaderProgram& parShader,
                                const assets::MaterialTextureSlot& slot,
                                GLuint texture_unit) {
       const bool has_texture =
-          slot.isValid() && static_cast<std::size_t>(slot.texture_index) <
+          !parSolidMode && slot.isValid() && static_cast<std::size_t>(slot.texture_index) <
                                 m_textures.size() &&
           m_textures[slot.texture_index].isValid();
       parShader.setInt(has_name, has_texture ? 1 : 0);
@@ -370,7 +404,8 @@ void GpuMesh::draw(const ShaderProgram& parShader,
     }
 
     primitive.vertex_array.bind();
-    glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,
+    primitive.index_buffers[lod].bind();
+    glDrawElements(GL_TRIANGLES, primitive.index_counts[lod], GL_UNSIGNED_INT,
                    nullptr);
   }
 
@@ -416,7 +451,8 @@ void GpuMesh::drawOutline(const ShaderProgram& parShader,
               matrices.size(), static_cast<std::size_t>(MAX_SHADER_JOINTS))));
     }
     primitive.vertex_array.bind();
-    glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,
+    primitive.index_buffers[0].bind();
+    glDrawElements(GL_TRIANGLES, primitive.index_counts[0], GL_UNSIGNED_INT,
                    nullptr);
   }
   glCullFace(GL_BACK);
@@ -428,15 +464,15 @@ void GpuMesh::clear() {
   m_primitives.clear();
   m_fallback_texture.release();
   m_textures.clear();
-  m_index_count = 0;
+  m_index_counts = {};
 }
 
 std::size_t GpuMesh::getPrimitiveCount() const {
   return m_primitives.size();
 }
 
-std::size_t GpuMesh::getIndexCount() const {
-  return m_index_count;
+std::size_t GpuMesh::getIndexCount(std::size_t parLod) const {
+  return m_index_counts[std::min<std::size_t>(parLod, 2)];
 }
 
 bool GpuMesh::isValid() const {

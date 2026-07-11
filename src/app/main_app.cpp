@@ -99,6 +99,7 @@ input::EditorInputSnapshot MainApp::collectInputSnapshot() {
   const bool delete_down =
       isKeyPressed(Key::DELETE) || isKeyPressed(Key::BACKSPACE);
   const bool tab_down = isKeyPressed(Key::TAB);
+  const bool z_down = isKeyPressed(Key::Z);
 
   const ImGuiIO& io = ImGui::GetIO();
   input::EditorInputSnapshot snapshot;
@@ -126,6 +127,7 @@ input::EditorInputSnapshot MainApp::collectInputSnapshot() {
   snapshot.key_escape_pressed = escape_down && !m_last_escape_down;
   snapshot.key_delete_pressed = delete_down && !m_last_delete_down;
   snapshot.key_tab_pressed = tab_down && !m_last_tab_down;
+  snapshot.key_z_pressed = z_down && !m_last_z_down;
   snapshot.wants_capture_mouse = io.WantCaptureMouse;
   snapshot.wants_capture_keyboard = io.WantCaptureKeyboard;
   snapshot.ui_item_active = ImGui::IsAnyItemActive();
@@ -141,6 +143,7 @@ input::EditorInputSnapshot MainApp::collectInputSnapshot() {
   m_last_escape_down = escape_down;
   m_last_delete_down = delete_down;
   m_last_tab_down = tab_down;
+  m_last_z_down = z_down;
   return snapshot;
 }
 

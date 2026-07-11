@@ -504,6 +504,13 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
     const float fly_speed = document.value(
         "fly_speed", parEngine.m_camera_system.getFlyMoveSpeed());
     parEngine.m_camera_system.setFlyMoveSpeed(fly_speed);
+    const int viewport_mode = document.value(
+        "viewport_mode", static_cast<int>(render::ViewportMode::Material));
+    if (viewport_mode >= static_cast<int>(render::ViewportMode::Bounds) &&
+        viewport_mode <= static_cast<int>(render::ViewportMode::Final)) {
+      parEngine.m_render_settings.viewport.mode =
+          static_cast<render::ViewportMode>(viewport_mode);
+    }
 
     const json& local_scenes_json =
         document.value("local_scenes", json::array());
@@ -592,11 +599,13 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
   std::filesystem::create_directories(save_path.parent_path());
 
   json document;
-  document["version"] = 1;
+  document["version"] = 2;
   document["fly_speed"] = parEngine.m_camera_system.getFlyMoveSpeed();
   document["selected_entity"] =
       parEngine.m_scene_manager.getSelectedEntity().value;
   document["active_scene"] = parEngine.m_scene_manager.getActiveSceneIndex();
+  document["viewport_mode"] =
+      static_cast<int>(parEngine.m_render_settings.viewport.mode);
   document["local_scenes"] = json::array();
 
   for (const scene::SceneManager::SceneRecord& scene :

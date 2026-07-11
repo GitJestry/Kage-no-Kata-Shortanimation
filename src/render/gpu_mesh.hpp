@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <span>
 #include <vector>
 
@@ -44,7 +45,9 @@ class GpuMesh final {
             const lighting::LightingState& parLighting,
             std::span<const std::vector<glm::mat4>> parSkinMatrices,
             float parEntityOpacity,
-            MaterialDebugMode parDebugMode) const;
+            MaterialDebugMode parDebugMode,
+            bool parSolidMode = false,
+            std::size_t parLod = 0) const;
   void drawOutline(const ShaderProgram& parShader,
                    const glm::mat4& parViewProjection,
                    const glm::mat4& parEntityTransform,
@@ -54,14 +57,14 @@ class GpuMesh final {
   void clear();
 
   [[nodiscard]] std::size_t getPrimitiveCount() const;
-  [[nodiscard]] std::size_t getIndexCount() const;
+  [[nodiscard]] std::size_t getIndexCount(std::size_t parLod = 0) const;
   [[nodiscard]] bool isValid() const;
 
  private:
   struct PrimitiveGpuData final {
     VertexArray vertex_array;
     GpuBuffer vertex_buffer;
-    GpuBuffer index_buffer;
+    std::array<GpuBuffer, 3> index_buffers;
     glm::mat4 transform{1.0f};
     glm::vec4 base_color_factor{1.0f};
     assets::MaterialTextureSlot base_color_texture;
@@ -79,13 +82,13 @@ class GpuMesh final {
     bool has_skin = false;
     std::uint32_t skin_index = assets::INVALID_SKIN_INDEX;
     std::size_t primitive_index = 0;
-    GLsizei index_count = 0;
+    std::array<GLsizei, 3> index_counts{};
   };
 
   std::vector<PrimitiveGpuData> m_primitives;
   Texture2D m_fallback_texture;
   std::vector<Texture2D> m_textures;
-  std::size_t m_index_count = 0;
+  std::array<std::size_t, 3> m_index_counts{};
 };
 
 }  // namespace kage::render

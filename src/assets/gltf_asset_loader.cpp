@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <unordered_map>
 
 namespace {
 
@@ -42,6 +43,51 @@ constexpr int DEFAULT_SCENE_INDEX = 0;
   return std::string_view(header.data(),
                           static_cast<std::size_t>(input.gcount()))
       .starts_with(LFS_HEADER);
+}
+
+void mergeStaticPrimitivesByMaterial(kage::assets::StaticModel& parModel) {
+  if (parModel.primitives.size() < 2) {
+    return;
+  }
+  std::vector<kage::assets::StaticPrimitive> merged;
+  std::unordered_map<std::uint32_t, std::size_t> material_batches;
+  for (const kage::assets::StaticPrimitive& source : parModel.primitives) {
+    if (source.skin_index != kage::assets::INVALID_SKIN_INDEX) {
+      return;
+    }
+    auto [iterator, inserted] =
+        material_batches.emplace(source.material_index, merged.size());
+    if (inserted) {
+      kage::assets::StaticPrimitive batch;
+      batch.name = "material batch";
+      batch.material_index = source.material_index;
+      merged.push_back(std::move(batch));
+    }
+    kage::assets::StaticPrimitive& destination = merged[iterator->second];
+    const std::uint32_t vertex_offset =
+        static_cast<std::uint32_t>(destination.vertices.size());
+    const glm::mat3 normal_matrix =
+        glm::transpose(glm::inverse(glm::mat3(source.transform)));
+    destination.vertices.reserve(destination.vertices.size() +
+                                 source.vertices.size());
+    for (const kage::assets::StaticVertex& vertex : source.vertices) {
+      kage::assets::StaticVertex transformed = vertex;
+      transformed.position = glm::vec3(
+          source.transform * glm::vec4(vertex.position, 1.0f));
+      transformed.normal = glm::normalize(normal_matrix * vertex.normal);
+      transformed.tangent = glm::vec4(
+          glm::normalize(normal_matrix * glm::vec3(vertex.tangent)),
+          vertex.tangent.w);
+      destination.bounds.includePoint(transformed.position);
+      destination.vertices.push_back(transformed);
+    }
+    destination.indices.reserve(destination.indices.size() +
+                                source.indices.size());
+    for (std::uint32_t index : source.indices) {
+      destination.indices.push_back(vertex_offset + index);
+    }
+  }
+  parModel.primitives = std::move(merged);
 }
 
 [[nodiscard]] const tinygltf::Accessor& getAccessor(
@@ -1249,6 +1295,10 @@ GltfDocument GltfAssetLoader::loadDocument(
   importMarkers(output);
   importAnimations(gltf_model, parPath, output);
 
+  if (output.skins.empty()) {
+    mergeStaticPrimitivesByMaterial(output.static_model);
+  }
+
   output.bounds = output.static_model.bounds;
   output.stats.primitive_count = output.static_model.primitives.size();
   output.stats.vertex_count = output.static_model.stats.vertex_count;
@@ -1257,6 +1307,34 @@ GltfDocument GltfAssetLoader::loadDocument(
   output.stats.index_count = output.static_model.stats.index_count;
   output.stats.triangle_count = output.static_model.stats.triangle_count;
   output.stats.marker_count = output.markers.size();
+  int max_texture_dimension = 0;
+  for (const StaticImage& image : output.static_model.images) {
+    max_texture_dimension =
+        std::max({max_texture_dimension, image.width, image.height});
+  }
+  std::vector<std::string> performance_warnings;
+  if (output.stats.vertex_count > 500000) {
+    performance_warnings.push_back("more than 500k vertices");
+  }
+  if (output.stats.material_count > 32) {
+    performance_warnings.push_back("more than 32 materials");
+  }
+  if (max_texture_dimension > 2048) {
+    performance_warnings.push_back("texture larger than 2048px");
+  }
+  if (!performance_warnings.empty()) {
+    if (!output.import_warning.empty()) {
+      output.import_warning += "\n";
+    }
+    output.import_warning += "Viewport performance warning: ";
+    for (std::size_t index = 0; index < performance_warnings.size(); ++index) {
+      if (index != 0) {
+        output.import_warning += ", ";
+      }
+      output.import_warning += performance_warnings[index];
+    }
+    output.static_model.import_warning = output.import_warning;
+  }
   output.static_model.stats = output.stats;
   return output;
 }

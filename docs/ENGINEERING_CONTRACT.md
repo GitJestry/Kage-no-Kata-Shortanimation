@@ -14,6 +14,7 @@ KageEngine is the engine foundation for the film, not a preview app.
 - Implemented features and planned features are documented separately.
 - Production paths do not contain one-off test scaffolding.
 - Large files are stored through Git LFS.
+- Generated cache data belongs in `.kage_cache/` and is never source of truth.
 
 ## Review Checklist
 

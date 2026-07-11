@@ -303,6 +303,7 @@ void EngineCore::pollAssetStreaming() {
           elapsedMilliseconds(upload_begin, Clock::now());
     }
     attachLoadedAssetToInstances(asset_index);
+    m_asset_registry.completeGpuUpload(asset_index);
   }
 }
 
@@ -493,6 +494,14 @@ render::MaterialDebugMode EngineCore::getMaterialDebugMode() const {
 
 render::GizmoAxisSpace EngineCore::getGizmoAxisSpace() const {
   return m_render_settings.gizmo_axis_space;
+}
+
+render::ViewportMode EngineCore::getViewportMode() const {
+  return m_render_settings.viewport.mode;
+}
+
+const render::RenderFrameStats& EngineCore::getRenderFrameStats() const {
+  return m_world_renderer.getFrameStats();
 }
 
 const EngineCore::FrameTimings& EngineCore::getFrameTimings() const {

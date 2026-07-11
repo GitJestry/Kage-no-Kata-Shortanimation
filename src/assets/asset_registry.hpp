@@ -16,7 +16,9 @@ namespace kage::assets {
 
 enum class AssetLoadState {
   MetadataReady,
-  Loading,
+  Queued,
+  CpuLoading,
+  GpuUploading,
   Ready,
   Error
 };
@@ -65,6 +67,7 @@ class AssetRegistry final {
   ModelAsset& loadAsset(std::size_t parAssetIndex);
   void requestLoad(std::size_t parAssetIndex);
   bool pollLoad(std::size_t parAssetIndex);
+  void completeGpuUpload(std::size_t parAssetIndex);
   std::string reserveInstanceName(std::size_t parAssetIndex);
   void releaseInstance(std::size_t parAssetIndex);
   void setInstanceState(std::size_t parAssetIndex, std::size_t parCount,

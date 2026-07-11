@@ -11,7 +11,8 @@ int main(int parArgumentCount, char** parArguments) {
     std::cerr << "usage: asset_import_check <asset.glb> [--require-rig] "
                  "[--min-animation-clips count] "
                  "[--min-real-clip-duration seconds] "
-                 "[--min-clip-keys count]\n";
+                 "[--min-clip-keys count] "
+                 "[--max-render-primitives count]\n";
     return 2;
   }
 
@@ -20,6 +21,7 @@ int main(int parArgumentCount, char** parArguments) {
   std::size_t min_animation_clips = 0;
   float min_real_clip_duration = 0.0f;
   std::size_t min_clip_keys = 0;
+  std::size_t max_render_primitives = 0;
   for (int argument_index = 2; argument_index < parArgumentCount;
        ++argument_index) {
     const std::string argument = parArguments[argument_index];
@@ -35,6 +37,10 @@ int main(int parArgumentCount, char** parArguments) {
     } else if (argument == "--min-clip-keys" &&
                argument_index + 1 < parArgumentCount) {
       min_clip_keys =
+          static_cast<std::size_t>(std::stoull(parArguments[++argument_index]));
+    } else if (argument == "--max-render-primitives" &&
+               argument_index + 1 < parArgumentCount) {
+      max_render_primitives =
           static_cast<std::size_t>(std::stoull(parArguments[++argument_index]));
     } else {
       std::cerr << "unknown argument: " << argument << '\n';
@@ -52,6 +58,13 @@ int main(int parArgumentCount, char** parArguments) {
     if (asset.static_model.stats.vertex_count == 0 ||
         asset.static_model.stats.index_count == 0) {
       std::cerr << asset_path << ": no renderable vertex/index data\n";
+      return 1;
+    }
+    if (max_render_primitives > 0 &&
+        asset.static_model.primitives.size() > max_render_primitives) {
+      std::cerr << asset_path << ": expected at most "
+                << max_render_primitives << " optimized primitives, found "
+                << asset.static_model.primitives.size() << '\n';
       return 1;
     }
 

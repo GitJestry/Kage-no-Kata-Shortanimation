@@ -5,6 +5,12 @@ project(kage_engine VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+    Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 include(FetchContent)
 include(cmake/Sources.cmake)
 include(cmake/PatchGltemplate.cmake)
@@ -35,10 +41,23 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tinygltf)
 
+FetchContent_Declare(
+  meshoptimizer
+  URL https://github.com/zeux/meshoptimizer/archive/refs/tags/v1.1.tar.gz
+  URL_HASH SHA256=b787011f81b4b3069c2f9065b7c191efdd4189a49be32ba5282dd5579f05261a
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "" FORCE)
+set(MESHOPT_BUILD_GLTFPACK OFF CACHE BOOL "" FORCE)
+set(MESHOPT_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(meshoptimizer)
+
 add_executable(${PROJECT_NAME} src/main.cpp ${KAGE_ENGINE_SOURCES})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE src)
-target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf)
+target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf meshoptimizer)
+target_compile_definitions(framework PRIVATE
+  KAGE_GL_VALIDATION=$<IF:$<CONFIG:Debug>,1,0>)
 
 function(kage_add_check TARGET_NAME)
   add_executable(${TARGET_NAME} ${ARGN})
@@ -93,19 +112,21 @@ set(RUNTIME_ASSET_DIRECTORIES
   textures
 )
 
-foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)
-  add_custom_command(
-    TARGET ${PROJECT_NAME}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E rm -rf
-      "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-      "${CMAKE_CURRENT_SOURCE_DIR}/assets/${ASSET_DIRECTORY}"
-      "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
-    COMMENT "Copying runtime ${ASSET_DIRECTORY} assets"
-    VERBATIM
-  )
-endforeach()
+option(KAGE_COPY_RUNTIME_ASSETS
+  "Copy runtime assets beside the executable after each build" OFF)
+if(KAGE_COPY_RUNTIME_ASSETS)
+  foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)
+    add_custom_command(
+      TARGET ${PROJECT_NAME}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/${ASSET_DIRECTORY}"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
+      COMMENT "Copying runtime ${ASSET_DIRECTORY} assets"
+      VERBATIM
+    )
+  endforeach()
+endif()
 
 install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION .
@@ -122,6 +143,18 @@ add_test(
   NAME asset_import_torii_gate
   COMMAND asset_import_check
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/torii_gate.glb"
+)
+add_test(
+  NAME asset_batch_grasspatch
+  COMMAND asset_import_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/grasspatch.glb"
+    --max-render-primitives 4
+)
+add_test(
+  NAME asset_batch_shrine
+  COMMAND asset_import_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/shrine.glb"
+    --max-render-primitives 93
 )
 add_test(
   NAME asset_import_samurai_rig

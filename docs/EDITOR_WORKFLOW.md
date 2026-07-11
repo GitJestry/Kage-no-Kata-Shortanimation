@@ -7,6 +7,11 @@
 - `Space` / `Shift`: move up/down.
 - Mouse wheel: camera speed.
 - Double-click an entity in the hierarchy: frame it.
+- `Z`: cycle Bounds, Solid, Material, and Final viewport modes.
+
+The compact viewport strip offers the same four modes. Material is the default;
+Solid forces the lowest generated LOD and skips material texture sampling,
+while Final keeps full geometry detail.
 
 ## World Editing
 

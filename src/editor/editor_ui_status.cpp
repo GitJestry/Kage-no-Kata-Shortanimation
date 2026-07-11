@@ -28,7 +28,7 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
                                       unsigned int parFrameCount) {
   static_cast<void>(parViewportSize);
   const UiWorkArea area = getUiWorkArea();
-  const ImVec2 size(DIAGNOSTICS_WIDTH, 176.0f);
+  const ImVec2 size(DIAGNOSTICS_WIDTH, 224.0f);
   const ImVec2 position = clampPanelPosition(
       area,
       ImVec2(area.position.x + area.size.x - DIAGNOSTICS_WIDTH - 16.0f,
@@ -55,6 +55,12 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
               timings.gpu_upload_ms);
   ImGui::Text("Anim/Render %.2f / %.2f ms", timings.animation_update_ms,
               timings.render_ms);
+  const render::RenderFrameStats& render_stats =
+      parEngine.getRenderFrameStats();
+  ImGui::Text("Draws       %zu", render_stats.draw_calls);
+  ImGui::Text("Triangles   %zu", render_stats.submitted_triangles);
+  ImGui::Text("Visible     %zu (%zu culled)",
+              render_stats.visible_entities, render_stats.culled_entities);
   ImGui::Text("Frame       %u", parFrameCount);
   ImGui::Text("Scene       %zu", parEngine.getActiveSceneIndex() + 1);
   if (parEngine.getSelectedEntity().isValid()) {

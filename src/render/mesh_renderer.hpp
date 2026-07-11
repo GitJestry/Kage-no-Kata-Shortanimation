@@ -28,7 +28,9 @@ class MeshRenderer final {
             const lighting::LightingState& parLighting,
             std::span<const std::vector<glm::mat4>> parSkinMatrices,
             float parEntityOpacity,
-            MaterialDebugMode parDebugMode) const;
+            MaterialDebugMode parDebugMode,
+            bool parSolidMode = false,
+            std::size_t parLod = 0) const;
   void drawOutline(const GpuMesh& parMesh,
                    const glm::mat4& parViewProjection,
                    const glm::mat4& parEntityTransform,

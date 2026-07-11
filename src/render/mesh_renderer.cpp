@@ -90,6 +90,7 @@ uniform float u_point_light_intensities[8];
 uniform float u_point_light_ranges[8];
 uniform vec3 u_camera_position;
 uniform int u_material_debug_mode;
+uniform bool u_solid_mode;
 
 out vec4 fragColor;
 
@@ -152,6 +153,12 @@ vec3 evaluatePbrLight(vec3 baseColor, vec3 normal, vec3 viewDirection,
 }
 
 void main() {
+  if (u_solid_mode) {
+    vec3 normal = normalize(worldNormal);
+    float light = 0.28 + 0.72 * max(dot(normal, normalize(u_sun_direction_to_light)), 0.0);
+    fragColor = vec4(vec3(0.62, 0.65, 0.69) * light, u_entity_opacity);
+    return;
+  }
   vec3 normal = length(worldNormal) > 0.001
       ? normalize(worldNormal)
       : vec3(0.0, 0.0, 1.0);
@@ -317,11 +324,13 @@ void MeshRenderer::draw(const GpuMesh& parMesh,
                               std::span<const std::vector<glm::mat4>>
                                   parSkinMatrices,
                               float parEntityOpacity,
-                              MaterialDebugMode parDebugMode) const {
+                              MaterialDebugMode parDebugMode,
+                              bool parSolidMode,
+                              std::size_t parLod) const {
   parMesh.draw(m_shader, parViewProjection, parCameraPosition,
                parEntityTransform, parLighting, parSkinMatrices,
                parEntityOpacity,
-               parDebugMode);
+               parDebugMode, parSolidMode, parLod);
 }
 
 void MeshRenderer::drawOutline(const GpuMesh& parMesh,

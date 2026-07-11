@@ -407,4 +407,12 @@ void EngineCore::setGizmoAxisSpace(render::GizmoAxisSpace parAxisSpace) {
   markProjectDirty();
 }
 
+void EngineCore::setViewportMode(render::ViewportMode parMode) {
+  if (m_render_settings.viewport.mode == parMode) {
+    return;
+  }
+  m_render_settings.viewport.mode = parMode;
+  saveLocalSession();
+}
+
 }  // namespace kage::engine

@@ -60,6 +60,7 @@ struct EditorInputSnapshot final {
   bool key_escape_pressed = false;
   bool key_delete_pressed = false;
   bool key_tab_pressed = false;
+  bool key_z_pressed = false;
   bool wants_capture_mouse = false;
   bool wants_capture_keyboard = false;
   bool ui_item_active = false;

@@ -81,6 +81,63 @@ struct MeshCenterQuery final {
                          ENTITY_HANDLE_EXTENT);
 }
 
+[[nodiscard]] bool isBoundsVisible(const kage::math::Bounds3& parBounds,
+                                   const glm::mat4& parViewProjection) {
+  if (!parBounds.is_valid) {
+    return true;
+  }
+  const std::array<glm::vec3, 8> corners = {
+      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.min.z),
+      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.min.z),
+      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.min.z),
+      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.min.z),
+      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.max.z),
+      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.max.z),
+      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.max.z),
+      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.max.z),
+  };
+  std::array<int, 6> outside{};
+  for (const glm::vec3& corner : corners) {
+    const glm::vec4 clip = parViewProjection * glm::vec4(corner, 1.0f);
+    outside[0] += clip.x < -clip.w;
+    outside[1] += clip.x > clip.w;
+    outside[2] += clip.y < -clip.w;
+    outside[3] += clip.y > clip.w;
+    outside[4] += clip.z < -clip.w;
+    outside[5] += clip.z > clip.w;
+  }
+  return std::none_of(outside.begin(), outside.end(),
+                      [](int count) { return count == 8; });
+}
+
+[[nodiscard]] std::size_t chooseLod(
+    kage::render::ViewportMode parMode,
+    const kage::math::Bounds3& parBounds,
+    const kage::camera::Camera& parCamera,
+    const glm::vec2& parViewportSize, bool parSelected) {
+  if (parMode == kage::render::ViewportMode::Final || parSelected ||
+      !parBounds.is_valid) {
+    return 0;
+  }
+  if (parMode == kage::render::ViewportMode::Solid) {
+    return 2;
+  }
+  const glm::vec3 center = (parBounds.min + parBounds.max) * 0.5f;
+  const float distance =
+      std::max(glm::length(center - parCamera.position), 0.01f);
+  const float diameter =
+      std::max({parBounds.getSize().x, parBounds.getSize().y,
+                parBounds.getSize().z});
+  const float focal_pixels =
+      std::max(parViewportSize.y, 1.0f) /
+      (2.0f * std::tan(glm::radians(parCamera.vertical_fov_degrees) * 0.5f));
+  const float projected_pixels = diameter * focal_pixels / distance;
+  if (projected_pixels >= 350.0f) {
+    return 0;
+  }
+  return projected_pixels >= 80.0f ? 1 : 2;
+}
+
 void addLine(std::vector<kage::render::LineVertex>& parVertices,
              const glm::vec3& parStart, const glm::vec3& parEnd,
              const glm::vec3& parColor) {
@@ -522,6 +579,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                            const GizmoGuide& parGizmoGuide,
                            const EditorRenderSettings& parSettings,
                            const glm::vec2& parViewportSize) {
+  m_frame_stats = {};
   glEnable(GL_DEPTH_TEST);
   glDepthFunc(GL_LESS);
   glDepthMask(GL_TRUE);
@@ -542,6 +600,16 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       continue;
     }
 
+    const math::Bounds3 world_bounds = getEntityWorldBounds(entity);
+    if (!isBoundsVisible(world_bounds, view_projection)) {
+      ++m_frame_stats.culled_entities;
+      continue;
+    }
+    ++m_frame_stats.visible_entities;
+    if (parSettings.viewport.mode == ViewportMode::Bounds) {
+      continue;
+    }
+
     const GpuMesh* mesh =
         parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle);
     if (mesh == nullptr) {
@@ -552,12 +620,23 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     if (entity.rig.has_value()) {
       skin_matrices = entity.rig->primitive_skin_matrices;
     }
+    const std::size_t lod = entity.rig.has_value()
+                                ? 0
+                                : chooseLod(parSettings.viewport.mode,
+                                            world_bounds, camera,
+                                            parViewportSize,
+                                            entity.id == parScene.selected_entity);
     m_mesh_renderer.draw(*mesh, view_projection,
                                 camera.position,
                                 entity.transform.transform.toMatrix(),
                                 parLighting, skin_matrices,
                                 entity.static_mesh->opacity,
-                                parSettings.material_debug_mode);
+                                parSettings.material_debug_mode,
+                                parSettings.viewport.mode == ViewportMode::Solid,
+                                lod);
+    m_frame_stats.draw_calls += mesh->getPrimitiveCount();
+    ++m_frame_stats.submitted_instances;
+    m_frame_stats.submitted_triangles += mesh->getIndexCount(lod) / 3;
   }
 
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset) {
@@ -623,6 +702,17 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   for (const scene::EntityRecord& entity : parScene.world.getEntities()) {
     if (!entity.alive) {
       continue;
+    }
+    if (parSettings.viewport.mode == ViewportMode::Bounds &&
+        entity.static_mesh.has_value() && entity.static_mesh->visible) {
+      const math::Bounds3 bounds = getEntityWorldBounds(entity);
+      if (bounds.is_valid && isBoundsVisible(bounds, view_projection)) {
+        const glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
+        const glm::vec3 size = bounds.getSize();
+        addCube(m_solid_vertices, center,
+                std::max({size.x, size.y, size.z, 0.05f}),
+                glm::vec4(0.42f, 0.68f, 0.92f, 0.16f));
+      }
     }
     if (entity.static_mesh.has_value() && entity.static_mesh->visible &&
         parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle) ==
@@ -715,6 +805,10 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     glDepthMask(GL_TRUE);
   }
   glEnable(GL_DEPTH_TEST);
+}
+
+const RenderFrameStats& WorldRenderer::getFrameStats() const {
+  return m_frame_stats;
 }
 
 const char* WorldRenderer::getSkyPresetName(SkyPreset parPreset) {

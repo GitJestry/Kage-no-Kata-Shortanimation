@@ -37,6 +37,8 @@ class EditorUi final {
   void clampCurrentPanel(const char* parPanelName,
                          bool parKeepAboveStatusStrip);
   void drawHiddenPanelButton();
+  void drawViewportModeStrip(engine::EngineCore& parEngine,
+                             const glm::vec2& parViewportSize);
   void drawLeftPanel(engine::EngineCore& parEngine,
                      PlacementController& parPlacementController,
                      SelectionController& parSelectionController,

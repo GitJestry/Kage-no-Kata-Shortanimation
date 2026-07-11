@@ -39,6 +39,19 @@ flowchart TD
 - The editor camera is a fly camera; framing moves the camera to a selected
   bounds without changing grid or view-distance settings.
 
+## Performance Architecture
+
+- Asset CPU imports are bounded to two workers; GPU uploads remain on the
+  context-owning main thread.
+- Static glTF primitives are flattened and merged by material before GPU
+  upload. Meshoptimizer prepares vertex-cache-friendly indices plus 50% and
+  15% index-only LODs.
+- The renderer frustum-culls entity bounds and selects LOD from projected
+  screen size. Rigged meshes stay at full detail.
+- OpenGL validation is enabled only in Debug builds. Editor builds default to
+  RelWithDebInfo and do not pay for a `glGetError` after every API call.
+- Runtime Diagnostics reports submitted draws, triangles, and culled entities.
+
 ## Persistence
 
 Tracked project data:
@@ -50,5 +63,7 @@ Private editor state:
 
 - `.kage_local/editor_session.json`
 - `.kage_local/imgui.ini`
+
+The local session also owns the viewport mode; it is not shared project data.
 
 `Save Project` writes tracked world data. Autosave writes local editor state.

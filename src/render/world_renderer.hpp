@@ -30,12 +30,32 @@ enum class GizmoAxisSpace {
   World
 };
 
+enum class ViewportMode {
+  Bounds,
+  Solid,
+  Material,
+  Final
+};
+
+struct EditorViewportSettings final {
+  ViewportMode mode = ViewportMode::Material;
+};
+
+struct RenderFrameStats final {
+  std::size_t visible_entities = 0;
+  std::size_t culled_entities = 0;
+  std::size_t draw_calls = 0;
+  std::size_t submitted_instances = 0;
+  std::size_t submitted_triangles = 0;
+};
+
 struct EditorRenderSettings final {
   SkyPreset sky_preset = SkyPreset::DarkVoid;
   MaterialDebugMode material_debug_mode = MaterialDebugMode::Lit;
   GizmoAxisSpace gizmo_axis_space = GizmoAxisSpace::Local;
   bool floor_grid_visible = true;
   int floor_grid_radius = 80;
+  EditorViewportSettings viewport;
 };
 
 struct GizmoGuide final {
@@ -77,6 +97,7 @@ class WorldRenderer final {
 
   [[nodiscard]] static const char* getSkyPresetName(SkyPreset parPreset);
   [[nodiscard]] static glm::vec3 getClearColor(SkyPreset parPreset);
+  [[nodiscard]] const RenderFrameStats& getFrameStats() const;
 
  private:
   MeshRenderer m_mesh_renderer;
@@ -87,6 +108,7 @@ class WorldRenderer final {
   std::vector<LineVertex> m_line_vertices;
   std::vector<SolidGizmoVertex> m_solid_vertices;
   std::vector<SolidGizmoVertex> m_glow_vertices;
+  RenderFrameStats m_frame_stats;
 };
 
 inline bool PlacementGhost::isActive() const {

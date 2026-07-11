@@ -200,6 +200,7 @@ void EditorUi::draw(engine::EngineCore& parEngine,
                     unsigned int parFrameCount) {
   applyStyle();
   beginPanelTracking();
+  drawViewportModeStrip(parEngine, parViewportSize);
   if (!m_panel_visible) {
     drawHiddenPanelButton();
   } else {
@@ -229,6 +230,55 @@ void EditorUi::draw(engine::EngineCore& parEngine,
                   parViewportSize);
   drawAxisLabels(parEngine, parViewportSize);
   drawImportDialogs(parEngine, parPlacementController);
+}
+
+void EditorUi::drawViewportModeStrip(engine::EngineCore& parEngine,
+                                     const glm::vec2& parViewportSize) {
+  constexpr float WIDTH = 276.0f;
+  ImGui::SetNextWindowPos(ImVec2(std::max(parViewportSize.x - WIDTH - 12.0f,
+                                         12.0f),
+                               12.0f),
+                          ImGuiCond_Always);
+  ImGui::SetNextWindowBgAlpha(0.88f);
+  ImGui::Begin("ViewportModeStrip", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_AlwaysAutoResize |
+                   ImGuiWindowFlags_NoSavedSettings);
+  trackCurrentPanel();
+  struct ModeButton {
+    const char* label;
+    const char* tooltip;
+    render::ViewportMode mode;
+  };
+  constexpr std::array<ModeButton, 4> MODES{{
+      {"Bounds", "Bounds only: fastest navigation",
+       render::ViewportMode::Bounds},
+      {"Solid", "Untextured solid viewport", render::ViewportMode::Solid},
+      {"Material", "Material preview (default)",
+       render::ViewportMode::Material},
+      {"Final", "Full material and lighting preview",
+       render::ViewportMode::Final},
+  }};
+  for (std::size_t index = 0; index < MODES.size(); ++index) {
+    if (index != 0) {
+      ImGui::SameLine();
+    }
+    const bool active = parEngine.getViewportMode() == MODES[index].mode;
+    if (active) {
+      ImGui::PushStyleColor(ImGuiCol_Button,
+                            ImVec4(0.18f, 0.42f, 0.68f, 1.0f));
+    }
+    if (ImGui::SmallButton(MODES[index].label)) {
+      parEngine.setViewportMode(MODES[index].mode);
+    }
+    if (active) {
+      ImGui::PopStyleColor();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", MODES[index].tooltip);
+    }
+  }
+  ImGui::End();
 }
 
 void EditorUi::togglePanelVisibility() {
