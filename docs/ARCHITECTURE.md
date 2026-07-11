@@ -8,8 +8,10 @@ flowchart TD
     MainApp["MainApp\nwindow + raw input polling"]
     Editor["WorldEditor\neditor input coordinator"]
     Engine["EngineCore\ncommands + queries"]
-    Assets["AssetRegistry\nGLB model data"]
+    Assets["AssetRegistry\nmetadata + animation data"]
+    Streamer["AssetStreamer\npriority queue + two CPU workers"]
     MeshCache["MeshResourceCache\nGPU resources"]
+    Textures["TextureResourceCache\nshared image storage"]
     Scenes["SceneManager\nworlds + entities"]
     Camera["CameraSystem\nfly camera + frame selection"]
     Animation["AnimationSystem\nclip playback + skin matrices"]
@@ -19,7 +21,9 @@ flowchart TD
     World["projects/kage_no_kata_world.kage.json"]
 
     MainApp --> Editor --> Engine
-    Engine --> Assets --> MeshCache
+    Engine --> Assets
+    Engine --> Streamer --> Assets
+    Engine --> MeshCache --> Textures
     Engine --> Scenes
     Engine --> Camera
     Engine --> Animation
@@ -32,7 +36,10 @@ flowchart TD
 ## Ownership Rules
 
 - UI sends commands; it does not mutate scene records directly.
-- Assets store parsed source data. Render owns GPU buffers and textures.
+- Assets retain metadata, bounds, skeletons, and clips. The streamer owns
+  transient decoded payloads until render uploads them.
+- Render owns GPU buffers. Shared texture storage is content-addressed while
+  per-material sampler state remains independent.
 - Scene data uses stable entity ids and stable asset ids.
 - Animation samples skeleton clips into `SkeletonPose` and writes skin palettes.
 - Lighting stores one scene sun, environment values, and point light entities.
@@ -43,6 +50,9 @@ flowchart TD
 
 - Asset CPU imports are bounded to two workers; GPU uploads remain on the
   context-owning main thread.
+- Decoded static geometry and image pixels are released after upload. Material
+  textures use a bounded proxy tier; Final resources load on demand and become
+  evictable when Final mode is left.
 - Static glTF primitives are flattened and merged by material before GPU
   upload. Meshoptimizer prepares vertex-cache-friendly indices plus 50% and
   15% index-only LODs.
@@ -64,6 +74,7 @@ Private editor state:
 - `.kage_local/editor_session.json`
 - `.kage_local/imgui.ini`
 
-The local session also owns the viewport mode; it is not shared project data.
+The local session owns the active scene, selection, viewport mode, grid,
+material debug mode, gizmo space, and fly speed; none is shared project data.
 
 `Save Project` writes tracked world data. Autosave writes local editor state.

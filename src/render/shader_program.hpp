@@ -33,8 +33,13 @@ class ShaderProgram final {
                     GLsizei parCount) const;
   void setFloat(const char* parName, float parValue) const;
   void setInt(const char* parName, int parValue) const;
+  void setUInt(const char* parName, unsigned int parValue) const;
   void setVec2(const char* parName, const glm::vec2& parValue) const;
   void setVec3(const char* parName, const glm::vec3& parValue) const;
+  void setVec3Array(const char* parName, const glm::vec3* parValues,
+                    GLsizei parCount) const;
+  void setFloatArray(const char* parName, const float* parValues,
+                     GLsizei parCount) const;
   void setVec4(const char* parName, const glm::vec4& parValue) const;
 
   [[nodiscard]] GLuint getHandle() const;

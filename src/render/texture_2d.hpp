@@ -42,4 +42,22 @@ class Texture2D final {
   GLuint m_handle = 0;
 };
 
+class TextureSampler final {
+ public:
+  TextureSampler() = default;
+  TextureSampler(const TextureSampler&) = delete;
+  TextureSampler& operator=(const TextureSampler&) = delete;
+  TextureSampler(TextureSampler&& parOther) noexcept;
+  TextureSampler& operator=(TextureSampler&& parOther) noexcept;
+  ~TextureSampler();
+
+  void configure(GLint parMinFilter, GLint parMagFilter, GLint parWrapS,
+                 GLint parWrapT);
+  void bind(GLuint parTextureUnit) const;
+  void release();
+
+ private:
+  GLuint m_handle = 0;
+};
+
 }  // namespace kage::render

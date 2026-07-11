@@ -13,10 +13,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <array>
+#include <memory>
 #include <span>
 #include <vector>
 
 namespace kage::render {
+
+class TextureResourceCache;
 
 enum class MaterialDebugMode {
   Lit,
@@ -37,7 +40,9 @@ class GpuMesh final {
   GpuMesh(GpuMesh&&) noexcept = default;
   GpuMesh& operator=(GpuMesh&&) noexcept = default;
 
-  void upload(const assets::StaticModel& parModel);
+  void upload(const assets::StaticModel& parModel,
+              assets::AssetQualityTier parQuality,
+              TextureResourceCache& parTextureCache);
   void draw(const ShaderProgram& parShader,
             const glm::mat4& parViewProjection,
             const glm::vec3& parCameraPosition,
@@ -54,6 +59,11 @@ class GpuMesh final {
                    std::span<const std::vector<glm::mat4>> parSkinMatrices,
                    const glm::vec4& parColor,
                    float parThickness) const;
+  void drawPicking(const ShaderProgram& parShader,
+                   const glm::mat4& parViewProjection,
+                   const glm::mat4& parEntityTransform,
+                   std::span<const std::vector<glm::mat4>> parSkinMatrices,
+                   std::uint32_t parEntityId) const;
   void clear();
 
   [[nodiscard]] std::size_t getPrimitiveCount() const;
@@ -85,9 +95,14 @@ class GpuMesh final {
     std::array<GLsizei, 3> index_counts{};
   };
 
+  struct TextureBinding final {
+    std::shared_ptr<Texture2D> storage;
+    TextureSampler sampler;
+  };
+
   std::vector<PrimitiveGpuData> m_primitives;
   Texture2D m_fallback_texture;
-  std::vector<Texture2D> m_textures;
+  std::vector<TextureBinding> m_textures;
   std::array<std::size_t, 3> m_index_counts{};
 };
 

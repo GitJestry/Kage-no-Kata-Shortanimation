@@ -7,18 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace {
-
 constexpr float ENTITY_HANDLE_EXTENT = 0.35f;
-
-[[nodiscard]] kage::math::Bounds3 makePlaceholderAssetBounds() {
-  kage::math::Bounds3 bounds;
-  bounds.includePoint(glm::vec3(-0.5f, 0.0f, -0.5f));
-  bounds.includePoint(glm::vec3(0.5f, 1.0f, 0.5f));
-  return bounds;
-}
-
-}  // namespace
 
 namespace kage::engine {
 
@@ -43,7 +32,7 @@ std::size_t EngineCore::createLocalScene(std::string parName) {
     createDefaultSceneEntities(*scene);
   }
   syncCameraFromEditorEntity();
-  saveLocalSession();
+  m_local_session_dirty = true;
   return index;
 }
 
@@ -57,7 +46,7 @@ bool EngineCore::deleteScene(std::size_t parSceneIndex) {
     syncCameraFromEditorEntity();
     rebuildAssetInstanceCounts();
     if (local_only) {
-      saveLocalSession();
+      m_local_session_dirty = true;
     } else {
       markProjectDirty();
     }
@@ -71,13 +60,20 @@ void EngineCore::setActiveScene(std::size_t parSceneIndex) {
   m_scene_manager.setActiveScene(parSceneIndex);
   syncCameraFromEditorEntity();
   if (previous_scene != m_scene_manager.getActiveSceneIndex()) {
-    markProjectDirty();
+    m_local_session_dirty = true;
   }
 }
 
 void EngineCore::renameScene(std::size_t parSceneIndex, std::string parName) {
+  const scene::SceneManager::SceneRecord* scene =
+      m_scene_manager.getScene(parSceneIndex);
+  const bool local_only = scene != nullptr && scene->local_only;
   m_scene_manager.renameScene(parSceneIndex, std::move(parName));
-  markProjectDirty();
+  if (local_only) {
+    m_local_session_dirty = true;
+  } else {
+    m_project_dirty = true;
+  }
 }
 
 scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,
@@ -101,13 +97,13 @@ scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,
   static_mesh.asset_library_index = parAssetIndex;
   static_mesh.local_bounds =
       document != nullptr ? document->static_model.bounds
-                          : makePlaceholderAssetBounds();
+                          : math::makeAssetPlaceholderBounds();
   static_mesh.opacity = std::clamp(parAlpha, 0.05f, 1.0f);
   getActiveScene().world.setStaticMesh(entity, static_mesh);
   if (document != nullptr && !document->skins.empty()) {
     scene::RigComponent rig;
     rig.primitive_skin_matrices.resize(
-        document->static_model.primitives.size());
+        document->primitive_skin_bindings.size());
     getActiveScene().world.setRig(entity, std::move(rig));
   }
   setEntityPosition(entity, parPosition);
@@ -182,6 +178,7 @@ bool EngineCore::deleteEntity(scene::EntityId parEntity) {
 
 void EngineCore::selectEntity(scene::EntityId parEntity) {
   m_scene_manager.selectEntity(parEntity);
+  m_local_session_dirty = true;
 }
 
 void EngineCore::clearSelection() {
@@ -369,18 +366,18 @@ void EngineCore::clearGizmoGuide() {
 }
 
 void EngineCore::setSkyPreset(render::SkyPreset parPreset) {
-  m_render_settings.sky_preset = parPreset;
+  m_render_settings.scene.sky_preset = parPreset;
   markProjectDirty();
 }
 
 void EngineCore::setFloorGridVisible(bool parVisible) {
-  m_render_settings.floor_grid_visible = parVisible;
-  markProjectDirty();
+  m_render_settings.viewport.floor_grid_visible = parVisible;
+  m_local_session_dirty = true;
 }
 
 void EngineCore::setFloorGridRadius(int parRadius) {
-  m_render_settings.floor_grid_radius = std::clamp(parRadius, 8, 1000);
-  markProjectDirty();
+  m_render_settings.viewport.floor_grid_radius = std::clamp(parRadius, 8, 1000);
+  m_local_session_dirty = true;
 }
 
 void EngineCore::setEditorViewDistance(float parFarPlane) {
@@ -395,24 +392,38 @@ void EngineCore::setEditorViewDistance(float parFarPlane) {
 }
 
 void EngineCore::setMaterialDebugMode(render::MaterialDebugMode parMode) {
-  m_render_settings.material_debug_mode = parMode;
-  markProjectDirty();
+  m_render_settings.viewport.material_debug_mode = parMode;
+  m_local_session_dirty = true;
 }
 
 void EngineCore::setGizmoAxisSpace(render::GizmoAxisSpace parAxisSpace) {
-  if (m_render_settings.gizmo_axis_space == parAxisSpace) {
+  if (m_render_settings.viewport.gizmo_axis_space == parAxisSpace) {
     return;
   }
-  m_render_settings.gizmo_axis_space = parAxisSpace;
-  markProjectDirty();
+  m_render_settings.viewport.gizmo_axis_space = parAxisSpace;
+  m_local_session_dirty = true;
 }
 
 void EngineCore::setViewportMode(render::ViewportMode parMode) {
-  if (m_render_settings.viewport.mode == parMode) {
+  const render::ViewportMode previous = m_render_settings.viewport.mode;
+  if (previous == parMode) {
     return;
   }
   m_render_settings.viewport.mode = parMode;
-  saveLocalSession();
+  if (parMode == render::ViewportMode::Final) {
+    for (const scene::EntityRecord& entity : getActiveScene().world.getEntities()) {
+      if (entity.alive && entity.static_mesh.has_value() &&
+          entity.static_mesh->visible &&
+          entity.static_mesh->asset_library_index !=
+              scene::INVALID_ASSET_LIBRARY_INDEX) {
+        requestAssetLoad(entity.static_mesh->asset_library_index,
+                         assets::AssetQualityTier::Final);
+      }
+    }
+  } else if (previous == render::ViewportMode::Final) {
+    m_mesh_resource_cache.releaseFinalMeshes();
+  }
+  m_local_session_dirty = true;
 }
 
 }  // namespace kage::engine

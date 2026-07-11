@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/asset_registry.hpp"
+#include "assets/asset_streamer.hpp"
 #include "animation/animation_system.hpp"
 #include "camera/camera_system.hpp"
 #include "lighting/lighting_system.hpp"
@@ -11,6 +12,7 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <optional>
@@ -23,13 +25,6 @@ class ProjectSerializer;
 
 class EngineCore final {
  public:
-  struct FrameTimings final {
-    float asset_load_ms = 0.0f;
-    float gpu_upload_ms = 0.0f;
-    float animation_update_ms = 0.0f;
-    float render_ms = 0.0f;
-  };
-
   struct CameraRay final {
     glm::vec3 origin{0.0f};
     glm::vec3 direction{0.0f, 0.0f, -1.0f};
@@ -60,7 +55,7 @@ class EngineCore final {
   bool loadProject();
   void saveProject();
   bool loadLocalSession();
-  void saveLocalSession() const;
+  void saveLocalSession();
   void markProjectDirty();
   [[nodiscard]] bool isProjectDirty() const;
   [[nodiscard]] const platform::RuntimePaths& getRuntimePaths() const;
@@ -107,7 +102,9 @@ class EngineCore final {
   void clearPlacementGhost();
   void setGizmoGuide(render::GizmoGuide parGuide);
   void clearGizmoGuide();
-  void requestAssetLoad(std::size_t parAssetIndex);
+  void requestAssetLoad(
+      std::size_t parAssetIndex,
+      assets::AssetQualityTier parQuality = assets::AssetQualityTier::Proxy);
 
   void setSkyPreset(render::SkyPreset parPreset);
   void setFloorGridVisible(bool parVisible);
@@ -119,7 +116,8 @@ class EngineCore final {
 
   void update(float parDeltaSeconds);
   void render(const glm::vec2& parViewportSize);
-  [[nodiscard]] const FrameTimings& getFrameTimings() const;
+  [[nodiscard]] const render::PerformanceSnapshot& getPerformanceSnapshot()
+      const;
 
   [[nodiscard]] scene::World& getWorld();
   [[nodiscard]] const scene::World& getWorld() const;
@@ -150,12 +148,11 @@ class EngineCore final {
   [[nodiscard]] render::MaterialDebugMode getMaterialDebugMode() const;
   [[nodiscard]] render::GizmoAxisSpace getGizmoAxisSpace() const;
   [[nodiscard]] render::ViewportMode getViewportMode() const;
-  [[nodiscard]] const render::RenderFrameStats& getRenderFrameStats() const;
   [[nodiscard]] math::Bounds3 getEntityWorldBounds(
       scene::EntityId parEntity) const;
   [[nodiscard]] std::optional<scene::EntityId> pickEntity(
       const glm::vec2& parCursorPixel,
-      const glm::vec2& parViewportSize) const;
+      const glm::vec2& parViewportSize);
   [[nodiscard]] bool isCursorOverEntityCore(
       scene::EntityId parEntity, const glm::vec2& parCursorPixel,
       const glm::vec2& parViewportSize) const;
@@ -184,6 +181,7 @@ class EngineCore final {
 
   platform::RuntimePaths m_runtime_paths;
   assets::AssetRegistry m_asset_registry;
+  assets::AssetStreamer m_asset_streamer;
   animation::AnimationSystem m_animation_system;
   scene::SceneManager m_scene_manager;
   camera::CameraSystem m_camera_system;
@@ -193,11 +191,17 @@ class EngineCore final {
   render::EditorRenderSettings m_render_settings;
   render::PlacementGhost m_placement_ghost;
   render::GizmoGuide m_gizmo_guide;
-  FrameTimings m_frame_timings;
-
-
+  render::PerformanceSnapshot m_performance_snapshot;
+  std::array<float, 120> m_cpu_frame_samples{};
+  std::size_t m_cpu_frame_sample_count = 0;
+  std::size_t m_cpu_frame_sample_cursor = 0;
   bool m_project_dirty = false;
+  bool m_local_session_dirty = false;
   float m_local_session_autosave_timer_seconds = 0.0f;
+  float m_last_session_fly_speed = 0.0f;
+  bool m_streaming_was_active = false;
+  int m_allocator_relief_passes_remaining = 0;
+  float m_allocator_relief_timer_seconds = 0.0f;
 };
 
 }  // namespace kage::engine

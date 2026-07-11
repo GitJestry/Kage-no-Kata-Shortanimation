@@ -1297,6 +1297,23 @@ GltfDocument GltfAssetLoader::loadDocument(
 
   if (output.skins.empty()) {
     mergeStaticPrimitivesByMaterial(output.static_model);
+  } else {
+    output.primitive_skin_bindings.reserve(
+        output.static_model.primitives.size());
+    for (const StaticPrimitive& primitive : output.static_model.primitives) {
+      PrimitiveSkinBinding binding;
+      binding.skin_index = primitive.skin_index;
+      if (primitive.node_index != INVALID_NODE_INDEX &&
+          static_cast<std::size_t>(primitive.node_index) <
+              output.nodes.size()) {
+        binding.inverse_mesh_bind_transform = glm::inverse(
+            output.nodes[static_cast<std::size_t>(primitive.node_index)]
+                .global_transform);
+      } else {
+        binding.inverse_mesh_bind_transform = glm::inverse(primitive.transform);
+      }
+      output.primitive_skin_bindings.push_back(binding);
+    }
   }
 
   output.bounds = output.static_model.bounds;

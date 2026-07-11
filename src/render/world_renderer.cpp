@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <span>
 #include <utility>
 
@@ -35,107 +36,16 @@ struct MeshCenterQuery final {
   glm::vec3 center{0.0f};
 };
 
-[[nodiscard]] kage::math::Bounds3 makePointBounds(const glm::vec3& parPoint,
-                                                  float parExtent) {
-  kage::math::Bounds3 bounds;
-  const glm::vec3 extent(std::max(parExtent, 0.01f));
-  bounds.includePoint(parPoint - extent);
-  bounds.includePoint(parPoint + extent);
-  return bounds;
-}
-
-[[nodiscard]] kage::math::Bounds3 transformBounds(
-    const kage::math::Bounds3& parBounds, const glm::mat4& parTransform) {
-  kage::math::Bounds3 transformed;
-  if (!parBounds.is_valid) {
-    return transformed;
-  }
-
-  const std::array<glm::vec3, 8> corners = {
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.max.z),
-  };
-
-  for (const glm::vec3& corner : corners) {
-    transformed.includePoint(
-        glm::vec3(parTransform * glm::vec4(corner, 1.0f)));
-  }
-
-  return transformed;
-}
-
 [[nodiscard]] kage::math::Bounds3 getEntityWorldBounds(
     const kage::scene::EntityRecord& parEntity) {
   if (parEntity.static_mesh.has_value()) {
-    return transformBounds(parEntity.static_mesh->local_bounds,
-                           parEntity.transform.transform.toMatrix());
+    return kage::math::transformBounds(
+        parEntity.static_mesh->local_bounds,
+        parEntity.transform.transform.toMatrix());
   }
 
-  return makePointBounds(parEntity.transform.transform.translation,
-                         ENTITY_HANDLE_EXTENT);
-}
-
-[[nodiscard]] bool isBoundsVisible(const kage::math::Bounds3& parBounds,
-                                   const glm::mat4& parViewProjection) {
-  if (!parBounds.is_valid) {
-    return true;
-  }
-  const std::array<glm::vec3, 8> corners = {
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.max.z),
-  };
-  std::array<int, 6> outside{};
-  for (const glm::vec3& corner : corners) {
-    const glm::vec4 clip = parViewProjection * glm::vec4(corner, 1.0f);
-    outside[0] += clip.x < -clip.w;
-    outside[1] += clip.x > clip.w;
-    outside[2] += clip.y < -clip.w;
-    outside[3] += clip.y > clip.w;
-    outside[4] += clip.z < -clip.w;
-    outside[5] += clip.z > clip.w;
-  }
-  return std::none_of(outside.begin(), outside.end(),
-                      [](int count) { return count == 8; });
-}
-
-[[nodiscard]] std::size_t chooseLod(
-    kage::render::ViewportMode parMode,
-    const kage::math::Bounds3& parBounds,
-    const kage::camera::Camera& parCamera,
-    const glm::vec2& parViewportSize, bool parSelected) {
-  if (parMode == kage::render::ViewportMode::Final || parSelected ||
-      !parBounds.is_valid) {
-    return 0;
-  }
-  if (parMode == kage::render::ViewportMode::Solid) {
-    return 2;
-  }
-  const glm::vec3 center = (parBounds.min + parBounds.max) * 0.5f;
-  const float distance =
-      std::max(glm::length(center - parCamera.position), 0.01f);
-  const float diameter =
-      std::max({parBounds.getSize().x, parBounds.getSize().y,
-                parBounds.getSize().z});
-  const float focal_pixels =
-      std::max(parViewportSize.y, 1.0f) /
-      (2.0f * std::tan(glm::radians(parCamera.vertical_fov_degrees) * 0.5f));
-  const float projected_pixels = diameter * focal_pixels / distance;
-  if (projected_pixels >= 350.0f) {
-    return 0;
-  }
-  return projected_pixels >= 80.0f ? 1 : 2;
+  return kage::math::makePointBounds(
+      parEntity.transform.transform.translation, ENTITY_HANDLE_EXTENT);
 }
 
 void addLine(std::vector<kage::render::LineVertex>& parVertices,
@@ -571,6 +481,22 @@ void addCameraGizmo(std::vector<kage::render::LineVertex>& parVertices,
 
 namespace kage::render {
 
+WorldRenderer::~WorldRenderer() {
+  if (m_gpu_timer_queries[0] != 0) {
+    glDeleteQueries(static_cast<GLsizei>(m_gpu_timer_queries.size()),
+                    m_gpu_timer_queries.data());
+  }
+  if (m_pick_depth != 0) {
+    glDeleteRenderbuffers(1, &m_pick_depth);
+  }
+  if (m_pick_texture != 0) {
+    glDeleteTextures(1, &m_pick_texture);
+  }
+  if (m_pick_framebuffer != 0) {
+    glDeleteFramebuffers(1, &m_pick_framebuffer);
+  }
+}
+
 void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                            const MeshResourceCache& parMeshResources,
                            const camera::CameraSystem& parCameraSystem,
@@ -578,21 +504,76 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                            const PlacementGhost& parGhost,
                            const GizmoGuide& parGizmoGuide,
                            const EditorRenderSettings& parSettings,
-                           const glm::vec2& parViewportSize) {
-  m_frame_stats = {};
+                           const glm::vec2& parViewportSize,
+                           PerformanceSnapshot& parSnapshot) {
+  if (m_gpu_timer_queries[0] == 0) {
+    glGenQueries(static_cast<GLsizei>(m_gpu_timer_queries.size()),
+                 m_gpu_timer_queries.data());
+  }
+  const std::size_t timer_slot = m_gpu_timer_cursor;
+  bool timer_active = false;
+  if (m_gpu_timer_pending[timer_slot]) {
+    GLint available = GL_FALSE;
+    glGetQueryObjectiv(m_gpu_timer_queries[timer_slot],
+                       GL_QUERY_RESULT_AVAILABLE, &available);
+    if (available == GL_TRUE) {
+      GLuint64 nanoseconds = 0;
+      glGetQueryObjectui64v(m_gpu_timer_queries[timer_slot], GL_QUERY_RESULT,
+                            &nanoseconds);
+      const float milliseconds =
+          static_cast<float>(nanoseconds) / 1000000.0f;
+      m_gpu_frame_samples[m_gpu_frame_sample_cursor] = milliseconds;
+      m_gpu_frame_sample_cursor =
+          (m_gpu_frame_sample_cursor + 1) % m_gpu_frame_samples.size();
+      m_gpu_frame_sample_count = std::min(
+          m_gpu_frame_sample_count + 1, m_gpu_frame_samples.size());
+      std::array<float, 120> sorted_samples = m_gpu_frame_samples;
+      std::sort(sorted_samples.begin(),
+                sorted_samples.begin() + m_gpu_frame_sample_count);
+      const float total = std::accumulate(
+          sorted_samples.begin(),
+          sorted_samples.begin() + m_gpu_frame_sample_count, 0.0f);
+      parSnapshot.gpu_average_ms =
+          total / static_cast<float>(m_gpu_frame_sample_count);
+      const std::size_t p95_index = std::min(
+          m_gpu_frame_sample_count - 1,
+          (m_gpu_frame_sample_count * 95 + 99) / 100 - 1);
+      parSnapshot.gpu_p95_ms = sorted_samples[p95_index];
+      m_gpu_timer_pending[timer_slot] = false;
+    }
+  }
+  if (!m_gpu_timer_pending[timer_slot]) {
+    glBeginQuery(GL_TIME_ELAPSED, m_gpu_timer_queries[timer_slot]);
+    timer_active = true;
+  }
+  parSnapshot.visible_entities = 0;
+  parSnapshot.culled_entities = 0;
+  parSnapshot.draw_calls = 0;
+  parSnapshot.submitted_instances = 0;
+  parSnapshot.submitted_triangles = 0;
   glEnable(GL_DEPTH_TEST);
   glDepthFunc(GL_LESS);
   glDepthMask(GL_TRUE);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  const glm::vec3 clear_color = getClearColor(parSettings.sky_preset);
+  const glm::vec3 clear_color = getClearColor(parSettings.scene.sky_preset);
   glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   const camera::Camera& camera = parCameraSystem.getCamera();
   const glm::mat4 view_projection =
       camera.getViewProjectionMatrix(parViewportSize);
+  const auto find_mesh = [&](std::size_t handle) -> const GpuMesh* {
+    if (parSettings.viewport.mode == ViewportMode::Final) {
+      if (const GpuMesh* final_mesh = parMeshResources.getStaticMesh(
+              handle, assets::AssetQualityTier::Final)) {
+        return final_mesh;
+      }
+    }
+    return parMeshResources.getStaticMesh(handle,
+                                          assets::AssetQualityTier::Proxy);
+  };
 
   for (const scene::EntityRecord& entity : parScene.world.getEntities()) {
     if (!entity.alive || !entity.static_mesh.has_value() ||
@@ -601,17 +582,16 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     }
 
     const math::Bounds3 world_bounds = getEntityWorldBounds(entity);
-    if (!isBoundsVisible(world_bounds, view_projection)) {
-      ++m_frame_stats.culled_entities;
+    if (!ViewportPolicy::isVisible(world_bounds, view_projection)) {
+      ++parSnapshot.culled_entities;
       continue;
     }
-    ++m_frame_stats.visible_entities;
+    ++parSnapshot.visible_entities;
     if (parSettings.viewport.mode == ViewportMode::Bounds) {
       continue;
     }
 
-    const GpuMesh* mesh =
-        parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle);
+    const GpuMesh* mesh = find_mesh(entity.static_mesh->mesh_handle);
     if (mesh == nullptr) {
       continue;
     }
@@ -620,33 +600,43 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     if (entity.rig.has_value()) {
       skin_matrices = entity.rig->primitive_skin_matrices;
     }
-    const std::size_t lod = entity.rig.has_value()
-                                ? 0
-                                : chooseLod(parSettings.viewport.mode,
-                                            world_bounds, camera,
-                                            parViewportSize,
-                                            entity.id == parScene.selected_entity);
+    const auto previous_lod = m_lod_history.find(entity.id.value);
+    const std::optional<std::size_t> previous =
+        previous_lod == m_lod_history.end()
+            ? std::nullopt
+            : std::optional<std::size_t>{previous_lod->second};
+    const std::size_t lod =
+        entity.rig.has_value()
+            ? 0
+            : ViewportPolicy::selectLod(
+                  parSettings.viewport.mode,
+                  ViewportPolicy::projectedDiameterPixels(
+                      world_bounds, camera, parViewportSize),
+                  entity.id == parScene.selected_entity ||
+                      !world_bounds.is_valid,
+                  previous);
+    m_lod_history[entity.id.value] = lod;
     m_mesh_renderer.draw(*mesh, view_projection,
                                 camera.position,
                                 entity.transform.transform.toMatrix(),
                                 parLighting, skin_matrices,
                                 entity.static_mesh->opacity,
-                                parSettings.material_debug_mode,
+                                parSettings.viewport.material_debug_mode,
                                 parSettings.viewport.mode == ViewportMode::Solid,
                                 lod);
-    m_frame_stats.draw_calls += mesh->getPrimitiveCount();
-    ++m_frame_stats.submitted_instances;
-    m_frame_stats.submitted_triangles += mesh->getIndexCount(lod) / 3;
+    parSnapshot.draw_calls += mesh->getPrimitiveCount();
+    ++parSnapshot.submitted_instances;
+    parSnapshot.submitted_triangles += mesh->getIndexCount(lod) / 3;
   }
 
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset) {
-    const GpuMesh* mesh = parMeshResources.getStaticMesh(parGhost.mesh_handle);
+    const GpuMesh* mesh = find_mesh(parGhost.mesh_handle);
     if (mesh != nullptr) {
       m_mesh_renderer.draw(*mesh, view_projection,
                                   camera.position,
                                   parGhost.transform.toMatrix(),
                                   parLighting, {}, parGhost.opacity,
-                                  parSettings.material_debug_mode);
+                                  parSettings.viewport.material_debug_mode);
     }
   }
 
@@ -655,7 +645,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   if (selected_entity != nullptr && selected_entity->static_mesh.has_value() &&
       selected_entity->static_mesh->visible) {
     const GpuMesh* mesh =
-        parMeshResources.getStaticMesh(selected_entity->static_mesh->mesh_handle);
+        find_mesh(selected_entity->static_mesh->mesh_handle);
     if (mesh != nullptr) {
       const math::Bounds3 selected_bounds = getEntityWorldBounds(*selected_entity);
       const float outline_thickness =
@@ -687,14 +677,14 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   m_glow_vertices.reserve(256);
   addSunOverlay(m_line_vertices, m_solid_vertices, m_glow_vertices, camera,
                 parViewportSize, parLighting.sun);
-  if (parSettings.floor_grid_visible) {
+  if (parSettings.viewport.floor_grid_visible) {
     addFloorPlane(m_floor_vertices, camera.position,
-                  parSettings.floor_grid_radius);
+                  parSettings.viewport.floor_grid_radius);
     addFloorGrid(m_grid_line_vertices, camera.position,
-                 parSettings.floor_grid_radius);
+                 parSettings.viewport.floor_grid_radius);
   }
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset &&
-      parMeshResources.getStaticMesh(parGhost.mesh_handle) == nullptr) {
+      find_mesh(parGhost.mesh_handle) == nullptr) {
     addCube(m_solid_vertices,
             parGhost.transform.translation + glm::vec3(0.0f, 0.5f, 0.0f),
             1.0f, glm::vec4(0.55f, 0.68f, 0.82f, parGhost.opacity));
@@ -706,7 +696,8 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     if (parSettings.viewport.mode == ViewportMode::Bounds &&
         entity.static_mesh.has_value() && entity.static_mesh->visible) {
       const math::Bounds3 bounds = getEntityWorldBounds(entity);
-      if (bounds.is_valid && isBoundsVisible(bounds, view_projection)) {
+      if (bounds.is_valid &&
+          ViewportPolicy::isVisible(bounds, view_projection)) {
         const glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
         const glm::vec3 size = bounds.getSize();
         addCube(m_solid_vertices, center,
@@ -715,8 +706,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       }
     }
     if (entity.static_mesh.has_value() && entity.static_mesh->visible &&
-        parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle) ==
-            nullptr) {
+        find_mesh(entity.static_mesh->mesh_handle) == nullptr) {
       const math::Bounds3 bounds = getEntityWorldBounds(entity);
       const glm::vec3 center =
           bounds.is_valid ? (bounds.min + bounds.max) * 0.5f
@@ -759,7 +749,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                                              *selected_entity, world_bounds);
     addTransformAxes(m_line_vertices, m_solid_vertices,
                      selected_entity->transform.transform, axis_length,
-                     parSettings.gizmo_axis_space);
+                     parSettings.viewport.gizmo_axis_space);
     if (!selected_entity->static_mesh.has_value()) {
       addOriginCore(m_line_vertices,
                     selected_entity->transform.transform.translation,
@@ -805,10 +795,102 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     glDepthMask(GL_TRUE);
   }
   glEnable(GL_DEPTH_TEST);
+  if (timer_active) {
+    glEndQuery(GL_TIME_ELAPSED);
+    m_gpu_timer_pending[timer_slot] = true;
+    m_gpu_timer_cursor =
+        (m_gpu_timer_cursor + 1) % m_gpu_timer_queries.size();
+  }
 }
 
-const RenderFrameStats& WorldRenderer::getFrameStats() const {
-  return m_frame_stats;
+std::optional<scene::EntityId> WorldRenderer::pickEntity(
+    const scene::SceneManager::SceneRecord& parScene,
+    const MeshResourceCache& parMeshResources,
+    const camera::CameraSystem& parCameraSystem,
+    const EditorRenderSettings& parSettings,
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
+  if (m_pick_framebuffer == 0) {
+    glGenFramebuffers(1, &m_pick_framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pick_framebuffer);
+    glGenTextures(1, &m_pick_texture);
+    glBindTexture(GL_TEXTURE_2D, m_pick_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, 1, 1, 0, GL_RED_INTEGER,
+                 GL_UNSIGNED_INT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, m_pick_texture, 0);
+    glGenRenderbuffers(1, &m_pick_depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_pick_depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 1, 1);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                              GL_RENDERBUFFER, m_pick_depth);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      return std::nullopt;
+    }
+  } else {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pick_framebuffer);
+  }
+
+  constexpr GLuint NO_ENTITY = std::numeric_limits<GLuint>::max();
+  const GLuint clear_value = NO_ENTITY;
+  glViewport(0, 0, 1, 1);
+  glClearBufferuiv(GL_COLOR, 0, &clear_value);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LESS);
+  glDepthMask(GL_TRUE);
+  glDisable(GL_BLEND);
+
+  const glm::vec2 viewport = glm::max(parViewportSize, glm::vec2(1.0f));
+  const glm::vec2 ndc(
+      (2.0f * parCursorPixel.x / viewport.x) - 1.0f,
+      1.0f - (2.0f * parCursorPixel.y / viewport.y));
+  glm::mat4 pick_transform(1.0f);
+  pick_transform[0][0] = viewport.x;
+  pick_transform[1][1] = viewport.y;
+  pick_transform[3][0] = -ndc.x * viewport.x;
+  pick_transform[3][1] = -ndc.y * viewport.y;
+  const glm::mat4 pick_view_projection =
+      pick_transform *
+      parCameraSystem.getCamera().getViewProjectionMatrix(viewport);
+
+  for (const scene::EntityRecord& entity : parScene.world.getEntities()) {
+    if (!entity.alive || entity.id == parScene.editor_camera_entity ||
+        !entity.static_mesh.has_value() || !entity.static_mesh->visible) {
+      continue;
+    }
+    const GpuMesh* mesh = nullptr;
+    if (parSettings.viewport.mode == ViewportMode::Final) {
+      mesh = parMeshResources.getStaticMesh(
+          entity.static_mesh->mesh_handle, assets::AssetQualityTier::Final);
+    }
+    if (mesh == nullptr) {
+      mesh = parMeshResources.getStaticMesh(
+          entity.static_mesh->mesh_handle, assets::AssetQualityTier::Proxy);
+    }
+    if (mesh == nullptr) {
+      continue;
+    }
+    std::span<const std::vector<glm::mat4>> skin_matrices;
+    if (entity.rig.has_value()) {
+      skin_matrices = entity.rig->primitive_skin_matrices;
+    }
+    m_mesh_renderer.drawPicking(
+        *mesh, pick_view_projection, entity.transform.transform.toMatrix(),
+        skin_matrices, entity.id.value);
+  }
+
+  GLuint entity_id = NO_ENTITY;
+  glReadPixels(0, 0, 1, 1, GL_RED_INTEGER, GL_UNSIGNED_INT, &entity_id);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, static_cast<GLsizei>(viewport.x),
+             static_cast<GLsizei>(viewport.y));
+  glEnable(GL_BLEND);
+  return entity_id == NO_ENTITY
+             ? std::nullopt
+             : std::optional<scene::EntityId>{scene::EntityId{entity_id}};
 }
 
 const char* WorldRenderer::getSkyPresetName(SkyPreset parPreset) {

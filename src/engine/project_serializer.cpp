@@ -18,7 +18,9 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace {
@@ -140,13 +142,6 @@ using json = nlohmann::json;
   return sun;
 }
 
-[[nodiscard]] kage::math::Bounds3 makePlaceholderAssetBounds() {
-  kage::math::Bounds3 bounds;
-  bounds.includePoint(glm::vec3(-0.5f, 0.0f, -0.5f));
-  bounds.includePoint(glm::vec3(0.5f, 1.0f, 0.5f));
-  return bounds;
-}
-
 [[nodiscard]] kage::scene::AnimationPlayerComponent readAnimationPlayer(
     const json& parJson);
 
@@ -187,14 +182,15 @@ void readMeshComponent(kage::engine::EngineCore& parEngine,
   mesh.asset_library_index = asset_index;
   mesh.local_bounds =
       document != nullptr ? document->static_model.bounds
-                          : makePlaceholderAssetBounds();
+                          : kage::math::makeAssetPlaceholderBounds();
   mesh.opacity = mesh_json.value("opacity", 1.0f);
   mesh.visible = mesh_json.value("visible", true);
   parScene.world.setStaticMesh(parEntity, mesh);
 
   if (document != nullptr && !document->skins.empty()) {
     kage::scene::RigComponent rig;
-    rig.primitive_skin_matrices.resize(document->static_model.primitives.size());
+    rig.primitive_skin_matrices.resize(
+        document->primitive_skin_bindings.size());
     parScene.world.setRig(parEntity, std::move(rig));
   }
   if (parEntityJson.contains("animation_player")) {
@@ -270,6 +266,78 @@ void readMeshComponent(kage::engine::EngineCore& parEngine,
   return parDocument.is_object();
 }
 
+void writeJsonAtomically(const std::filesystem::path& parPath,
+                         const json& parDocument) {
+  const std::filesystem::path temporary = parPath.string() + ".tmp";
+  {
+    std::ofstream output(temporary, std::ios::trunc);
+    output << parDocument.dump(2);
+    output.flush();
+    if (!output) {
+      throw std::runtime_error("Failed to write " + temporary.string());
+    }
+  }
+  std::error_code error;
+  std::filesystem::rename(temporary, parPath, error);
+  if (error) {
+    std::filesystem::remove(parPath, error);
+    error.clear();
+    std::filesystem::rename(temporary, parPath, error);
+  }
+  if (error) {
+    std::filesystem::remove(temporary);
+    throw std::runtime_error("Failed to replace " + parPath.string());
+  }
+}
+
+[[nodiscard]] bool readSceneJson(
+    kage::engine::EngineCore& parEngine,
+    kage::scene::SceneManager::SceneRecord& parScene,
+    const json& parSceneJson) {
+  parScene.sun_light =
+      readSunLight(parSceneJson.value("sun", json::object()));
+
+  for (const json& entity_json :
+       parSceneJson.value("entities", json::array())) {
+    const kage::scene::EntityId requested_id{
+        entity_json.value("id", kage::scene::EntityId{}.value)};
+    if (requested_id.isValid() &&
+        parScene.world.findEntity(requested_id) != nullptr) {
+      return false;
+    }
+
+    const kage::scene::EntityId entity = parScene.world.createEntityWithId(
+        entity_json.value("name", "Entity"), requested_id);
+    kage::scene::EntityRecord* record = parScene.world.findEntity(entity);
+    if (record == nullptr) {
+      continue;
+    }
+    record->transform.transform =
+        readTransform(entity_json.value("transform", json::object()));
+    readMeshComponent(parEngine, parScene, entity, entity_json);
+
+    if (entity_json.contains("camera")) {
+      const json& camera_json = entity_json["camera"];
+      kage::scene::CameraComponent camera;
+      camera.active = camera_json.value("active", false);
+      camera.vertical_fov_degrees = camera_json.value("fov", 45.0f);
+      camera.near_plane = camera_json.value("near", 0.01f);
+      camera.far_plane = camera_json.value("far", 100.0f);
+      parScene.world.setCamera(entity, camera);
+    }
+    if (entity_json.contains("light")) {
+      parScene.world.setLight(entity, readPointLight(entity_json["light"]));
+    }
+  }
+
+  const kage::scene::EntityId editor_camera{
+      parSceneJson.value("editor_camera", kage::scene::EntityId{}.value)};
+  if (parScene.world.findEntity(editor_camera) != nullptr) {
+    parScene.editor_camera_entity = editor_camera;
+  }
+  return true;
+}
+
 [[nodiscard]] json writeSceneJson(
     const kage::scene::SceneManager::SceneRecord& parScene,
     const kage::assets::AssetRegistry& parAssetRegistry) {
@@ -340,21 +408,27 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
 
   try {
     parEngine.m_scene_manager.clearScenes();
+    const int version = document.value("version", 1);
     const json& render_json = document.value("render", json::object());
-    parEngine.m_render_settings.sky_preset = static_cast<render::SkyPreset>(
+    parEngine.m_render_settings.scene.sky_preset = static_cast<render::SkyPreset>(
         render_json.value(
-            "sky", static_cast<int>(parEngine.m_render_settings.sky_preset)));
-    parEngine.m_render_settings.floor_grid_visible =
-        render_json.value("floor_grid_visible", true);
-    parEngine.m_render_settings.floor_grid_radius =
-        render_json.value("floor_grid_radius", 80);
-    parEngine.m_render_settings.material_debug_mode = readMaterialDebugMode(
-        render_json.value("material_debug_mode", json{}),
-        parEngine.m_render_settings.material_debug_mode);
-    parEngine.m_render_settings.gizmo_axis_space =
-        static_cast<render::GizmoAxisSpace>(render_json.value(
-            "gizmo_axis_space",
-            static_cast<int>(parEngine.m_render_settings.gizmo_axis_space)));
+            "sky",
+            static_cast<int>(parEngine.m_render_settings.scene.sky_preset)));
+    if (version < 2) {
+      parEngine.m_render_settings.viewport.floor_grid_visible =
+          render_json.value("floor_grid_visible", true);
+      parEngine.m_render_settings.viewport.floor_grid_radius =
+          render_json.value("floor_grid_radius", 80);
+      parEngine.m_render_settings.viewport.material_debug_mode =
+          readMaterialDebugMode(
+              render_json.value("material_debug_mode", json{}),
+              parEngine.m_render_settings.viewport.material_debug_mode);
+      parEngine.m_render_settings.viewport.gizmo_axis_space =
+          static_cast<render::GizmoAxisSpace>(render_json.value(
+              "gizmo_axis_space",
+              static_cast<int>(
+                  parEngine.m_render_settings.viewport.gizmo_axis_space)));
+    }
     lighting::LightingState& lighting =
         parEngine.m_lighting_system.getState();
     lighting.ambient_diffuse =
@@ -378,47 +452,8 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
       if (scene_record == nullptr) {
         continue;
       }
-      scene_record->sun_light =
-          readSunLight(scene_json.value("sun", json::object()));
-
-      const json& entities_json = scene_json.value("entities", json::array());
-      for (const json& entity_json : entities_json) {
-        const scene::EntityId entity_id{
-            entity_json.value("id", scene::EntityId{}.value)};
-        if (entity_id.isValid() &&
-            scene_record->world.findEntity(entity_id) != nullptr) {
-          return false;
-        }
-        const scene::EntityId entity = scene_record->world.createEntityWithId(
-            entity_json.value("name", "Entity"), entity_id);
-        scene::EntityRecord* record = scene_record->world.findEntity(entity);
-        if (record == nullptr) {
-          continue;
-        }
-
-        record->transform.transform =
-            readTransform(entity_json.value("transform", json::object()));
-
-        readMeshComponent(parEngine, *scene_record, entity, entity_json);
-        if (entity_json.contains("camera")) {
-          const json& camera_json = entity_json["camera"];
-          scene::CameraComponent camera;
-          camera.active = camera_json.value("active", false);
-          camera.vertical_fov_degrees = camera_json.value("fov", 45.0f);
-          camera.near_plane = camera_json.value("near", 0.01f);
-          camera.far_plane = camera_json.value("far", 100.0f);
-          scene_record->world.setCamera(entity, camera);
-        }
-        if (entity_json.contains("light")) {
-          const json& light_json = entity_json["light"];
-          scene_record->world.setLight(entity, readPointLight(light_json));
-        }
-      }
-
-      const scene::EntityId editor_camera{
-          scene_json.value("editor_camera", scene::EntityId{}.value)};
-      if (scene_record->world.findEntity(editor_camera) != nullptr) {
-        scene_record->editor_camera_entity = editor_camera;
+      if (!readSceneJson(parEngine, *scene_record, scene_json)) {
+        return false;
       }
       scene_record->selected_entity = {};
 
@@ -438,7 +473,9 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
   }
 
   parEngine.m_scene_manager.setActiveScene(
-      document.value("active_scene", std::size_t{0}));
+      document.value("version", 1) < 2
+          ? document.value("active_scene", std::size_t{0})
+          : std::size_t{0});
   parEngine.syncCameraFromEditorEntity();
   parEngine.rebuildAssetInstanceCounts();
   parEngine.m_project_dirty = false;
@@ -453,17 +490,9 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
   std::filesystem::create_directories(save_path.parent_path());
 
   json document;
-  document["version"] = 1;
-  document["active_scene"] = parEngine.m_scene_manager.getActiveSceneIndex();
+  document["version"] = 2;
   document["render"] = {
-      {"sky", static_cast<int>(parEngine.m_render_settings.sky_preset)},
-      {"floor_grid_visible",
-       parEngine.m_render_settings.floor_grid_visible},
-      {"floor_grid_radius", parEngine.m_render_settings.floor_grid_radius},
-      {"material_debug_mode",
-       static_cast<int>(parEngine.m_render_settings.material_debug_mode)},
-      {"gizmo_axis_space",
-       static_cast<int>(parEngine.m_render_settings.gizmo_axis_space)},
+      {"sky", static_cast<int>(parEngine.m_render_settings.scene.sky_preset)},
       {"ambient_diffuse",
        toJson(parEngine.m_lighting_system.getState().ambient_diffuse)},
       {"ambient_specular",
@@ -488,8 +517,7 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
   }
   document["scenes"] = std::move(scenes_json);
 
-  std::ofstream output(save_path);
-  output << document.dump(2);
+  writeJsonAtomically(save_path, document);
   parEngine.m_project_dirty = false;
   parEngine.m_local_session_autosave_timer_seconds = 0.0f;
 }
@@ -511,6 +539,26 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
       parEngine.m_render_settings.viewport.mode =
           static_cast<render::ViewportMode>(viewport_mode);
     }
+    parEngine.m_render_settings.viewport.floor_grid_visible = document.value(
+        "floor_grid_visible",
+        parEngine.m_render_settings.viewport.floor_grid_visible);
+    parEngine.m_render_settings.viewport.floor_grid_radius = std::clamp(
+        document.value("floor_grid_radius",
+                       parEngine.m_render_settings.viewport.floor_grid_radius),
+        8, 1000);
+    parEngine.m_render_settings.viewport.material_debug_mode =
+        readMaterialDebugMode(
+            document.value("material_debug_mode", json{}),
+            parEngine.m_render_settings.viewport.material_debug_mode);
+    const int gizmo_axis_space = document.value(
+        "gizmo_axis_space",
+        static_cast<int>(
+            parEngine.m_render_settings.viewport.gizmo_axis_space));
+    if (gizmo_axis_space >= static_cast<int>(render::GizmoAxisSpace::Local) &&
+        gizmo_axis_space <= static_cast<int>(render::GizmoAxisSpace::World)) {
+      parEngine.m_render_settings.viewport.gizmo_axis_space =
+          static_cast<render::GizmoAxisSpace>(gizmo_axis_space);
+    }
 
     const json& local_scenes_json =
         document.value("local_scenes", json::array());
@@ -527,43 +575,8 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
       if (scene_record == nullptr) {
         continue;
       }
-      scene_record->sun_light =
-          readSunLight(scene_json.value("sun", json::object()));
-
-      const json& entities_json = scene_json.value("entities", json::array());
-      for (const json& entity_json : entities_json) {
-        const scene::EntityId entity_id{
-            entity_json.value("id", scene::EntityId{}.value)};
-        const scene::EntityId entity = scene_record->world.createEntityWithId(
-            entity_json.value("name", "Entity"), entity_id);
-        scene::EntityRecord* record = scene_record->world.findEntity(entity);
-        if (record == nullptr) {
-          continue;
-        }
-
-        record->transform.transform =
-            readTransform(entity_json.value("transform", json::object()));
-
-        readMeshComponent(parEngine, *scene_record, entity, entity_json);
-        if (entity_json.contains("camera")) {
-          const json& camera_json = entity_json["camera"];
-          scene::CameraComponent camera;
-          camera.active = camera_json.value("active", false);
-          camera.vertical_fov_degrees = camera_json.value("fov", 45.0f);
-          camera.near_plane = camera_json.value("near", 0.01f);
-          camera.far_plane = camera_json.value("far", 100.0f);
-          scene_record->world.setCamera(entity, camera);
-        }
-        if (entity_json.contains("light")) {
-          const json& light_json = entity_json["light"];
-          scene_record->world.setLight(entity, readPointLight(light_json));
-        }
-      }
-
-      const scene::EntityId editor_camera{
-          scene_json.value("editor_camera", scene::EntityId{}.value)};
-      if (scene_record->world.findEntity(editor_camera) != nullptr) {
-        scene_record->editor_camera_entity = editor_camera;
+      if (!readSceneJson(parEngine, *scene_record, scene_json)) {
+        return false;
       }
       if (!scene_record->editor_camera_entity.isValid() ||
           scene_record->world.findEntity(scene_record->editor_camera_entity) ==
@@ -606,6 +619,14 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
   document["active_scene"] = parEngine.m_scene_manager.getActiveSceneIndex();
   document["viewport_mode"] =
       static_cast<int>(parEngine.m_render_settings.viewport.mode);
+  document["floor_grid_visible"] =
+      parEngine.m_render_settings.viewport.floor_grid_visible;
+  document["floor_grid_radius"] =
+      parEngine.m_render_settings.viewport.floor_grid_radius;
+  document["material_debug_mode"] = static_cast<int>(
+      parEngine.m_render_settings.viewport.material_debug_mode);
+  document["gizmo_axis_space"] =
+      static_cast<int>(parEngine.m_render_settings.viewport.gizmo_axis_space);
   document["local_scenes"] = json::array();
 
   for (const scene::SceneManager::SceneRecord& scene :
@@ -618,8 +639,7 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
         writeSceneJson(scene, parEngine.m_asset_registry));
   }
 
-  std::ofstream output(save_path);
-  output << document.dump(2);
+  writeJsonAtomically(save_path, document);
 }
 
 }  // namespace kage::engine

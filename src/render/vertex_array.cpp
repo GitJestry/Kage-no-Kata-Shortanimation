@@ -51,6 +51,18 @@ void VertexArray::setFloatAttribute(GLuint parLocation,
       reinterpret_cast<const void*>(parByteOffset));
 }
 
+void VertexArray::setIntegerAttribute(GLuint parLocation,
+                                      GLint parComponentCount,
+                                      GLenum parComponentType,
+                                      GLsizei parStride,
+                                      std::size_t parByteOffset) const {
+  bind();
+  glEnableVertexAttribArray(parLocation);
+  glVertexAttribIPointer(parLocation, parComponentCount, parComponentType,
+                         parStride,
+                         reinterpret_cast<const void*>(parByteOffset));
+}
+
 void VertexArray::release() {
   if (m_handle != 0) {
     glDeleteVertexArrays(1, &m_handle);

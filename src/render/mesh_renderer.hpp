@@ -37,10 +37,16 @@ class MeshRenderer final {
                    std::span<const std::vector<glm::mat4>> parSkinMatrices,
                    const glm::vec4& parColor,
                    float parThickness) const;
+  void drawPicking(const GpuMesh& parMesh,
+                   const glm::mat4& parViewProjection,
+                   const glm::mat4& parEntityTransform,
+                   std::span<const std::vector<glm::mat4>> parSkinMatrices,
+                   std::uint32_t parEntityId) const;
 
  private:
   ShaderProgram m_shader;
   ShaderProgram m_outline_shader;
+  ShaderProgram m_picking_shader;
 };
 
 }  // namespace kage::render

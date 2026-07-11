@@ -25,7 +25,7 @@ void AnimationSystem::update(scene::World& parWorld,
     if (!entity.rig.has_value()) {
       scene::RigComponent rig;
       rig.primitive_skin_matrices.resize(
-          asset->static_model.primitives.size());
+          asset->primitive_skin_bindings.size());
       entity.rig = std::move(rig);
     }
 
@@ -79,19 +79,20 @@ void AnimationSystem::update(scene::World& parWorld,
       }
     }
 
-    rig.primitive_skin_matrices.resize(asset->static_model.primitives.size());
+    rig.primitive_skin_matrices.resize(asset->primitive_skin_bindings.size());
     for (std::size_t primitive_index = 0;
-         primitive_index < asset->static_model.primitives.size();
+         primitive_index < asset->primitive_skin_bindings.size();
          ++primitive_index) {
-      const assets::StaticPrimitive& primitive =
-          asset->static_model.primitives[primitive_index];
-      if (primitive.skin_index == assets::INVALID_SKIN_INDEX) {
+      const assets::PrimitiveSkinBinding& binding =
+          asset->primitive_skin_bindings[primitive_index];
+      if (binding.skin_index == assets::INVALID_SKIN_INDEX) {
         rig.primitive_skin_matrices[primitive_index].clear();
         continue;
       }
 
-      rig.primitive_skin_matrices[primitive_index] =
-          Animator::buildPrimitiveSkinMatrices(*asset, primitive, pose);
+      rig.primitive_skin_matrices[primitive_index] = Animator::buildJointMatrices(
+          *asset, binding.skin_index, pose,
+          binding.inverse_mesh_bind_transform);
     }
   }
 }

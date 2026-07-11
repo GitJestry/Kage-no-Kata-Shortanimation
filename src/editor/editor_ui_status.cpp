@@ -49,18 +49,24 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
   ImGui::Text("Build       %s %s %s", KAGE_BUILD_TYPE, __DATE__, __TIME__);
   ImGui::Text("Frame time  %.3f ms",
               parDeltaSeconds * MILLISECONDS_PER_SECOND);
-  const engine::EngineCore::FrameTimings& timings =
-      parEngine.getFrameTimings();
-  ImGui::Text("Asset/GPU   %.2f / %.2f ms", timings.asset_load_ms,
-              timings.gpu_upload_ms);
-  ImGui::Text("Anim/Render %.2f / %.2f ms", timings.animation_update_ms,
-              timings.render_ms);
-  const render::RenderFrameStats& render_stats =
-      parEngine.getRenderFrameStats();
-  ImGui::Text("Draws       %zu", render_stats.draw_calls);
-  ImGui::Text("Triangles   %zu", render_stats.submitted_triangles);
+  const render::PerformanceSnapshot& performance =
+      parEngine.getPerformanceSnapshot();
+  ImGui::Text("CPU avg/p95 %.2f / %.2f ms", performance.cpu_average_ms,
+              performance.cpu_p95_ms);
+  ImGui::Text("GPU avg/p95 %.2f / %.2f ms", performance.gpu_average_ms,
+              performance.gpu_p95_ms);
+  ImGui::Text("Asset/GPU   %.2f / %.2f ms", performance.asset_load_ms,
+              performance.gpu_upload_ms);
+  ImGui::Text("Anim/Render %.2f / %.2f ms",
+              performance.animation_update_ms, performance.render_ms);
+  ImGui::Text("Draws       %zu", performance.draw_calls);
+  ImGui::Text("Triangles   %zu", performance.submitted_triangles);
   ImGui::Text("Visible     %zu (%zu culled)",
-              render_stats.visible_entities, render_stats.culled_entities);
+              performance.visible_entities, performance.culled_entities);
+  ImGui::Text("Texture GPU %.1f MiB | Stream %zu",
+              static_cast<double>(performance.estimated_texture_bytes) /
+                  (1024.0 * 1024.0),
+              performance.streaming_work_items);
   ImGui::Text("Frame       %u", parFrameCount);
   ImGui::Text("Scene       %zu", parEngine.getActiveSceneIndex() + 1);
   if (parEngine.getSelectedEntity().isValid()) {

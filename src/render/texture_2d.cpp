@@ -153,4 +153,44 @@ void Texture2D::unbind(GLuint parTextureUnit) {
   glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+TextureSampler::TextureSampler(TextureSampler&& parOther) noexcept
+    : m_handle(std::exchange(parOther.m_handle, 0)) {}
+
+TextureSampler& TextureSampler::operator=(TextureSampler&& parOther) noexcept {
+  if (this != &parOther) {
+    release();
+    m_handle = std::exchange(parOther.m_handle, 0);
+  }
+  return *this;
+}
+
+TextureSampler::~TextureSampler() {
+  release();
+}
+
+void TextureSampler::configure(GLint parMinFilter, GLint parMagFilter,
+                               GLint parWrapS, GLint parWrapT) {
+  if (m_handle == 0) {
+    glGenSamplers(1, &m_handle);
+  }
+  if (m_handle == 0) {
+    throw std::runtime_error("Failed to create OpenGL texture sampler");
+  }
+  glSamplerParameteri(m_handle, GL_TEXTURE_MIN_FILTER, parMinFilter);
+  glSamplerParameteri(m_handle, GL_TEXTURE_MAG_FILTER, parMagFilter);
+  glSamplerParameteri(m_handle, GL_TEXTURE_WRAP_S, parWrapS);
+  glSamplerParameteri(m_handle, GL_TEXTURE_WRAP_T, parWrapT);
+}
+
+void TextureSampler::bind(GLuint parTextureUnit) const {
+  glBindSampler(parTextureUnit, m_handle);
+}
+
+void TextureSampler::release() {
+  if (m_handle != 0) {
+    glDeleteSamplers(1, &m_handle);
+    m_handle = 0;
+  }
+}
+
 }  // namespace kage::render

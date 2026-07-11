@@ -32,6 +32,12 @@ it in the project catalog, and starts placement.
 joint names and hierarchy against the selected skeleton, copies the file into
 `assets/animations/`, and adds compatible clips to the Timeline.
 
+Runtime GLBs remain authoritative. Imports decode on a bounded worker queue;
+proxy textures are capped and budgeted for Material mode, while original
+textures are requested only by Final mode. GPU upload releases transient CPU
+geometry and pixels. `.kage_cache/` is reserved for reproducible generated
+data and is never committed.
+
 ## Checks
 
 ```bash

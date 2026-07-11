@@ -88,6 +88,15 @@ kage_add_check(light_response_check
   tests/light_response_check.cpp
   src/lighting/light_math.cpp
 )
+kage_add_check(viewport_policy_check
+  tests/viewport_policy_check.cpp
+  src/render/viewport_policy.cpp
+)
+kage_add_check(asset_streamer_check
+  tests/asset_streamer_check.cpp
+  src/assets/asset_streamer.cpp
+  src/assets/gltf_asset_loader.cpp
+)
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
@@ -185,6 +194,17 @@ add_test(
 add_test(
   NAME light_direction_response
   COMMAND light_response_check
+)
+add_test(
+  NAME viewport_policy
+  COMMAND viewport_policy_check
+)
+add_test(
+  NAME asset_streamer
+  COMMAND asset_streamer_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/sword.glb"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/sword.glb"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/torii_gate.glb"
 )
 
 foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)

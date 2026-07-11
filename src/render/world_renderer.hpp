@@ -8,11 +8,15 @@
 #include "render/mesh_resource_cache.hpp"
 #include "render/solid_gizmo_renderer.hpp"
 #include "render/mesh_renderer.hpp"
+#include "render/viewport_policy.hpp"
 #include "scene/scene_manager.hpp"
 
 #include <glm/glm.hpp>
 
 #include <cstddef>
+#include <array>
+#include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace kage::render {
@@ -30,31 +34,38 @@ enum class GizmoAxisSpace {
   World
 };
 
-enum class ViewportMode {
-  Bounds,
-  Solid,
-  Material,
-  Final
-};
-
 struct EditorViewportSettings final {
   ViewportMode mode = ViewportMode::Material;
+  MaterialDebugMode material_debug_mode = MaterialDebugMode::Lit;
+  GizmoAxisSpace gizmo_axis_space = GizmoAxisSpace::Local;
+  bool floor_grid_visible = true;
+  int floor_grid_radius = 80;
 };
 
-struct RenderFrameStats final {
+struct SceneRenderSettings final {
+  SkyPreset sky_preset = SkyPreset::DarkVoid;
+};
+
+struct PerformanceSnapshot final {
+  float asset_load_ms = 0.0f;
+  float gpu_upload_ms = 0.0f;
+  float animation_update_ms = 0.0f;
+  float render_ms = 0.0f;
+  float cpu_average_ms = 0.0f;
+  float cpu_p95_ms = 0.0f;
+  float gpu_average_ms = 0.0f;
+  float gpu_p95_ms = 0.0f;
   std::size_t visible_entities = 0;
   std::size_t culled_entities = 0;
   std::size_t draw_calls = 0;
   std::size_t submitted_instances = 0;
   std::size_t submitted_triangles = 0;
+  std::size_t streaming_work_items = 0;
+  std::size_t estimated_texture_bytes = 0;
 };
 
 struct EditorRenderSettings final {
-  SkyPreset sky_preset = SkyPreset::DarkVoid;
-  MaterialDebugMode material_debug_mode = MaterialDebugMode::Lit;
-  GizmoAxisSpace gizmo_axis_space = GizmoAxisSpace::Local;
-  bool floor_grid_visible = true;
-  int floor_grid_radius = 80;
+  SceneRenderSettings scene;
   EditorViewportSettings viewport;
 };
 
@@ -86,6 +97,7 @@ struct PlacementGhost final {
 
 class WorldRenderer final {
  public:
+  ~WorldRenderer();
   void render(const scene::SceneManager::SceneRecord& parScene,
               const MeshResourceCache& parMeshResources,
               const camera::CameraSystem& parCameraSystem,
@@ -93,11 +105,18 @@ class WorldRenderer final {
               const PlacementGhost& parGhost,
               const GizmoGuide& parGizmoGuide,
               const EditorRenderSettings& parSettings,
-              const glm::vec2& parViewportSize);
+              const glm::vec2& parViewportSize,
+              PerformanceSnapshot& parSnapshot);
 
   [[nodiscard]] static const char* getSkyPresetName(SkyPreset parPreset);
   [[nodiscard]] static glm::vec3 getClearColor(SkyPreset parPreset);
-  [[nodiscard]] const RenderFrameStats& getFrameStats() const;
+  [[nodiscard]] std::optional<scene::EntityId> pickEntity(
+      const scene::SceneManager::SceneRecord& parScene,
+      const MeshResourceCache& parMeshResources,
+      const camera::CameraSystem& parCameraSystem,
+      const EditorRenderSettings& parSettings,
+      const glm::vec2& parCursorPixel,
+      const glm::vec2& parViewportSize);
 
  private:
   MeshRenderer m_mesh_renderer;
@@ -108,7 +127,16 @@ class WorldRenderer final {
   std::vector<LineVertex> m_line_vertices;
   std::vector<SolidGizmoVertex> m_solid_vertices;
   std::vector<SolidGizmoVertex> m_glow_vertices;
-  RenderFrameStats m_frame_stats;
+  GLuint m_pick_framebuffer = 0;
+  GLuint m_pick_texture = 0;
+  GLuint m_pick_depth = 0;
+  std::unordered_map<std::uint32_t, std::size_t> m_lod_history;
+  std::array<GLuint, 3> m_gpu_timer_queries{};
+  std::array<bool, 3> m_gpu_timer_pending{};
+  std::size_t m_gpu_timer_cursor = 0;
+  std::array<float, 120> m_gpu_frame_samples{};
+  std::size_t m_gpu_frame_sample_count = 0;
+  std::size_t m_gpu_frame_sample_cursor = 0;
 };
 
 inline bool PlacementGhost::isActive() const {

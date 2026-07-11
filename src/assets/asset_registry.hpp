@@ -5,7 +5,6 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
-#include <future>
 #include <optional>
 #include <span>
 #include <string>
@@ -39,7 +38,6 @@ class AssetRegistry final {
     std::filesystem::path source_path;
     AssetLoadState load_state = AssetLoadState::MetadataReady;
     std::optional<ModelAsset> document;
-    std::optional<std::future<ModelAsset>> pending_document;
     std::string load_error;
     std::chrono::steady_clock::time_point load_started_at{};
     float last_cpu_import_ms = 0.0f;
@@ -47,7 +45,6 @@ class AssetRegistry final {
     std::size_t instance_count = 0;
     std::size_t next_instance_number = 0;
     std::vector<AnimationPackEntry> animation_packs;
-
   };
 
   std::size_t registerStaticAsset(std::string parLabel,
@@ -66,8 +63,13 @@ class AssetRegistry final {
                         std::string& parError);
   ModelAsset& loadAsset(std::size_t parAssetIndex);
   void requestLoad(std::size_t parAssetIndex);
-  bool pollLoad(std::size_t parAssetIndex);
+  void beginCpuLoad(std::size_t parAssetIndex);
+  bool completeCpuLoad(std::size_t parAssetIndex,
+                       std::optional<ModelAsset> parDocument,
+                       std::string parError, float parCpuMs);
   void completeGpuUpload(std::size_t parAssetIndex);
+  void failLoad(std::size_t parAssetIndex, std::string parError);
+  void releaseStaticRenderPayload(std::size_t parAssetIndex);
   std::string reserveInstanceName(std::size_t parAssetIndex);
   void releaseInstance(std::size_t parAssetIndex);
   void setInstanceState(std::size_t parAssetIndex, std::size_t parCount,

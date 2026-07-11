@@ -7,7 +7,7 @@ layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inTexCoord;
 layout (location = 3) in vec4 inTangent;
-layout (location = 4) in vec4 inJoints;
+layout (location = 4) in uvec4 inJoints;
 layout (location = 5) in vec4 inWeights;
 
 uniform mat4 u_model;
@@ -24,10 +24,10 @@ out vec2 meshTexCoord;
 void main() {
   mat4 skin = mat4(1.0);
   if (u_skinning_enabled) {
-    skin = u_joint_matrices[int(inJoints.x)] * inWeights.x +
-           u_joint_matrices[int(inJoints.y)] * inWeights.y +
-           u_joint_matrices[int(inJoints.z)] * inWeights.z +
-           u_joint_matrices[int(inJoints.w)] * inWeights.w;
+    skin = u_joint_matrices[inJoints.x] * inWeights.x +
+           u_joint_matrices[inJoints.y] * inWeights.y +
+           u_joint_matrices[inJoints.z] * inWeights.z +
+           u_joint_matrices[inJoints.w] * inWeights.w;
   }
   vec4 skinned_position = skin * vec4(inPosition, 1.0);
   vec4 world_position = u_model * skinned_position;
@@ -268,10 +268,70 @@ void main() {
 }
 )";
 
+constexpr char PICKING_VERTEX_SHADER[] = R"(#version 410 core
+layout (location = 0) in vec3 inPosition;
+layout (location = 2) in vec2 inTexCoord;
+layout (location = 4) in uvec4 inJoints;
+layout (location = 5) in vec4 inWeights;
+
+uniform mat4 u_model;
+uniform mat4 u_view_projection;
+uniform bool u_skinning_enabled;
+uniform mat4 u_joint_matrices[128];
+
+out vec2 meshTexCoord;
+
+void main() {
+  mat4 skin = mat4(1.0);
+  if (u_skinning_enabled) {
+    skin = u_joint_matrices[inJoints.x] * inWeights.x +
+           u_joint_matrices[inJoints.y] * inWeights.y +
+           u_joint_matrices[inJoints.z] * inWeights.z +
+           u_joint_matrices[inJoints.w] * inWeights.w;
+  }
+  meshTexCoord = inTexCoord;
+  gl_Position = u_view_projection * u_model * skin * vec4(inPosition, 1.0);
+}
+)";
+
+constexpr char PICKING_FRAGMENT_SHADER[] = R"(#version 410 core
+uniform uint u_entity_id;
+uniform bool u_alpha_mask;
+uniform float u_alpha_cutoff;
+uniform float u_base_color_alpha;
+uniform bool u_has_base_color_texture;
+uniform sampler2D u_base_color_texture;
+uniform vec2 u_base_color_offset;
+uniform vec2 u_base_color_scale;
+uniform float u_base_color_rotation;
+
+in vec2 meshTexCoord;
+layout (location = 0) out uint outEntityId;
+
+vec2 transformUv(vec2 uv) {
+  vec2 scaled = uv * u_base_color_scale;
+  float c = cos(u_base_color_rotation);
+  float s = sin(u_base_color_rotation);
+  return vec2(c * scaled.x - s * scaled.y,
+              s * scaled.x + c * scaled.y) + u_base_color_offset;
+}
+
+void main() {
+  float alpha = u_base_color_alpha;
+  if (u_has_base_color_texture) {
+    alpha *= texture(u_base_color_texture, transformUv(meshTexCoord)).a;
+  }
+  if (u_alpha_mask && alpha < u_alpha_cutoff) {
+    discard;
+  }
+  outEntityId = u_entity_id;
+}
+)";
+
 constexpr char OUTLINE_VERTEX_SHADER[] = R"(#version 410 core
 layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
-layout (location = 4) in vec4 inJoints;
+layout (location = 4) in uvec4 inJoints;
 layout (location = 5) in vec4 inWeights;
 
 uniform mat4 u_model;
@@ -283,10 +343,10 @@ uniform mat4 u_joint_matrices[128];
 void main() {
   mat4 skin = mat4(1.0);
   if (u_skinning_enabled) {
-    skin = u_joint_matrices[int(inJoints.x)] * inWeights.x +
-           u_joint_matrices[int(inJoints.y)] * inWeights.y +
-           u_joint_matrices[int(inJoints.z)] * inWeights.z +
-           u_joint_matrices[int(inJoints.w)] * inWeights.w;
+    skin = u_joint_matrices[inJoints.x] * inWeights.x +
+           u_joint_matrices[inJoints.y] * inWeights.y +
+           u_joint_matrices[inJoints.z] * inWeights.z +
+           u_joint_matrices[inJoints.w] * inWeights.w;
   }
   mat3 normalMatrix = mat3(transpose(inverse(u_model)));
   vec3 normal = normalize(normalMatrix * mat3(skin) * inNormal);
@@ -314,6 +374,16 @@ namespace kage::render {
 MeshRenderer::MeshRenderer() {
   m_shader.create(STATIC_MESH_VERTEX_SHADER, STATIC_MESH_FRAGMENT_SHADER);
   m_outline_shader.create(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
+  m_picking_shader.create(PICKING_VERTEX_SHADER, PICKING_FRAGMENT_SHADER);
+}
+
+void MeshRenderer::drawPicking(
+    const GpuMesh& parMesh, const glm::mat4& parViewProjection,
+    const glm::mat4& parEntityTransform,
+    std::span<const std::vector<glm::mat4>> parSkinMatrices,
+    std::uint32_t parEntityId) const {
+  parMesh.drawPicking(m_picking_shader, parViewProjection, parEntityTransform,
+                      parSkinMatrices, parEntityId);
 }
 
 void MeshRenderer::draw(const GpuMesh& parMesh,

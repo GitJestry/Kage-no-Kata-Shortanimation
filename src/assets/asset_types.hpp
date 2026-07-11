@@ -15,6 +15,11 @@
 
 namespace kage::assets {
 
+enum class AssetQualityTier {
+  Proxy,
+  Final
+};
+
 struct AssetId final {
   std::size_t value = std::numeric_limits<std::size_t>::max();
 
@@ -208,6 +213,11 @@ struct GltfMarker final {
   glm::mat4 transform{1.0f};
 };
 
+struct PrimitiveSkinBinding final {
+  std::uint32_t skin_index = INVALID_SKIN_INDEX;
+  glm::mat4 inverse_mesh_bind_transform{1.0f};
+};
+
 struct GltfDocument final {
   std::filesystem::path source_path;
   std::string scene_name;
@@ -216,6 +226,7 @@ struct GltfDocument final {
   std::vector<GltfNode> nodes;
   std::vector<std::uint32_t> root_nodes;
   std::vector<GltfSkin> skins;
+  std::vector<PrimitiveSkinBinding> primitive_skin_bindings;
   std::vector<AnimationClip> animation_clips;
   std::vector<GltfMarker> markers;
   GltfAssetStats stats;
