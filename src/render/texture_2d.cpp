@@ -115,6 +115,24 @@ void Texture2D::upload(int parWidth, int parHeight, int parComponentCount,
   glPixelStorei(GL_UNPACK_ALIGNMENT, previous_unpack_alignment);
 }
 
+void Texture2D::uploadFloat(int parWidth, int parHeight, int parComponentCount,
+                            std::span<const float> parPixels) {
+  const GLenum format = getTextureFormat(parComponentCount);
+  const std::size_t expected_size =
+      getExpectedByteSize(parWidth, parHeight, parComponentCount);
+  if (parPixels.size() < expected_size) {
+    throw std::runtime_error("Floating-point texture data is incomplete");
+  }
+  if (m_handle == 0) {
+    create();
+  }
+  bind(0);
+  glTexImage2D(GL_TEXTURE_2D, 0,
+               parComponentCount == 4 ? GL_RGBA16F : GL_RGB16F, parWidth,
+               parHeight, 0, format, GL_FLOAT, parPixels.data());
+  glGenerateMipmap(GL_TEXTURE_2D);
+}
+
 void Texture2D::setSampling(GLint parMinFilter, GLint parMagFilter,
                             GLint parWrapS, GLint parWrapT) const {
   bind(0);

@@ -45,7 +45,8 @@ void PlacementController::update(engine::EngineCore& parEngine,
       break;
     case Kind::Camera:
       position.y += CAMERA_PLACEMENT_HEIGHT;
-      m_transform.rotation = parEngine.getCameraSystem().getCamera().orientation;
+      m_transform.rotation =
+          parEngine.getCameraSystem().getEditorCamera().orientation;
       break;
     case Kind::PointLight:
       position.y += LIGHT_PLACEMENT_HEIGHT;
@@ -105,29 +106,6 @@ bool PlacementController::canCommit() const {
   return isActive() && m_commit_ready;
 }
 
-PlacementController::Kind PlacementController::getKind() const {
-  return m_kind;
-}
-
-const char* PlacementController::getStatusLabel() const {
-  if (isActive() && !m_commit_ready) {
-    return "Move into viewport";
-  }
-
-  switch (m_kind) {
-    case Kind::StaticAsset:
-      return "Placing asset";
-    case Kind::Camera:
-      return "Placing camera";
-    case Kind::PointLight:
-      return "Placing light source";
-    case Kind::None:
-      return "Ready";
-  }
-
-  return "Ready";
-}
-
 void PlacementController::begin(engine::EngineCore& parEngine, Kind parKind,
                                 std::size_t parAssetIndex) {
   m_kind = parKind;
@@ -139,7 +117,8 @@ void PlacementController::begin(engine::EngineCore& parEngine, Kind parKind,
   position.y = 0.0f;
   if (m_kind == Kind::Camera) {
     position.y = CAMERA_PLACEMENT_HEIGHT;
-    m_transform.rotation = parEngine.getCameraSystem().getCamera().orientation;
+    m_transform.rotation =
+        parEngine.getCameraSystem().getEditorCamera().orientation;
   } else if (m_kind == Kind::PointLight) {
     position.y = LIGHT_PLACEMENT_HEIGHT;
   }

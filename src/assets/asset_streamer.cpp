@@ -29,46 +29,37 @@ AssetStreamer::~AssetStreamer() {
 
 void AssetStreamer::request(std::size_t parAssetIndex,
                             std::filesystem::path parPath,
-                            AssetLoadPriority parPriority,
-                            AssetQualityTier parQuality) {
+                            AssetLoadPriority parPriority) {
   std::lock_guard lock(m_mutex);
   const auto existing = std::find_if(
       m_requests.begin(), m_requests.end(), [&](const Request& request) {
-        return request.asset_index == parAssetIndex &&
-               request.quality == parQuality;
+        return request.asset_index == parAssetIndex;
       });
   if (existing != m_requests.end()) {
     existing->priority = std::min(existing->priority, parPriority);
     return;
   }
+  const std::uint64_t generation = ++m_generations[parAssetIndex];
   m_requests.push_back(
       {parAssetIndex, std::move(parPath), parPriority, m_next_sequence++,
-       parQuality});
+       generation});
   m_condition.notify_one();
 }
 
-bool AssetStreamer::cancel(std::size_t parAssetIndex,
-                           AssetQualityTier parQuality) {
-  const RequestKey key{parAssetIndex, parQuality};
+bool AssetStreamer::cancel(std::size_t parAssetIndex) {
   std::lock_guard lock(m_mutex);
   const std::size_t queued_before = m_requests.size();
   std::erase_if(m_requests, [&](const Request& request) {
-    return request.asset_index == key.asset_index &&
-           request.quality == key.quality;
+    return request.asset_index == parAssetIndex;
   });
   const std::size_t results_before = m_results.size();
   std::erase_if(m_results, [&](const Result& result) {
-    return result.asset_index == key.asset_index &&
-           result.quality == key.quality;
+    return result.asset_index == parAssetIndex;
   });
   const bool active = std::find(m_active_requests.begin(),
-                                m_active_requests.end(), key) !=
+                                m_active_requests.end(), parAssetIndex) !=
                       m_active_requests.end();
-  if (active && std::find(m_cancelled_requests.begin(),
-                          m_cancelled_requests.end(), key) ==
-                    m_cancelled_requests.end()) {
-    m_cancelled_requests.push_back(key);
-  }
+  ++m_generations[parAssetIndex];
   return active || queued_before != m_requests.size() ||
          results_before != m_results.size();
 }
@@ -86,11 +77,6 @@ std::optional<AssetStreamer::Result> AssetStreamer::poll() {
 std::size_t AssetStreamer::getPendingCount() const {
   std::lock_guard lock(m_mutex);
   return m_requests.size() + m_results.size() + m_active_requests.size();
-}
-
-std::size_t AssetStreamer::getActiveCount() const {
-  std::lock_guard lock(m_mutex);
-  return m_active_requests.size();
 }
 
 void AssetStreamer::worker(std::stop_token parStopToken) {
@@ -113,13 +99,11 @@ void AssetStreamer::worker(std::stop_token parStopToken) {
           });
       request = std::move(*next);
       m_requests.erase(next);
-      m_active_requests.push_back(
-          {request.asset_index, request.quality});
+      m_active_requests.push_back(request.asset_index);
     }
 
     Result result;
     result.asset_index = request.asset_index;
-    result.quality = request.quality;
     const auto begin = std::chrono::steady_clock::now();
     try {
       GltfAssetLoader loader;
@@ -132,13 +116,8 @@ void AssetStreamer::worker(std::stop_token parStopToken) {
                         .count();
     {
       std::lock_guard lock(m_mutex);
-      const RequestKey key{request.asset_index, request.quality};
-      std::erase(m_active_requests, key);
-      const auto cancelled = std::find(m_cancelled_requests.begin(),
-                                       m_cancelled_requests.end(), key);
-      if (cancelled != m_cancelled_requests.end()) {
-        m_cancelled_requests.erase(cancelled);
-      } else {
+      std::erase(m_active_requests, request.asset_index);
+      if (m_generations[request.asset_index] == request.generation) {
         m_results.push_back(std::move(result));
       }
     }

@@ -33,7 +33,7 @@ constexpr glm::vec3 AXIS_Z_COLOR{0.22f, 0.48f, 1.0f};
       parEntity.light.has_value() || parEntity.camera.has_value();
   const float pixels = large_handle ? 150.0f : 118.0f;
   const float screen_length = kage::camera::getWorldLengthForPixels(
-      parEngine.getCameraSystem().getCamera(),
+      parEngine.getCameraSystem().getEditorCamera(),
       parEntity.transform.transform.translation, parViewportSize, pixels);
   const kage::math::Bounds3 bounds = parEngine.getEntityWorldBounds(
       parEntity.id);
@@ -66,7 +66,7 @@ bool GizmoController::begin(engine::EngineCore& parEngine,
                             const glm::vec2& parCursorPixel,
                             const glm::vec2& parViewportSize) {
   const scene::EntityId selected = parEngine.getSelectedEntity();
-  if (!selected.isValid() || selected == parEngine.getEditorCameraEntity()) {
+  if (!selected.isValid()) {
     return false;
   }
 
@@ -148,7 +148,8 @@ void GizmoController::update(engine::EngineCore& parEngine,
     return;
   }
 
-  const camera::Camera& camera = parEngine.getCameraSystem().getCamera();
+  const camera::Camera& camera =
+      parEngine.getCameraSystem().getEditorCamera();
   if (m_operation == Operation::MoveAxis ||
       m_operation == Operation::ScaleAxis) {
     const math::Transform transform = entity->transform.transform;
@@ -277,7 +278,7 @@ bool GizmoController::pickAxis(engine::EngineCore& parEngine,
                 transform.rotation * glm::vec3(0.0f, 1.0f, 0.0f),
                 transform.rotation * glm::vec3(0.0f, 0.0f, 1.0f)};
   const glm::mat4 view_projection =
-      parEngine.getCameraSystem().getCamera().getViewProjectionMatrix(
+      parEngine.getCameraSystem().getEditorCamera().getViewProjectionMatrix(
           parViewportSize);
   const kage::math::ScreenPoint origin = kage::math::projectPoint(
       transform.translation, view_projection, parViewportSize);
@@ -332,7 +333,7 @@ bool GizmoController::pickRotationHandle(
   const glm::vec3 handle_position =
       transform.translation + glm::normalize(right + up) * axis_length * 0.42f;
   const glm::mat4 view_projection =
-      parEngine.getCameraSystem().getCamera().getViewProjectionMatrix(
+      parEngine.getCameraSystem().getEditorCamera().getViewProjectionMatrix(
           parViewportSize);
   const kage::math::ScreenPoint handle = kage::math::projectPoint(
       handle_position, view_projection, parViewportSize);

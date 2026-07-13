@@ -12,6 +12,7 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 endif()
 
 include(FetchContent)
+include(CTest)
 include(cmake/Sources.cmake)
 include(cmake/PatchGltemplate.cmake)
 
@@ -66,37 +67,71 @@ function(kage_add_check TARGET_NAME)
   target_link_libraries(${TARGET_NAME} PRIVATE tinygltf glm)
 endfunction()
 
-kage_add_check(asset_import_check
-  tests/asset_import_check.cpp
-  src/assets/gltf_asset_loader.cpp
-)
-kage_add_check(animation_hierarchy_check
-  tests/animation_hierarchy_check.cpp
-  src/animation/animator.cpp
-)
-kage_add_check(animation_playback_check
-  tests/animation_playback_check.cpp
-  src/animation/animator.cpp
-  src/assets/gltf_asset_loader.cpp
-)
-kage_add_check(animation_import_compatibility_check
-  tests/animation_import_compatibility_check.cpp
-  src/assets/asset_registry.cpp
-  src/assets/gltf_asset_loader.cpp
-)
-kage_add_check(light_response_check
-  tests/light_response_check.cpp
-  src/lighting/light_math.cpp
-)
-kage_add_check(viewport_policy_check
-  tests/viewport_policy_check.cpp
-  src/render/viewport_policy.cpp
-)
-kage_add_check(asset_streamer_check
-  tests/asset_streamer_check.cpp
-  src/assets/asset_streamer.cpp
-  src/assets/gltf_asset_loader.cpp
-)
+if(BUILD_TESTING)
+  kage_add_check(asset_fidelity_check
+    tests/asset_fidelity_check.cpp
+    src/assets/gltf_asset_loader.cpp
+  )
+  kage_add_check(animation_hierarchy_check
+    tests/animation_hierarchy_check.cpp
+    src/animation/animator.cpp
+  )
+  kage_add_check(animation_playback_check
+    tests/animation_playback_check.cpp
+    src/animation/animator.cpp
+    src/assets/gltf_asset_loader.cpp
+  )
+  kage_add_check(camera_check
+    tests/camera_check.cpp
+    src/camera/camera.cpp
+    src/camera/fly_camera_controller.cpp
+    src/camera/session_camera.cpp
+  )
+  kage_add_check(film_sequence_check
+    tests/film_sequence_check.cpp
+    src/film/film_sequence.cpp
+  )
+  kage_add_check(lighting_system_check
+    tests/lighting_system_check.cpp
+    src/lighting/lighting_system.cpp
+    src/scene/world.cpp
+  )
+  kage_add_check(environment_image_check
+    tests/environment_image_check.cpp
+    src/assets/asset_path.cpp
+    src/render/environment_image.cpp
+  )
+
+  add_test(
+    NAME asset_fidelity
+    COMMAND asset_fidelity_check
+      "${CMAKE_CURRENT_SOURCE_DIR}/assets/models"
+  )
+  add_test(NAME animation_hierarchy COMMAND animation_hierarchy_check)
+  add_test(
+    NAME animation_playback_samurai
+    COMMAND animation_playback_check
+      "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
+  )
+  add_test(NAME camera COMMAND camera_check)
+  add_test(NAME film_sequence COMMAND film_sequence_check)
+  add_test(NAME lighting_system COMMAND lighting_system_check)
+  add_test(
+    NAME environment_image
+    COMMAND environment_image_check
+      "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures/environment.hdr"
+  )
+  find_program(KAGE_FFMPEG_EXECUTABLE ffmpeg)
+  if(KAGE_FFMPEG_EXECUTABLE)
+    add_test(
+      NAME final_mp4_encode
+      COMMAND "${KAGE_FFMPEG_EXECUTABLE}" -y
+        -f lavfi -i "color=c=black:s=64x64:r=30:d=0.1"
+        -c:v libx264 -pix_fmt yuv420p
+        "${CMAKE_CURRENT_BINARY_DIR}/final_export_smoke.mp4"
+    )
+  endif()
+endif()
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
@@ -140,71 +175,6 @@ endif()
 install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION .
   BUNDLE DESTINATION .
-)
-
-enable_testing()
-add_test(
-  NAME asset_import_sword
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/sword.glb"
-)
-add_test(
-  NAME asset_import_torii_gate
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/torii_gate.glb"
-)
-add_test(
-  NAME asset_batch_grasspatch
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/grasspatch.glb"
-    --max-render-primitives 4
-)
-add_test(
-  NAME asset_batch_shrine
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/shrine.glb"
-    --max-render-primitives 93
-)
-add_test(
-  NAME asset_import_samurai_rig
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
-    --require-rig
-    --min-animation-clips
-    2
-    --min-real-clip-duration
-    1.0
-    --min-clip-keys
-    3
-)
-add_test(
-  NAME animation_hierarchy
-  COMMAND animation_hierarchy_check
-)
-add_test(
-  NAME animation_playback_samurai
-  COMMAND animation_playback_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
-)
-add_test(
-  NAME animation_import_compatibility
-  COMMAND animation_import_compatibility_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
-)
-add_test(
-  NAME light_direction_response
-  COMMAND light_response_check
-)
-add_test(
-  NAME viewport_policy
-  COMMAND viewport_policy_check
-)
-add_test(
-  NAME asset_streamer
-  COMMAND asset_streamer_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/sword.glb"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/sword.glb"
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/torii_gate.glb"
 )
 
 foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)

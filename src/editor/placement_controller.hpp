@@ -28,8 +28,6 @@ class PlacementController final {
 
   [[nodiscard]] bool isActive() const;
   [[nodiscard]] bool canCommit() const;
-  [[nodiscard]] Kind getKind() const;
-  [[nodiscard]] const char* getStatusLabel() const;
 
  private:
   void begin(engine::EngineCore& parEngine, Kind parKind,

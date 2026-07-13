@@ -112,8 +112,4 @@ EntityId SceneManager::getSelectedEntity() const {
   return getActiveScene().selected_entity;
 }
 
-EntityId SceneManager::getEditorCameraEntity() const {
-  return getActiveScene().editor_camera_entity;
-}
-
 }  // namespace kage::scene

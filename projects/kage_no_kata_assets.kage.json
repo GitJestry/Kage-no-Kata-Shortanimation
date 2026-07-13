@@ -146,5 +146,19 @@
       "source": "assets/models/tree_yellow_few.glb"
     }
   ],
-  "version": 1
+  "environments": [
+    {
+      "hdr": true,
+      "id": 6926615012220495964,
+      "label": "environment",
+      "path": "assets/textures/environment.hdr"
+    },
+    {
+      "hdr": true,
+      "id": 7977123141943097921,
+      "label": "yellow_sky",
+      "path": "assets/textures/yellow_sky.hdr"
+    }
+  ],
+  "version": 2
 }

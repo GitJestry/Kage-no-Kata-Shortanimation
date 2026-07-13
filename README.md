@@ -23,6 +23,9 @@ cmake -S . -B build
 cmake --build build --config Release
 ```
 
+Final MPEG4 export requires `ffmpeg` on `PATH` (for example
+`brew install ffmpeg` on macOS).
+
 CMake fetches the pinned framework version. Run from the project root:
 
 ```bash
@@ -43,6 +46,7 @@ ctest --test-dir build --output-on-failure
 - [Asset pipeline](docs/ASSET_PIPELINE.md)
 - [Requirements and evidence](docs/PROJECT_REQUIREMENTS.md)
 - [Editor workflow](docs/EDITOR_WORKFLOW.md)
+- [Film workflow](docs/FILM_WORKFLOW.md)
 - [Milestone checklist](docs/TODO.md)
 
 ## References

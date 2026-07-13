@@ -5,6 +5,7 @@
 #include "editor/gizmo_controller.hpp"
 #include "editor/confirmation_dialog.hpp"
 #include "editor/file_browser_dialog.hpp"
+#include "editor/editor_session.hpp"
 #include "editor/ui_panel_rect.hpp"
 #include "engine/engine_core.hpp"
 
@@ -20,14 +21,13 @@ namespace kage::editor {
 class EditorUi final {
  public:
   void draw(engine::EngineCore& parEngine,
+            EditorSession& parSession,
             PlacementController& parPlacementController,
             SelectionController& parSelectionController,
             GizmoController& parGizmoController,
             ConfirmationDialog& parConfirmationDialog,
             const glm::vec2& parViewportSize, float parDeltaSeconds,
             unsigned int parFrameCount);
-  void togglePanelVisibility();
-  [[nodiscard]] bool isPanelVisible() const;
   [[nodiscard]] bool isCursorOverPanel(const glm::vec2& parUiCursor) const;
 
  private:
@@ -37,7 +37,8 @@ class EditorUi final {
   void clampCurrentPanel(const char* parPanelName,
                          bool parKeepAboveStatusStrip);
   void drawHiddenPanelButton();
-  void drawViewportModeStrip(engine::EngineCore& parEngine,
+  void drawHiddenInspectorButton();
+  void drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession,
                              const glm::vec2& parViewportSize);
   void drawLeftPanel(engine::EngineCore& parEngine,
                      PlacementController& parPlacementController,
@@ -75,19 +76,20 @@ class EditorUi final {
 
   std::array<char, 128> m_scene_name_buffer{};
   std::array<char, 128> m_entity_name_buffer{};
-  std::array<char, 128> m_model_import_label_buffer{};
   std::array<char, 128> m_animation_import_label_buffer{};
+  std::array<char, 128> m_panorama_import_label_buffer{};
   std::size_t m_scene_name_buffer_index = static_cast<std::size_t>(-1);
   std::uint32_t m_entity_name_buffer_id =
       std::numeric_limits<std::uint32_t>::max();
   std::size_t m_selected_asset_index = 0;
   std::string m_model_import_error;
   std::string m_animation_import_error;
+  std::string m_panorama_import_error;
   FileBrowserDialog m_model_import_browser;
   FileBrowserDialog m_animation_import_browser;
+  FileBrowserDialog m_panorama_import_browser;
   bool m_panel_visible = true;
   bool m_inspector_visible = true;
-  bool m_timeline_visible = true;
   bool m_diagnostics_visible = false;
   std::vector<UiPanelRect> m_panel_rects;
 };

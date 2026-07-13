@@ -10,14 +10,6 @@ constexpr float MILLISECONDS_PER_SECOND = 1000.0f;
 constexpr float DIAGNOSTICS_WIDTH = 260.0f;
 constexpr float STATUS_HEIGHT = kage::editor::UI_STATUS_HEIGHT;
 
-#ifndef KAGE_BUILD_TYPE
-#ifdef NDEBUG
-#define KAGE_BUILD_TYPE "Release"
-#else
-#define KAGE_BUILD_TYPE "Debug"
-#endif
-#endif
-
 }  // namespace
 
 namespace kage::editor {
@@ -28,11 +20,11 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
                                       unsigned int parFrameCount) {
   static_cast<void>(parViewportSize);
   const UiWorkArea area = getUiWorkArea();
-  const ImVec2 size(DIAGNOSTICS_WIDTH, 224.0f);
+  const ImVec2 size(DIAGNOSTICS_WIDTH, 184.0f);
   const ImVec2 position = clampPanelPosition(
       area,
       ImVec2(area.position.x + area.size.x - DIAGNOSTICS_WIDTH - 16.0f,
-             area.position.y + 16.0f),
+             area.position.y + area.size.y - STATUS_HEIGHT - size.y - 20.0f),
       size, true);
   ImGui::SetNextWindowPos(position, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
@@ -46,7 +38,6 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
     return;
   }
 
-  ImGui::Text("Build       %s %s %s", KAGE_BUILD_TYPE, __DATE__, __TIME__);
   ImGui::Text("Frame time  %.3f ms",
               parDeltaSeconds * MILLISECONDS_PER_SECOND);
   const render::PerformanceSnapshot& performance =
@@ -59,6 +50,10 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
               performance.gpu_upload_ms);
   ImGui::Text("Anim/Render %.2f / %.2f ms",
               performance.animation_update_ms, performance.render_ms);
+  ImGui::Text("Shadow/Bind/Draw %.2f / %.2f / %.2f ms%s",
+              performance.shadow_render_ms, performance.frame_binding_ms,
+              performance.material_submission_ms,
+              performance.shadows_reused ? " (shadows cached)" : "");
   ImGui::Text("Draws       %zu", performance.draw_calls);
   ImGui::Text("Triangles   %zu", performance.submitted_triangles);
   ImGui::Text("Visible     %zu (%zu culled)",
@@ -67,16 +62,7 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
               static_cast<double>(performance.estimated_texture_bytes) /
                   (1024.0 * 1024.0),
               performance.streaming_work_items);
-  ImGui::Text("Frame       %u", parFrameCount);
-  ImGui::Text("Scene       %zu", parEngine.getActiveSceneIndex() + 1);
-  if (parEngine.getSelectedEntity().isValid()) {
-    ImGui::Text("Selected    %u", parEngine.getSelectedEntity().value);
-  } else {
-    ImGui::TextUnformatted("Selected    None");
-  }
-  ImGui::Text("Fly speed   %.2f m/s",
-              parEngine.getCameraSystem().getFlyMoveSpeed());
-  ImGui::TextDisabled("Right drag look | WASD move | Space/Shift height");
+  static_cast<void>(parFrameCount);
   trackCurrentPanel();
   ImGui::End();
 }
@@ -87,6 +73,9 @@ void EditorUi::drawStatusStrip(
     const GizmoController& parGizmoController,
     const glm::vec2& parViewportSize) {
   static_cast<void>(parViewportSize);
+  static_cast<void>(parEngine);
+  static_cast<void>(parPlacementController);
+  static_cast<void>(parGizmoController);
   const UiWorkArea area = getUiWorkArea();
   ImGui::SetNextWindowPos(
       ImVec2(area.position.x, area.position.y + area.size.y - STATUS_HEIGHT),
@@ -98,48 +87,12 @@ void EditorUi::drawStatusStrip(
                    ImGuiWindowFlags_NoResize |
                    ImGuiWindowFlags_NoSavedSettings);
   trackCurrentPanel();
-  ImGui::Text("Camera Fly");
-  ImGui::SameLine();
-  ImGui::TextDisabled("| Speed %.2f",
-                      parEngine.getCameraSystem().getFlyMoveSpeed());
-  ImGui::SameLine();
-  const char* gizmo_mode = "Move";
-  if (parGizmoController.getMode() == GizmoController::TransformMode::Scale) {
-    gizmo_mode = "Scale";
-  } else if (parGizmoController.getMode() ==
-             GizmoController::TransformMode::Rotate) {
-    gizmo_mode = "Rotate";
-  }
-  ImGui::TextDisabled("| Gizmo %s", gizmo_mode);
-  ImGui::SameLine();
-  ImGui::TextDisabled(
-      "| Axis %s",
-      parGizmoController.getAxisSpace() == GizmoController::AxisSpace::World
-          ? "World"
-          : "Local");
-  ImGui::SameLine();
-  ImGui::TextDisabled("| %s", parPlacementController.getStatusLabel());
-  if (parPlacementController.isActive()) {
-    ImGui::SameLine();
-    ImGui::TextDisabled("| Esc cancels, left click places");
-  }
-  ImGui::SameLine();
-  if (ImGui::SmallButton(m_panel_visible ? "Hide Editor" : "Show Editor")) {
-    m_panel_visible = !m_panel_visible;
-  }
-  ImGui::SameLine();
-  if (ImGui::SmallButton(m_inspector_visible ? "Hide Inspector"
-                                             : "Show Inspector")) {
-    m_inspector_visible = !m_inspector_visible;
-  }
-  ImGui::SameLine();
-  if (ImGui::SmallButton(m_timeline_visible ? "Hide Timeline"
-                                            : "Show Timeline")) {
-    m_timeline_visible = !m_timeline_visible;
-  }
-  ImGui::SameLine();
-  if (ImGui::SmallButton(m_diagnostics_visible ? "Hide Diagnostics"
-                                               : "Show Diagnostics")) {
+  const char* label = m_diagnostics_visible ? "Close Diagnostics"
+                                            : "Diagnostics";
+  const float width = 132.0f;
+  ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(),
+                               ImGui::GetWindowWidth() - width - 8.0f));
+  if (ImGui::Button(label, ImVec2(width, 0.0f))) {
     m_diagnostics_visible = !m_diagnostics_visible;
   }
   ImGui::End();

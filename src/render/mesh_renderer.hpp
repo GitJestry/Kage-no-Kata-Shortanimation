@@ -2,6 +2,7 @@
 
 #include "lighting/light.hpp"
 #include "render/gpu_mesh.hpp"
+#include "render/shadow_renderer.hpp"
 #include "render/shader_program.hpp"
 
 #include <glm/glm.hpp>
@@ -21,16 +22,18 @@ class MeshRenderer final {
   MeshRenderer(MeshRenderer&&) noexcept = default;
   MeshRenderer& operator=(MeshRenderer&&) noexcept = default;
 
+  void beginFrame(const glm::mat4& parViewProjection,
+                  const glm::vec3& parCameraPosition,
+                  const lighting::LightingState& parLighting,
+                  MaterialDebugMode parDebugMode, bool parSolidMode,
+                  const ShadowFrame* parShadows = nullptr) const;
   void draw(const GpuMesh& parMesh,
-            const glm::mat4& parViewProjection,
             const glm::vec3& parCameraPosition,
             const glm::mat4& parEntityTransform,
-            const lighting::LightingState& parLighting,
             std::span<const std::vector<glm::mat4>> parSkinMatrices,
             float parEntityOpacity,
-            MaterialDebugMode parDebugMode,
             bool parSolidMode = false,
-            std::size_t parLod = 0) const;
+            MeshDrawPass parPass = MeshDrawPass::All) const;
   void drawOutline(const GpuMesh& parMesh,
                    const glm::mat4& parViewProjection,
                    const glm::mat4& parEntityTransform,

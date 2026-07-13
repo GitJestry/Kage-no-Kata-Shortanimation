@@ -12,23 +12,15 @@ namespace kage::render {
 class MeshResourceCache final {
  public:
   void uploadStaticMesh(assets::AssetRegistry::StaticMeshHandle parHandle,
-                        const assets::StaticModel& parModel,
-                        assets::AssetQualityTier parQuality);
+                        const assets::StaticModel& parModel);
   [[nodiscard]] const GpuMesh* getStaticMesh(
-      assets::AssetRegistry::StaticMeshHandle parHandle,
-      assets::AssetQualityTier parQuality = assets::AssetQualityTier::Proxy) const;
-  void releaseFinalMeshes();
+      assets::AssetRegistry::StaticMeshHandle parHandle) const;
   void clear();
-  [[nodiscard]] std::size_t getEstimatedTextureBytes(
-      assets::AssetQualityTier parQuality) const;
+  [[nodiscard]] std::size_t getEstimatedTextureBytes() const;
 
  private:
-  struct MeshTiers final {
-    GpuMesh proxy;
-    GpuMesh final;
-  };
   TextureResourceCache m_texture_cache;
-  std::vector<MeshTiers> m_static_meshes;
+  std::vector<GpuMesh> m_static_meshes;
 };
 
 }  // namespace kage::render

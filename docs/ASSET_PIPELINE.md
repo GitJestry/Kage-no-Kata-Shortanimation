@@ -7,6 +7,7 @@ evidence, not runtime files.
 
 - `assets/models/`: bundled and imported model GLBs.
 - `assets/animations/`: imported compatible animation GLBs.
+- `assets/textures/environments/`: catalogued HDR/LDR panoramas.
 - `assets/source_blender/`: Blender source files.
 - `projects/kage_no_kata_assets.kage.json`: tracked asset catalog.
 
@@ -32,15 +33,17 @@ it in the project catalog, and starts placement.
 joint names and hierarchy against the selected skeleton, copies the file into
 `assets/animations/`, and adds compatible clips to the Timeline.
 
-Runtime GLBs remain authoritative. Imports decode on a bounded worker queue;
-proxy textures are capped and budgeted for Material mode, while original
-textures are requested only by Final mode. GPU upload releases transient CPU
-geometry and pixels. `.kage_cache/` is reserved for reproducible generated
-data and is never committed.
+Runtime GLBs remain authoritative. Imports decode on a bounded worker queue.
+Every mesh mode uses one complete authored index buffer and source-resolution
+texture set; the engine does not generate LODs or proxy textures. GPU upload
+releases transient CPU geometry and pixels. Panorama decode also runs
+off-thread, limits the GPU panorama to 8192×4096 while retaining the source,
+and uploads only on the main thread. `.kage_cache/` is reserved
+for reproducible generated data and is never committed.
 
 ## Checks
 
 ```bash
 ctest --test-dir build --output-on-failure
-build/asset_import_check assets/models/samurai.glb --require-rig --min-animation-clips 2 --min-real-clip-duration 1.0 --min-clip-keys 3
+build/asset_fidelity_check assets/models
 ```

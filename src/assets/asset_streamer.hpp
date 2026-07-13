@@ -12,6 +12,7 @@
 #include <stop_token>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace kage::assets {
@@ -29,7 +30,6 @@ class AssetStreamer final {
     std::optional<ModelAsset> document;
     std::string error;
     float cpu_ms = 0.0f;
-    AssetQualityTier quality = AssetQualityTier::Proxy;
   };
 
   explicit AssetStreamer(std::size_t parWorkerCount = 2);
@@ -39,13 +39,10 @@ class AssetStreamer final {
   AssetStreamer& operator=(const AssetStreamer&) = delete;
 
   void request(std::size_t parAssetIndex, std::filesystem::path parPath,
-               AssetLoadPriority parPriority,
-               AssetQualityTier parQuality = AssetQualityTier::Proxy);
-  bool cancel(std::size_t parAssetIndex,
-              AssetQualityTier parQuality = AssetQualityTier::Proxy);
+               AssetLoadPriority parPriority);
+  bool cancel(std::size_t parAssetIndex);
   [[nodiscard]] std::optional<Result> poll();
   [[nodiscard]] std::size_t getPendingCount() const;
-  [[nodiscard]] std::size_t getActiveCount() const;
 
  private:
   struct Request final {
@@ -53,13 +50,7 @@ class AssetStreamer final {
     std::filesystem::path path;
     AssetLoadPriority priority = AssetLoadPriority::Visible;
     std::uint64_t sequence = 0;
-    AssetQualityTier quality = AssetQualityTier::Proxy;
-  };
-
-  struct RequestKey final {
-    std::size_t asset_index = 0;
-    AssetQualityTier quality = AssetQualityTier::Proxy;
-    friend bool operator==(const RequestKey&, const RequestKey&) = default;
+    std::uint64_t generation = 0;
   };
 
   void worker(std::stop_token parStopToken);
@@ -70,8 +61,8 @@ class AssetStreamer final {
   std::vector<Request> m_requests;
   std::deque<Result> m_results;
   std::uint64_t m_next_sequence = 0;
-  std::vector<RequestKey> m_active_requests;
-  std::vector<RequestKey> m_cancelled_requests;
+  std::vector<std::size_t> m_active_requests;
+  std::unordered_map<std::size_t, std::uint64_t> m_generations;
 };
 
 }  // namespace kage::assets

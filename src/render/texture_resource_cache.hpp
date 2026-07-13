@@ -13,12 +13,9 @@ namespace kage::render {
 class TextureResourceCache final {
  public:
   [[nodiscard]] std::shared_ptr<Texture2D> acquire(
-      const assets::StaticImage& parImage, TextureColorSpace parColorSpace,
-      assets::AssetQualityTier parQuality);
-  void releaseExpired(assets::AssetQualityTier parQuality);
+      const assets::StaticImage& parImage, TextureColorSpace parColorSpace);
   void clear();
-  [[nodiscard]] std::size_t getResidentBytes(
-      assets::AssetQualityTier parQuality) const;
+  [[nodiscard]] std::size_t getResidentBytes() const;
 
  private:
   struct Key final {
@@ -27,8 +24,6 @@ class TextureResourceCache final {
     int height = 0;
     int component_count = 0;
     TextureColorSpace color_space = TextureColorSpace::Linear;
-    assets::AssetQualityTier quality = assets::AssetQualityTier::Proxy;
-
     friend bool operator==(const Key&, const Key&) = default;
   };
 

@@ -28,6 +28,8 @@ class Texture2D final {
   void upload(int parWidth, int parHeight, int parComponentCount,
               std::span<const unsigned char> parPixels,
               TextureColorSpace parColorSpace = TextureColorSpace::Linear);
+  void uploadFloat(int parWidth, int parHeight, int parComponentCount,
+                   std::span<const float> parPixels);
   void setSampling(GLint parMinFilter, GLint parMagFilter, GLint parWrapS,
                    GLint parWrapT) const;
   void bind(GLuint parTextureUnit) const;

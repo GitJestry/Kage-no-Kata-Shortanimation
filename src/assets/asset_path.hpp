@@ -6,6 +6,8 @@
 namespace kage::assets {
 
 [[nodiscard]] bool hasGltfExtension(const std::filesystem::path& parPath);
+[[nodiscard]] bool hasPanoramaExtension(const std::filesystem::path& parPath);
+[[nodiscard]] bool hasHdrExtension(const std::filesystem::path& parPath);
 [[nodiscard]] std::string defaultAssetLabelFromPath(
     const std::filesystem::path& parPath);
 [[nodiscard]] bool isInsideDirectory(const std::filesystem::path& parPath,

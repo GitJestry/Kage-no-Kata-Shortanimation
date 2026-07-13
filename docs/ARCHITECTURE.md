@@ -1,80 +1,64 @@
 # Architecture
 
-KageEngine is a small editor/runtime foundation for the film. Framework code
-owns the window; project systems own behavior.
+KageEngine has one shared world and two workflows: World Edit constructs it;
+Movie evaluates a `FilmTimeline` without changing authored world values.
 
 ```mermaid
 flowchart TD
-    MainApp["MainApp\nwindow + raw input polling"]
-    Editor["WorldEditor\neditor input coordinator"]
-    Engine["EngineCore\ncommands + queries"]
-    Assets["AssetRegistry\nmetadata + animation data"]
-    Streamer["AssetStreamer\npriority queue + two CPU workers"]
-    MeshCache["MeshResourceCache\nGPU resources"]
-    Textures["TextureResourceCache\nshared image storage"]
-    Scenes["SceneManager\nworlds + entities"]
-    Camera["CameraSystem\nfly camera + frame selection"]
-    Animation["AnimationSystem\nclip playback + skin matrices"]
-    Lighting["LightingSystem\nsun, environment, point lights"]
-    Renderer["WorldRenderer\nrender pass coordinator"]
-    Catalog["projects/kage_no_kata_assets.kage.json"]
-    World["projects/kage_no_kata_world.kage.json"]
-
-    MainApp --> Editor --> Engine
-    Engine --> Assets
-    Engine --> Streamer --> Assets
-    Engine --> MeshCache --> Textures
-    Engine --> Scenes
-    Engine --> Camera
-    Engine --> Animation
-    Engine --> Lighting
-    Engine --> Renderer --> MeshCache
-    Catalog <--> Assets
-    World <--> Engine
+  App["MainApp"] --> Editor["WorldEditor"] --> Engine["EngineCore"]
+  Engine --> World["World + stable entity IDs"]
+  Engine --> Assets["AssetRegistry + AssetStreamer"]
+  Assets --> GPU["One full-fidelity GpuMesh per asset"]
+  Engine --> Timeline["FilmTimeline"] --> Frame["Immutable FilmFrameState"]
+  Frame --> Animation["Evaluated skin palettes"]
+  Frame --> Lighting["LightingSystem"]
+  Engine --> View["Camera + authoritative ViewportRect"]
+  View --> Renderer["Environment / opaque-mask / blend / HDR / overlays"]
+  Animation --> Renderer
+  Lighting --> Shadows["Sun + two selected point shadows"] --> Renderer
 ```
 
-## Ownership Rules
+## Ownership
 
-- UI sends commands; it does not mutate scene records directly.
-- Assets retain metadata, bounds, skeletons, and clips. The streamer owns
-  transient decoded payloads until render uploads them.
-- Render owns GPU buffers. Shared texture storage is content-addressed while
-  per-material sampler state remains independent.
-- Scene data uses stable entity ids and stable asset ids.
-- Animation samples skeleton clips into `SkeletonPose` and writes skin palettes.
-- Lighting stores one scene sun, environment values, and point light entities.
-- The editor camera is a fly camera; framing moves the camera to a selected
-  bounds without changing grid or view-distance settings.
+- `World` owns persistent entities and base transforms, cameras, lights, and
+  mesh instances.
+- Local session data owns the editor camera, fly speed, selection, grid, and
+  playhead. Workspace, Shot Preview, and shading reset on launch.
+- `FilmTimeline` owns camera cuts and typed clips. Evaluation returns transform,
+  rig, camera, and light overrides without mutating `World`.
+- `AssetRegistry` owns model metadata. `AssetStreamer` owns CPU loading work.
+  All OpenGL creation remains on the main thread.
+- `MeshResourceCache` owns one vertex/index allocation and source-resolution
+  texture set per asset. There are no generated LODs, proxy textures, or Final
+  re-import paths.
+- `LightingSystem` extracts evaluated lights and ranks shadow-enabled point
+  lights by camera influence, using entity ID as the tie-breaker.
+- `WorldRenderer` owns pass order, HDR targets, panorama GPU state, and shadow
+  maps. Each pass establishes the GL state it relies on.
 
-## Performance Architecture
+## Rendering
 
-- Asset CPU imports are bounded to two workers; GPU uploads remain on the
-  context-owning main thread.
-- Decoded static geometry and image pixels are released after upload. Material
-  textures use a bounded proxy tier; Final resources load on demand and become
-  evictable when Final mode is left.
-- Static glTF primitives are flattened and merged by material before GPU
-  upload. Meshoptimizer prepares vertex-cache-friendly indices plus 50% and
-  15% index-only LODs.
-- The renderer frustum-culls entity bounds and selects LOD from projected
-  screen size. Rigged meshes stay at full detail.
-- OpenGL validation is enabled only in Debug builds. Editor builds default to
-  RelWithDebInfo and do not pay for a `glGetError` after every API call.
-- Runtime Diagnostics reports submitted draws, triangles, and culled entities.
+Solid, Material, and Final use the complete authored geometry. Bounds is the
+only geometry-free mode. Material uses full textures, lighting, and a 2048²
+sun shadow. Final uses a stabilized 4096² sun shadow and up to two 1024²
+point-light cubemap shadows before HDR tone mapping. Shadow casters are
+extracted independently from the camera-visible draw list.
+
+Opaque and masked primitives write depth. Blended primitives render afterwards,
+back-to-front, without depth writes. Solid treats every surface as opaque.
+Double-sided glTF materials reverse their normal and tangent basis for back
+faces. The editor floor is only a translucent depth-tested grid; it never writes
+depth and is omitted from film output.
 
 ## Persistence
 
-Tracked project data:
+- World schema v5 stores stable animation clip IDs, source ranges, movement
+  timing, and the environment asset ID while loading v1-v4.
+- Asset catalog schema v2 stores models, animation packs, and catalogued HDR/LDR
+  panoramas.
+- Local session schema v4 accepts only finite, normalized, range-checked camera
+  state. Older camera state is framed once to prevent legacy bad views.
 
-- `projects/kage_no_kata_assets.kage.json`
-- `projects/kage_no_kata_world.kage.json`
-
-Private editor state:
-
-- `.kage_local/editor_session.json`
-- `.kage_local/imgui.ini`
-
-The local session owns the active scene, selection, viewport mode, grid,
-material debug mode, gizmo space, and fly speed; none is shared project data.
-
-`Save Project` writes tracked world data. Autosave writes local editor state.
+`FinalRenderJob` renders one UI-free 3840×2160 frame per application frame,
+uses 4× MSAA before HDR resolve, retains the PNG sequence, and invokes ffmpeg
+only after every frame and camera cut has validated.

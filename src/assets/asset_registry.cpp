@@ -497,20 +497,13 @@ void AssetRegistry::failLoad(std::size_t parAssetIndex, std::string parError) {
   asset->document.reset();
 }
 
-void AssetRegistry::releaseStaticRenderPayload(std::size_t parAssetIndex) {
+void AssetRegistry::releaseStaticGeometryPayload(std::size_t parAssetIndex) {
   AssetLibraryEntry* asset = getAssetLibraryEntry(parAssetIndex);
   if (asset == nullptr || !asset->document.has_value()) {
     return;
   }
-  StaticModel& model = asset->document->static_model;
-  model.primitives.clear();
-  model.primitives.shrink_to_fit();
-  model.images.clear();
-  model.images.shrink_to_fit();
-  model.textures.clear();
-  model.textures.shrink_to_fit();
-  model.materials.clear();
-  model.materials.shrink_to_fit();
+  asset->document->static_model.primitives.clear();
+  asset->document->static_model.primitives.shrink_to_fit();
 }
 
 std::string AssetRegistry::reserveInstanceName(std::size_t parAssetIndex) {

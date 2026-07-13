@@ -166,6 +166,13 @@ void ShaderProgram::setInt(const char* parName, int parValue) const {
   glUniform1i(getUniformLocation(parName), parValue);
 }
 
+void ShaderProgram::setIntArray(const char* parName, const int* parValues,
+                                GLsizei parCount) const {
+  if (parValues != nullptr && parCount > 0) {
+    glUniform1iv(getUniformLocation(parName), parCount, parValues);
+  }
+}
+
 void ShaderProgram::setUInt(const char* parName, unsigned int parValue) const {
   glUniform1ui(getUniformLocation(parName), parValue);
 }

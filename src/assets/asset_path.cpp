@@ -6,13 +6,32 @@
 
 namespace kage::assets {
 
-bool hasGltfExtension(const std::filesystem::path& parPath) {
+namespace {
+
+[[nodiscard]] std::string lowerExtension(const std::filesystem::path& parPath) {
   std::string extension = parPath.extension().string();
   std::transform(extension.begin(), extension.end(), extension.begin(),
-                 [](unsigned char parCharacter) {
-                   return static_cast<char>(std::tolower(parCharacter));
+                 [](unsigned char character) {
+                   return static_cast<char>(std::tolower(character));
                  });
+  return extension;
+}
+
+}  // namespace
+
+bool hasGltfExtension(const std::filesystem::path& parPath) {
+  const std::string extension = lowerExtension(parPath);
   return extension == ".glb" || extension == ".gltf";
+}
+
+bool hasPanoramaExtension(const std::filesystem::path& parPath) {
+  const std::string extension = lowerExtension(parPath);
+  return extension == ".hdr" || extension == ".png" ||
+         extension == ".jpg" || extension == ".jpeg";
+}
+
+bool hasHdrExtension(const std::filesystem::path& parPath) {
+  return lowerExtension(parPath) == ".hdr";
 }
 
 std::string defaultAssetLabelFromPath(const std::filesystem::path& parPath) {

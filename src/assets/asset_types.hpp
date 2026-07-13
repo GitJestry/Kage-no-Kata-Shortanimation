@@ -15,11 +15,6 @@
 
 namespace kage::assets {
 
-enum class AssetQualityTier {
-  Proxy,
-  Final
-};
-
 struct AssetId final {
   std::size_t value = std::numeric_limits<std::size_t>::max();
 
@@ -88,6 +83,12 @@ struct MaterialTextureSlot final {
   [[nodiscard]] bool isValid() const;
 };
 
+enum class AlphaMode {
+  Opaque,
+  Mask,
+  Blend
+};
+
 struct StaticMaterial final {
   std::string name;
   glm::vec4 base_color_factor{1.0f};
@@ -100,8 +101,7 @@ struct StaticMaterial final {
   float normal_scale = 1.0f;
   float alpha_cutoff = 0.5f;
   glm::vec3 emissive_factor{0.0f};
-  bool alpha_blend = false;
-  bool alpha_mask = false;
+  AlphaMode alpha_mode = AlphaMode::Opaque;
   bool double_sided = false;
 };
 
@@ -200,7 +200,10 @@ struct AnimationChannel final {
   std::uint32_t sampler_index = 0;
 };
 
+using AnimationClipId = std::uint64_t;
+
 struct AnimationClip final {
+  AnimationClipId id = 0;
   std::string name;
   float duration_seconds = 0.0f;
   std::vector<AnimationSampler> samplers;

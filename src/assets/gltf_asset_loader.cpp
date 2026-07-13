@@ -666,6 +666,8 @@ void importMaterials(const tinygltf::Model& parModel,
                      const std::filesystem::path& parPath,
                      kage::assets::StaticModel& parOutput) {
   parOutput.materials.reserve(parModel.materials.size());
+  std::size_t declared_blend_count = 0;
+  std::size_t reclassified_blend_count = 0;
 
   for (const tinygltf::Material& material : parModel.materials) {
     kage::assets::StaticMaterial output_material;
@@ -686,12 +688,62 @@ void importMaterials(const tinygltf::Model& parModel,
         std::clamp(material.pbrMetallicRoughness.roughnessFactor, 0.0, 1.0));
     output_material.alpha_cutoff =
         static_cast<float>(std::max(material.alphaCutoff, 0.0));
-    output_material.alpha_blend = material.alphaMode == "BLEND";
-    output_material.alpha_mask = material.alphaMode == "MASK";
+    if (material.alphaMode == "MASK") {
+      output_material.alpha_mode = kage::assets::AlphaMode::Mask;
+    } else if (material.alphaMode == "BLEND") {
+      output_material.alpha_mode = kage::assets::AlphaMode::Blend;
+      ++declared_blend_count;
+    }
     output_material.double_sided = material.doubleSided;
 
     output_material.base_color_texture = readTextureSlot(
         material.pbrMetallicRoughness.baseColorTexture, parModel, parPath);
+
+    if (output_material.alpha_mode == kage::assets::AlphaMode::Blend &&
+        output_material.base_color_factor.a >= 0.999f) {
+      bool opaque = !output_material.base_color_texture.isValid();
+      bool mask = false;
+      if (output_material.base_color_texture.isValid()) {
+        const std::size_t texture_index =
+            output_material.base_color_texture.texture_index;
+        if (texture_index < parOutput.textures.size()) {
+          const std::size_t image_index =
+              parOutput.textures[texture_index].image_index;
+          if (image_index < parOutput.images.size()) {
+            const kage::assets::StaticImage& image =
+                parOutput.images[image_index];
+            opaque = image.component_count < 4;
+            if (image.component_count == 4) {
+              opaque = true;
+              std::size_t partial_alpha_count = 0;
+              std::size_t transparent_alpha_count = 0;
+              for (std::size_t pixel = 3; pixel < image.pixels.size();
+                   pixel += 4) {
+                const unsigned char alpha = image.pixels[pixel];
+                if (alpha != 255) {
+                  opaque = false;
+                  ++transparent_alpha_count;
+                }
+                if (alpha > 0 && alpha < 255) {
+                  ++partial_alpha_count;
+                }
+              }
+              const std::size_t pixel_count = image.pixels.size() / 4;
+              mask = transparent_alpha_count > 0 && pixel_count > 0 &&
+                     partial_alpha_count * 100 <= pixel_count;
+            }
+          }
+        }
+      }
+      if (opaque) {
+        output_material.alpha_mode = kage::assets::AlphaMode::Opaque;
+      } else if (mask) {
+        output_material.alpha_mode = kage::assets::AlphaMode::Mask;
+      }
+      if (output_material.alpha_mode != kage::assets::AlphaMode::Blend) {
+        ++reclassified_blend_count;
+      }
+    }
     output_material.metallic_roughness_texture =
         readTextureSlot(material.pbrMetallicRoughness.metallicRoughnessTexture,
                         parModel, parPath);
@@ -709,6 +761,31 @@ void importMaterials(const tinygltf::Model& parModel,
     }
 
     parOutput.materials.push_back(output_material);
+  }
+
+  const bool suspicious_all_blend_export =
+      !parModel.materials.empty() &&
+      declared_blend_count == parModel.materials.size() &&
+      reclassified_blend_count * 10 >= declared_blend_count * 9;
+  if (reclassified_blend_count > 0 && !parOutput.import_warning.empty()) {
+    parOutput.import_warning += '\n';
+  }
+  if (suspicious_all_blend_export) {
+    std::size_t remaining_blend_count = 0;
+    for (kage::assets::StaticMaterial& material : parOutput.materials) {
+      if (material.alpha_mode == kage::assets::AlphaMode::Blend) {
+        material.alpha_mode = kage::assets::AlphaMode::Mask;
+        ++remaining_blend_count;
+      }
+    }
+    parOutput.import_warning +=
+        "Suspicious Blender export: all materials were BLEND; reclassified " +
+        std::to_string(reclassified_blend_count + remaining_blend_count) +
+        " materials using effective alpha coverage";
+  } else if (reclassified_blend_count > 0) {
+    parOutput.import_warning +=
+        "Reclassified " + std::to_string(reclassified_blend_count) +
+        " suspicious BLEND materials using effective alpha coverage";
   }
 }
 
@@ -1075,6 +1152,16 @@ void importAnimations(const tinygltf::Model& parModel,
        animation_index < parModel.animations.size(); ++animation_index) {
     const tinygltf::Animation& animation = parModel.animations[animation_index];
     kage::assets::AnimationClip clip;
+    constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ull;
+    constexpr std::uint64_t FNV_PRIME = 1099511628211ull;
+    std::uint64_t clip_id = FNV_OFFSET;
+    const std::string clip_key = parPath.filename().generic_string() +
+        "#" + std::to_string(animation_index) + ":" + animation.name;
+    for (const unsigned char value : clip_key) {
+      clip_id ^= value;
+      clip_id *= FNV_PRIME;
+    }
+    clip.id = clip_id;
     clip.name = animation.name.empty()
                     ? "Animation " + std::to_string(animation_index)
                     : animation.name;

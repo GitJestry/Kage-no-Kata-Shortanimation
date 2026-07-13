@@ -4,10 +4,12 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace kage::lighting {
 
-inline constexpr std::size_t MAX_POINT_LIGHTS = 8;
+inline constexpr std::size_t MAX_POINT_LIGHTS = 32;
+inline constexpr std::size_t MAX_POINT_SHADOWS = 2;
 
 struct DirectionalLight final {
   glm::vec3 direction_to_light{0.35f, 0.85f, 0.45f};
@@ -22,6 +24,8 @@ struct PointLight final {
   float intensity = 3.0f;
   float range = 9.0f;
   bool enabled = false;
+  bool casts_shadow = false;
+  std::uint32_t entity_id = 0;
 };
 
 struct LightingState final {

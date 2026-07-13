@@ -1,42 +1,44 @@
 # Editor Workflow
 
+Every launch starts in **World Edit** with **Solid** shading. Use the centered
+top switch to enter Movie; shading controls remain on the right.
+
 ## Navigation
 
-- Right-drag: look around.
-- `WASD`: move.
-- `Space` / `Shift`: move up/down.
-- Mouse wheel: camera speed.
-- Double-click an entity in the hierarchy: frame it.
-- `Z`: cycle Bounds, Solid, Material, and Final viewport modes.
+- Right-drag looks around; `WASD` moves, `Space` moves up, and `Shift` moves
+  down. Fly speed is available in the Editor Camera inspector, and the wheel
+  adjusts it within its validated range.
+- Single-click selects. Double-click selects and frames once.
+- `Frame World` frames all visible models.
+- `Z` cycles Bounds, Solid, Material, and Final. Every mesh mode uses original
+  geometry and source-resolution textures.
 
-The compact viewport strip offers the same four modes. Material is the default;
-Solid forces the lowest generated LOD and skips material texture sampling,
-while Final keeps full geometry detail.
+## World Edit
 
-## World Editing
+The left Editor is fixed to the screen edge and fills the space above the status
+strip. Its right edge can be resized. It contains the scene selector, Save,
+hierarchy, one collapsed Add section, and collapsed World settings. Model,
+camera, and point-light placement exists only here. Delete Selected, the Delete
+key, and the hierarchy context menu share the same confirmation flow. Closing
+it leaves a fixed Editor button at the top-left to reopen it.
 
-- Select an asset or `Light Source` in the Create list to start placement.
-- Move the ghost over the floor and left-click the viewport to place it.
-- `Esc` cancels placement or active gizmo work.
-- Select entities from the hierarchy or by double-clicking mesh geometry.
-- Delete from the hierarchy, Inspector, or Delete key; all paths use the same
-  confirmation dialog.
+The Inspector is fixed above the status strip in the bottom-right corner. With
+no selection it exposes the Editor Camera, including fly speed and navigation
+instructions; with an entity selected it edits visibility, transform, mesh
+diagnostics, camera properties, and light properties. Per-entity opacity does
+not exist. Closing it leaves a fixed Inspector button above the status strip to
+reopen it.
 
-## Animation
+World environment settings select a catalogued panorama or import `.hdr`,
+`.png`, `.jpg`, or `.jpeg`. Decode occurs on a worker, upload on the main thread,
+and Loading/Error/Ready is shown inline. Invalid assets use the fallback sky.
 
-Select a rigged entity and open Timeline.
+## Movie
 
-- `Play` starts looping playback.
-- `Stop` resets the clip to the first frame.
-- `Speed` changes playback rate.
-- Imported compatible animation clips appear beside embedded model clips.
+Movie has no hierarchy, World Inspector, placement, deletion, or world gizmos.
+The editor camera remains available for navigation and selection. Shot Preview
+is explicitly enabled in FilmEditor and is non-interactive.
 
-## Lighting
-
-The Lighting panel separates:
-
-- `Sun`: directional light controlled by direction, color, and intensity.
-- `Environment`: ambient diffuse/specular and exposure.
-- `Light Source`: placeable point light entities.
-
-Dark Void starts with no ambient contribution. Shadows are not implemented yet.
+The bottom strip contains only the bottom-right Diagnostics button. Runtime
+Diagnostics contains timing, draw/triangle, culling, texture-memory, and
+streaming data.

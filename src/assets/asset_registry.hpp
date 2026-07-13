@@ -69,7 +69,6 @@ class AssetRegistry final {
                        std::string parError, float parCpuMs);
   void completeGpuUpload(std::size_t parAssetIndex);
   void failLoad(std::size_t parAssetIndex, std::string parError);
-  void releaseStaticRenderPayload(std::size_t parAssetIndex);
   std::string reserveInstanceName(std::size_t parAssetIndex);
   void releaseInstance(std::size_t parAssetIndex);
   void setInstanceState(std::size_t parAssetIndex, std::size_t parCount,
@@ -90,6 +89,7 @@ class AssetRegistry final {
       AssetId parAssetId) const;
   [[nodiscard]] const ModelAsset* getLoadedAsset(
       std::size_t parAssetIndex) const;
+  void releaseStaticGeometryPayload(std::size_t parAssetIndex);
   [[nodiscard]] const StaticModel* getStaticMeshSource(
       StaticMeshHandle parHandle) const;
 

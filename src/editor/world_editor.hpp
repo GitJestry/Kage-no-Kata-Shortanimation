@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/editor_session.hpp"
 #include "editor/editor_ui.hpp"
 #include "editor/confirmation_dialog.hpp"
 #include "editor/gizmo_controller.hpp"
@@ -7,6 +8,7 @@
 #include "editor/selection_controller.hpp"
 #include "engine/engine_core.hpp"
 #include "input/input_events.hpp"
+#include "render/viewport_rect.hpp"
 
 #include <glm/glm.hpp>
 
@@ -32,14 +34,17 @@ class WorldEditor final {
   void applyCameraMovement(const input::EditorInputSnapshot& parInput);
   void handlePointerInput(const input::EditorInputSnapshot& parInput);
   void publishGizmoGuide();
+  void updateViewportRect(const input::EditorInputSnapshot& parInput);
 
   engine::EngineCore& m_engine;
   EditorUi m_ui;
+  EditorSession m_session;
   ConfirmationDialog m_confirmation_dialog;
   PlacementController m_placement_controller;
   SelectionController m_selection_controller;
   GizmoController m_gizmo_controller;
   bool m_right_look_active = false;
+  render::ViewportRect m_viewport;
 };
 
 }  // namespace kage::editor
