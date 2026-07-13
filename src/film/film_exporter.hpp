@@ -1,6 +1,6 @@
 #pragma once
 
-#include "film/film_sequence.hpp"
+#include "film/movie_timeline.hpp"
 
 #include <filesystem>
 #include <functional>
@@ -22,12 +22,12 @@ class FinalRenderJob final {
   FinalRenderJob(const FinalRenderJob&) = delete;
   FinalRenderJob& operator=(const FinalRenderJob&) = delete;
 
-  [[nodiscard]] bool start(const FilmSequence& parSequence,
+  [[nodiscard]] bool start(const MovieTimeline& parTimeline,
                            std::filesystem::path parFrameDirectory,
                            std::filesystem::path parMoviePath,
                            std::filesystem::path parFfmpeg,
                            std::string& parError);
-  void advance(const FilmSequence& parSequence,
+  void advance(const MovieTimeline& parTimeline,
                const FilmRenderFunction& parRender);
   void cancel();
 

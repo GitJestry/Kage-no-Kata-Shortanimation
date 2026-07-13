@@ -2,7 +2,7 @@
 
 #include "scene/entity_id.hpp"
 #include "scene/world.hpp"
-#include "film/film_sequence.hpp"
+#include "film/movie_timeline.hpp"
 
 #include <cstddef>
 #include <span>
@@ -18,7 +18,7 @@ class SceneManager final {
     World world;
     EntityId selected_entity;
     SunLightSettings sun_light;
-    film::FilmSequence film_sequence;
+    film::MovieTimeline movie_timeline;
     bool local_only = false;
   };
 

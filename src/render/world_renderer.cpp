@@ -232,38 +232,6 @@ void addFloorGrid(std::vector<kage::render::LineVertex>& parVertices,
   }
 }
 
-void addFilmMovementPath(
-    std::vector<kage::render::LineVertex>& parVertices,
-    const kage::film::FilmMovement& parMovement) {
-  constexpr glm::vec3 PATH_COLOR{0.24f, 0.72f, 1.0f};
-  constexpr glm::vec3 HANDLE_COLOR{1.0f, 0.72f, 0.20f};
-  const glm::vec3 delta =
-      parMovement.end.translation - parMovement.start.translation;
-  const glm::vec3 control_1 =
-      parMovement.automatic_position_controls
-          ? parMovement.start.translation + delta / 3.0f
-          : parMovement.position_control_1;
-  const glm::vec3 control_2 =
-      parMovement.automatic_position_controls
-          ? parMovement.end.translation - delta / 3.0f
-          : parMovement.position_control_2;
-  glm::vec3 previous = parMovement.start.translation;
-  for (int sample = 1; sample <= 32; ++sample) {
-    const float t = static_cast<float>(sample) / 32.0f;
-    const glm::vec3 current =
-        kage::film::sampleMovement(parMovement, t).translation;
-    addLine(parVertices, previous, current, PATH_COLOR);
-    previous = current;
-  }
-  addLine(parVertices, parMovement.start.translation, control_1,
-          HANDLE_COLOR);
-  addLine(parVertices, control_2, parMovement.end.translation, HANDLE_COLOR);
-  addCircle(parVertices, control_1, glm::vec3(1.0f, 0.0f, 0.0f),
-            glm::vec3(0.0f, 1.0f, 0.0f), 0.08f, HANDLE_COLOR);
-  addCircle(parVertices, control_2, glm::vec3(1.0f, 0.0f, 0.0f),
-            glm::vec3(0.0f, 1.0f, 0.0f), 0.08f, HANDLE_COLOR);
-}
-
 void addFloorContactCue(std::vector<kage::render::LineVertex>& parVertices,
                         const kage::math::Bounds3& parBounds,
                         const glm::vec3& parOrigin) {
@@ -607,11 +575,22 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  const glm::vec3 clear_color = getClearColor(parSettings.scene.sky_preset);
+  const glm::vec3 clear_color =
+      parView.black_film_output ? glm::vec3(0.0f)
+                                 : getClearColor(parSettings.scene.sky_preset);
   glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   if (parView.camera == nullptr) {
+    if (parView.use_film_framebuffer) {
+      m_film_framebuffer.present();
+    }
+    if (timer_active) {
+      glEndQuery(GL_TIME_ELAPSED);
+      m_gpu_timer_pending[timer_slot] = true;
+      m_gpu_timer_cursor =
+          (m_gpu_timer_cursor + 1) % m_gpu_timer_queries.size();
+    }
     return;
   }
   const camera::Camera& camera = *parView.camera;
@@ -659,10 +638,15 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
 
   const auto display_transform_for = [&](const scene::EntityRecord& entity) {
     math::Transform transform = entity.transform.transform;
-    if (parView.sequence != nullptr) {
-      if (const auto evaluated =
-              parView.sequence->evaluateTransform(entity.id, parView.frame)) {
-        transform = *evaluated;
+    if (parView.film_state != nullptr) {
+      const auto evaluated = std::find_if(
+          parView.film_state->transforms.begin(),
+          parView.film_state->transforms.end(),
+          [&](const film::TransformOverride& item) {
+            return item.entity == entity.id;
+          });
+      if (evaluated != parView.film_state->transforms.end()) {
+        transform = evaluated->transform;
       }
     }
     return transform;
@@ -796,10 +780,15 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
         find_mesh(selected_entity->static_mesh->mesh_handle);
     if (mesh != nullptr) {
       math::Transform selected_transform = selected_entity->transform.transform;
-      if (parView.sequence != nullptr) {
-        if (const auto evaluated = parView.sequence->evaluateTransform(
-                selected_entity->id, parView.frame)) {
-          selected_transform = *evaluated;
+      if (parView.film_state != nullptr) {
+        const auto evaluated = std::find_if(
+            parView.film_state->transforms.begin(),
+            parView.film_state->transforms.end(),
+            [&](const film::TransformOverride& item) {
+              return item.entity == selected_entity->id;
+            });
+        if (evaluated != parView.film_state->transforms.end()) {
+          selected_transform = evaluated->transform;
         }
       }
       const math::Bounds3 selected_bounds =
@@ -887,24 +876,6 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   }
   if (parGhost.kind == PlacementGhost::Kind::Camera) {
     addCameraGizmo(m_line_vertices, parGhost.transform);
-  }
-
-  if (parView.sequence != nullptr && parView.selected_film_clip != 0) {
-    for (const film::FilmTrack& track : parView.sequence->tracks) {
-      const auto clip = std::find_if(
-          track.clips.begin(), track.clips.end(),
-          [&](const film::FilmClip& item) {
-            return item.id == parView.selected_film_clip;
-          });
-      if (clip == track.clips.end()) {
-        continue;
-      }
-      if (const auto* movement =
-              std::get_if<film::FilmMovement>(&clip->payload)) {
-        addFilmMovementPath(m_line_vertices, *movement);
-      }
-      break;
-    }
   }
 
   if (selected_entity != nullptr &&

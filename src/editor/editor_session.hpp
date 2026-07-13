@@ -1,6 +1,6 @@
 #pragma once
 
-#include "film/film_sequence.hpp"
+#include "film/movie_timeline.hpp"
 
 #include <filesystem>
 
@@ -14,8 +14,7 @@ enum class Workspace {
 struct EditorSession final {
   Workspace workspace = Workspace::WorldEdit;
   bool shot_preview = false;
-  bool solo_clip_preview = false;
-  film::FilmClipId selected_film_clip = 0;
+  film::SequenceClipId selected_film_clip = 0;
   float film_editor_height = 260.0f;
 };
 

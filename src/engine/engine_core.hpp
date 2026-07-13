@@ -125,8 +125,6 @@ class EngineCore final {
               bool parShotPreview = false, double parFilmFrame = -1.0,
               bool parShowOverlays = true,
               unsigned int parDestinationFramebuffer = 0,
-              film::FilmClipId parSelectedFilmClip = 0,
-              film::FilmClipId parSoloFilmClip = 0,
               int parMsaaSamples = 1);
   [[nodiscard]] const render::PerformanceSnapshot& getPerformanceSnapshot()
       const;
@@ -163,7 +161,7 @@ class EngineCore final {
   [[nodiscard]] render::MaterialDebugMode getMaterialDebugMode() const;
   [[nodiscard]] render::GizmoAxisSpace getGizmoAxisSpace() const;
   [[nodiscard]] render::ViewportMode getViewportMode() const;
-  [[nodiscard]] film::FilmSequence& getFilmSequence();
+  [[nodiscard]] film::MovieTimeline& getMovieTimeline();
   [[nodiscard]] film::FilmPlayback& getFilmPlayback();
   [[nodiscard]] math::Bounds3 getEntityWorldBounds(
       scene::EntityId parEntity) const;
@@ -194,7 +192,7 @@ class EngineCore final {
   void createDefaultSceneEntities(scene::SceneManager::SceneRecord& parScene);
   void rebuildAssetInstanceCounts();
   [[nodiscard]] std::optional<camera::Camera> evaluateFilmCamera(
-      double parFrame) const;
+      const film::FilmFrameState& parFrame) const;
 
   friend class ProjectSerializer;
 

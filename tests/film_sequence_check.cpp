@@ -22,6 +22,22 @@ int main() {
   using namespace kage;
   using namespace kage::film;
 
+  MovieTimeline empty_timeline;
+  FilmPlayback empty_playback;
+  empty_playback.playing = true;
+  empty_playback.previewing = true;
+  empty_playback.update(1.0f, empty_timeline);
+  if (empty_playback.playing || empty_playback.previewing ||
+      empty_playback.playhead_frame != 0.0) {
+    return fail("zero-duration playback did not stop cleanly");
+  }
+  FilmPlayback stopped_playback;
+  if (!requiresFilmFrameState(true, true, -1.0, stopped_playback) ||
+      !requiresFilmFrameState(true, false, 0.0, stopped_playback) ||
+      requiresFilmFrameState(true, false, -1.0, stopped_playback)) {
+    return fail("camera preview or export did not select the film evaluation path");
+  }
+
   MovieTimeline timeline;
   TimelineEditService edits(timeline);
   CapturedEntityBaseState base;
@@ -145,9 +161,11 @@ int main() {
   const FilmFrameState animation_late_hold =
       evaluateMovieTimeline(animation_timeline, 30);
   if (animation_mid.rig_animations.size() != 1 ||
+      animation_mid.rig_animations.front().final_pose ||
       !close(animation_mid.rig_animations.front().local_time_seconds,
              6.0f / 30.0f * 0.5f) ||
       animation_hold.rig_animations.size() != 1 ||
+      !animation_hold.rig_animations.front().final_pose ||
       !close(animation_hold.rig_animations.front().local_time_seconds,
              10.0f / 30.0f * 0.5f) ||
       animation_late_hold.rig_animations.size() != 1 ||

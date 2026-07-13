@@ -3,7 +3,7 @@
 #include "assets/asset_registry.hpp"
 #include "animation/animation_system.hpp"
 #include "camera/camera.hpp"
-#include "film/film_sequence.hpp"
+#include "film/film_frame_state.hpp"
 #include "lighting/light.hpp"
 #include "math/transform.hpp"
 #include "render/line_renderer.hpp"
@@ -85,12 +85,11 @@ struct EditorRenderSettings final {
 
 struct ViewportView final {
   const camera::Camera* camera = nullptr;
-  const film::FilmSequence* sequence = nullptr;
-  double frame = 0.0;
+  const film::FilmFrameState* film_state = nullptr;
+  bool black_film_output = false;
   GLuint destination_framebuffer = 0;
   bool use_film_framebuffer = false;
   std::span<const animation::EvaluatedSkinPalette> skin_palettes;
-  film::FilmClipId selected_film_clip = 0;
   int msaa_samples = 1;
 };
 

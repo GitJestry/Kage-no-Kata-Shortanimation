@@ -2,6 +2,7 @@
 
 #include "engine/engine_core.hpp"
 #include "camera/session_camera.hpp"
+#include "film/movie_timeline_serializer.hpp"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -32,10 +33,6 @@ using json = nlohmann::json;
   return json::array({parValue.x, parValue.y, parValue.z});
 }
 
-[[nodiscard]] json toJson(const glm::vec4& parValue) {
-  return json::array({parValue.x, parValue.y, parValue.z, parValue.w});
-}
-
 [[nodiscard]] json toJson(const glm::quat& parValue) {
   return json::array({parValue.w, parValue.x, parValue.y, parValue.z});
 }
@@ -54,15 +51,6 @@ using json = nlohmann::json;
 
   return glm::vec3(parJson[0].get<float>(), parJson[1].get<float>(),
                    parJson[2].get<float>());
-}
-
-[[nodiscard]] glm::vec4 readVec4(const json& parJson,
-                                 const glm::vec4& parFallback) {
-  if (!parJson.is_array() || parJson.size() != 4) {
-    return parFallback;
-  }
-  return glm::vec4(parJson[0].get<float>(), parJson[1].get<float>(),
-                   parJson[2].get<float>(), parJson[3].get<float>());
 }
 
 [[nodiscard]] glm::vec3 normalizedOrFallback(const glm::vec3& parValue,
@@ -220,234 +208,6 @@ void readMeshComponent(kage::engine::EngineCore& parEngine,
   return static_cast<kage::render::MaterialDebugMode>(raw_value);
 }
 
-[[nodiscard]] kage::film::FilmSequence readFilmSequence(const json& parJson) {
-  kage::film::FilmSequence sequence;
-  if (!parJson.is_object()) {
-    return sequence;
-  }
-  sequence.name = parJson.value("name", sequence.name);
-  sequence.duration_frames =
-      std::max(parJson.value("duration_frames", sequence.duration_frames), 1);
-
-  const auto read_cut = [&](const json& cut_json) {
-    kage::film::CameraCut cut;
-    cut.id = cut_json.value("id", sequence.next_cut_id++);
-    cut.start_frame = cut_json.value("start_frame", 0);
-    cut.end_frame = cut_json.value("end_frame", cut.start_frame + 1);
-    cut.camera.value =
-        cut_json.value("camera", kage::scene::EntityId{}.value);
-    sequence.next_cut_id = std::max(sequence.next_cut_id, cut.id + 1);
-    sequence.camera_cuts.push_back(cut);
-  };
-  for (const json& cut_json :
-       parJson.value("camera_cuts", json::array())) {
-    read_cut(cut_json);
-  }
-  for (const json& track_json : parJson.value("tracks", json::array())) {
-    kage::film::FilmTrack track;
-    track.target.value =
-        track_json.value("target", kage::scene::EntityId{}.value);
-    for (const json& clip_json : track_json.value("clips", json::array())) {
-      kage::film::FilmClip clip;
-      clip.id = clip_json.value("id", sequence.next_clip_id++);
-      clip.start_frame = clip_json.value("start_frame", 0);
-      clip.end_frame = clip_json.value("end_frame", clip.start_frame + 1);
-      const std::string type = clip_json.value("type", "movement");
-      if (type == "rig") {
-        kage::film::RigAnimation value;
-        value.clip_id = clip_json.value(
-            "clip_id", kage::assets::AnimationClipId{0});
-        value.legacy_clip_index =
-            clip_json.value("clip_index", std::size_t{0});
-        value.source_in = std::clamp(
-            clip_json.value("source_in", 0.0f), 0.0f, 1.0f);
-        value.source_out = std::clamp(
-            clip_json.value("source_out", 1.0f), value.source_in, 1.0f);
-        value.speed = clip_json.value("speed", 1.0f);
-        value.looping = clip_json.value("looping", false);
-        value.blend_in_seconds = clip_json.value("blend_in", 0.0f);
-        value.blend_out_seconds = clip_json.value("blend_out", 0.0f);
-        clip.payload = value;
-      } else if (type == "property") {
-        kage::film::FilmProperty value;
-        value.kind = static_cast<kage::film::FilmPropertyKind>(
-            clip_json.value("kind", 0));
-        value.start_value = readVec4(
-            clip_json.value("start_value", json::array()), glm::vec4(0.0f));
-        value.control_1 = readVec4(
-            clip_json.value("control_1", json::array()), value.start_value);
-        value.control_2 = readVec4(
-            clip_json.value("control_2", json::array()), value.start_value);
-        value.end_value = readVec4(
-            clip_json.value("end_value", json::array()), value.start_value);
-        clip.payload = value;
-      } else {
-        kage::film::FilmMovement value;
-        value.start = readTransform(clip_json.value("start", json::object()));
-        value.end = readTransform(clip_json.value("end", json::object()));
-        value.position_control_1 = readVec3(
-            clip_json.value("control_1", json::array()), glm::vec3(0.0f));
-        value.position_control_2 = readVec3(
-            clip_json.value("control_2", json::array()), glm::vec3(0.0f));
-        value.timing_control_1 = std::clamp(
-            clip_json.value("timing_1", 1.0f / 3.0f), 0.0f, 1.0f);
-        value.timing_control_2 = std::clamp(
-            clip_json.value("timing_2", 2.0f / 3.0f),
-            value.timing_control_1, 1.0f);
-        value.automatic_position_controls =
-            clip_json.value("automatic_controls", true);
-        clip.payload = value;
-      }
-      sequence.next_clip_id = std::max(sequence.next_clip_id, clip.id + 1);
-      track.clips.push_back(std::move(clip));
-    }
-    sequence.tracks.push_back(std::move(track));
-  }
-
-  // Schema-v3 arrays are converted in memory and are never kept as a second
-  // runtime representation.
-  if (sequence.camera_cuts.empty()) {
-    for (const json& shot_json : parJson.value("shots", json::array())) {
-      read_cut(shot_json);
-    }
-  }
-  const auto migrate_key_tracks =
-      [&](const json& legacy_tracks, const char* target_field,
-          bool include_fov) {
-        for (const json& track_json : legacy_tracks) {
-          kage::scene::EntityId target;
-          target.value = track_json.value(
-              target_field, kage::scene::EntityId{}.value);
-          const json& keys = track_json.value("keys", json::array());
-          if (!keys.empty()) {
-            const int first_frame = keys.front().value("frame", 0);
-            if (first_frame > 0) {
-              kage::film::FilmMovement held;
-              held.start = held.end = readTransform(
-                  keys.front().value("transform", json::object()));
-              static_cast<void>(
-                  sequence.addClip(target, 0, first_frame, held));
-              if (include_fov) {
-                kage::film::FilmProperty fov;
-                fov.kind = kage::film::FilmPropertyKind::CameraFov;
-                fov.start_value = fov.control_1 = fov.control_2 =
-                    fov.end_value = glm::vec4(
-                        keys.front().value("fov", 50.0f));
-                static_cast<void>(
-                    sequence.addClip(target, 0, first_frame, fov));
-              }
-            }
-          }
-          for (std::size_t index = 0; index < keys.size(); ++index) {
-            const json& left = keys[index];
-            const json& right = index + 1 < keys.size() ? keys[index + 1]
-                                                        : left;
-            const int start = left.value("frame", 0);
-            const int end = index + 1 < keys.size()
-                                ? right.value("frame", start + 1)
-                                : sequence.duration_frames;
-            if (end <= start) {
-              continue;
-            }
-            kage::film::FilmMovement movement;
-            movement.start =
-                readTransform(left.value("transform", json::object()));
-            movement.end =
-                readTransform(right.value("transform", json::object()));
-            movement.automatic_position_controls =
-                left.value("automatic_handles", true) &&
-                right.value("automatic_handles", true);
-            movement.position_control_1 = movement.start.translation + readVec3(
-                left.value("position_out", json::array()), glm::vec3(0.0f));
-            movement.position_control_2 = movement.end.translation + readVec3(
-                right.value("position_in", json::array()), glm::vec3(0.0f));
-            static_cast<void>(sequence.addClip(target, start, end, movement));
-            if (include_fov) {
-              kage::film::FilmProperty fov;
-              fov.kind = kage::film::FilmPropertyKind::CameraFov;
-              fov.start_value.x = left.value("fov", 50.0f);
-              fov.end_value.x = right.value("fov", fov.start_value.x);
-              const float delta = fov.end_value.x - fov.start_value.x;
-              fov.control_1.x = fov.start_value.x + delta / 3.0f;
-              fov.control_2.x = fov.end_value.x - delta / 3.0f;
-              static_cast<void>(sequence.addClip(target, start, end, fov));
-            }
-          }
-        }
-      };
-  if (sequence.tracks.empty()) {
-    migrate_key_tracks(parJson.value("camera_tracks", json::array()),
-                       "camera", true);
-    migrate_key_tracks(parJson.value("transform_tracks", json::array()),
-                       "entity", false);
-  }
-  return sequence;
-}
-
-[[nodiscard]] json writeFilmSequenceJson(
-    const kage::film::FilmSequence& parSequence) {
-  json output = {
-      {"name", parSequence.name},
-      {"fps", kage::film::FILM_FRAMES_PER_SECOND},
-      {"duration_frames", parSequence.duration_frames},
-      {"camera_cuts", json::array()},
-      {"tracks", json::array()},
-  };
-  for (const kage::film::CameraCut& cut : parSequence.camera_cuts) {
-    output["camera_cuts"].push_back({
-        {"id", cut.id},
-        {"start_frame", cut.start_frame},
-        {"end_frame", cut.end_frame},
-        {"camera", cut.camera.value},
-    });
-  }
-  for (const kage::film::FilmTrack& track : parSequence.tracks) {
-    json track_json = {
-        {"target", track.target.value},
-        {"clips", json::array()},
-    };
-    for (const kage::film::FilmClip& clip : track.clips) {
-      json clip_json = {{"id", clip.id},
-                        {"start_frame", clip.start_frame},
-                        {"end_frame", clip.end_frame}};
-      if (const auto* movement =
-              std::get_if<kage::film::FilmMovement>(&clip.payload)) {
-        clip_json["type"] = "movement";
-        clip_json["start"] = toJson(movement->start);
-        clip_json["end"] = toJson(movement->end);
-        clip_json["control_1"] = toJson(movement->position_control_1);
-        clip_json["control_2"] = toJson(movement->position_control_2);
-        clip_json["timing_1"] = movement->timing_control_1;
-        clip_json["timing_2"] = movement->timing_control_2;
-        clip_json["automatic_controls"] =
-            movement->automatic_position_controls;
-      } else if (const auto* animation =
-                     std::get_if<kage::film::RigAnimation>(&clip.payload)) {
-        clip_json.update({{"type", "rig"},
-                          {"clip_id", animation->clip_id},
-                          {"clip_index", animation->legacy_clip_index},
-                          {"source_in", animation->source_in},
-                          {"source_out", animation->source_out},
-                          {"speed", animation->speed},
-                          {"looping", animation->looping},
-                          {"blend_in", animation->blend_in_seconds},
-                          {"blend_out", animation->blend_out_seconds}});
-      } else if (const auto* property =
-                     std::get_if<kage::film::FilmProperty>(&clip.payload)) {
-        clip_json.update({{"type", "property"},
-                          {"kind", static_cast<int>(property->kind)},
-                          {"start_value", toJson(property->start_value)},
-                          {"control_1", toJson(property->control_1)},
-                          {"control_2", toJson(property->control_2)},
-                          {"end_value", toJson(property->end_value)}});
-      }
-      track_json["clips"].push_back(std::move(clip_json));
-    }
-    output["tracks"].push_back(std::move(track_json));
-  }
-  return output;
-}
-
 [[nodiscard]] bool loadJsonFile(const std::filesystem::path& parPath,
                                 json& parDocument) {
   if (!std::filesystem::exists(parPath)) {
@@ -497,8 +257,6 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     const json& parSceneJson) {
   parScene.sun_light =
       readSunLight(parSceneJson.value("sun", json::object()));
-  parScene.film_sequence =
-      readFilmSequence(parSceneJson.value("film", json::object()));
   const kage::scene::EntityId legacy_editor_camera{
       parSceneJson.value("editor_camera", kage::scene::EntityId{}.value)};
 
@@ -539,6 +297,15 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     }
   }
 
+  bool migrated_legacy = false;
+  std::string film_error;
+  if (!kage::film::decodeMovieTimeline(
+          parSceneJson.value("film", json::object()).dump(), parScene.world,
+          parScene.sun_light, parScene.movie_timeline, migrated_legacy,
+          film_error)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -548,7 +315,8 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
   json scene_json;
   scene_json["name"] = parScene.name;
   scene_json["sun"] = writeSunJson(parScene.sun_light);
-  scene_json["film"] = writeFilmSequenceJson(parScene.film_sequence);
+  scene_json["film"] =
+      json::parse(kage::film::encodeMovieTimeline(parScene.movie_timeline));
   scene_json["entities"] = json::array();
 
   for (const kage::scene::EntityRecord& entity :
@@ -709,7 +477,7 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
   std::filesystem::create_directories(save_path.parent_path());
 
   json document;
-  document["version"] = 5;
+  document["version"] = 6;
   document["render"] = {
       {"sky", static_cast<int>(parEngine.m_render_settings.scene.sky_preset)},
       {"exposure", parEngine.m_lighting_state.exposure},

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "assets/asset_types.hpp"
-#include "film/film_sequence.hpp"
+#include "film/film_frame_state.hpp"
 #include "math/transform.hpp"
 #include "scene/entity_id.hpp"
 
@@ -155,6 +155,25 @@ struct MovieTimeline final {
   [[nodiscard]] SequenceClip* findClip(SequenceClipId parId);
   [[nodiscard]] const SequenceClip* findClip(SequenceClipId parId) const;
 };
+
+struct FilmPlayback final {
+  double playhead_frame = 0.0;
+  bool playing = false;
+  bool previewing = false;
+  bool looping = true;
+
+  void update(float parDeltaSeconds, const MovieTimeline& parTimeline);
+};
+
+// Preview and export both consume the immutable movie state even while normal
+// playback is stopped.  This keeps camera preview independent from playback.
+[[nodiscard]] inline bool requiresFilmFrameState(bool parMovieWorkspace,
+                                                 bool parShotPreview,
+                                                 double parFilmFrame,
+                                                 const FilmPlayback& parPlayback) {
+  return parMovieWorkspace &&
+         (parFilmFrame >= 0.0 || parShotPreview || parPlayback.previewing);
+}
 
 struct TimelineDiagnostic final {
   enum class Severity { Warning, Error };

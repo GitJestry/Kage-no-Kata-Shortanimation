@@ -201,8 +201,8 @@ void EditorUi::drawTopBar(engine::EngineCore& parEngine,
     if (ImGui::Button(label, ImVec2(87.0f, 24.0f)) && !active) {
       parSession.workspace = workspace;
       parSession.shot_preview = false;
-      parSession.solo_clip_preview = false;
       parEngine.getFilmPlayback().playing = false;
+      parEngine.getFilmPlayback().previewing = false;
     }
     if (active) {
       ImGui::PopStyleColor();

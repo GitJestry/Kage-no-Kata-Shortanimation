@@ -125,7 +125,8 @@ void setProperty(FilmFrameState& parState, scene::EntityId parEntity,
   }
 }
 
-[[nodiscard]] RigAnimation asLegacyAnimation(const RigAnimationClip& parClip) {
+[[nodiscard]] RigAnimationPlayback asPlaybackAnimation(
+    const RigAnimationClip& parClip) {
   return {parClip.clip_id, parClip.legacy_clip_index, parClip.source_in,
           parClip.source_out, parClip.speed, parClip.blend_in_seconds,
           parClip.blend_out_seconds, parClip.looping};
@@ -306,6 +307,9 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
                   glm::vec4(entity->point_light->intensity));
       setProperty(parState, parSequence.target.entity, FilmPropertyKind::LightRange,
                   glm::vec4(entity->point_light->range));
+      setProperty(parState, parSequence.target.entity,
+                  FilmPropertyKind::LightCastsShadows,
+                  glm::vec4(entity->point_light->casts_shadows ? 1.0f : 0.0f));
     }
   } else if (const auto* sun = std::get_if<CapturedSunBaseState>(&parSequence.captured_base)) {
     parState.sun = {{sun->direction_to_sun, sun->color, sun->intensity}};
@@ -409,10 +413,12 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
         std::min(parLocalFrame, animation_clip->end_frame);
     const FilmFrame elapsed_frames =
         std::max(sample_frame - animation_clip->start_frame, FilmFrame{0});
-    RigAnimationOverride override{parSequence.target.entity, asLegacyAnimation(animation),
+    const bool final_pose = parLocalFrame >= animation_clip->end_frame;
+    RigAnimationOverride override{parSequence.target.entity,
+                                  asPlaybackAnimation(animation),
                                   static_cast<float>(elapsed_frames) /
                                       static_cast<float>(FILM_FPS) * animation.speed,
-                                  1.0f};
+                                  1.0f, final_pose};
     auto found = std::find_if(parState.rig_animations.begin(),
                               parState.rig_animations.end(),
                               [&override](const RigAnimationOverride& item) {
@@ -523,16 +529,12 @@ FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
     }
   }
   state.camera_output = {};
-  state.active_camera.reset();
   if (camera.has_value()) {
     FilmFrameState camera_state;
     const FilmFrame local = std::min(parFrame - camera->instance->start_frame,
                                      camera->sequence->durationFrames());
     evaluateTargetSequence(*camera->sequence, local, camera_state);
     state.camera_output = camera_state.camera_output;
-    if (state.camera_output.camera.has_value()) {
-      state.active_camera = state.camera_output.camera->source_entity;
-    }
   }
   return state;
 }
@@ -669,6 +671,31 @@ TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
     }
   }
   return validation;
+}
+
+void FilmPlayback::update(float parDeltaSeconds,
+                          const MovieTimeline& parTimeline) {
+  const FilmFrame duration = parTimeline.durationFrames();
+  if (!playing) {
+    return;
+  }
+  if (duration <= 0) {
+    playhead_frame = 0.0;
+    playing = false;
+    previewing = false;
+    return;
+  }
+  playhead_frame += static_cast<double>(std::max(parDeltaSeconds, 0.0f)) *
+                    static_cast<double>(FILM_FPS);
+  if (playhead_frame < static_cast<double>(duration)) {
+    return;
+  }
+  if (looping) {
+    playhead_frame = std::fmod(playhead_frame, static_cast<double>(duration));
+  } else {
+    playhead_frame = static_cast<double>(duration - 1);
+    playing = false;
+  }
 }
 
 }  // namespace kage::film

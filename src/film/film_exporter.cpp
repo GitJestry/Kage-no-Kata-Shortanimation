@@ -5,6 +5,7 @@
 
 #include <glad/gl.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -63,7 +64,7 @@ struct FinalRenderJob::Impl final {
 FinalRenderJob::FinalRenderJob() : m_impl(std::make_unique<Impl>()) {}
 FinalRenderJob::~FinalRenderJob() = default;
 
-bool FinalRenderJob::start(const FilmSequence& parSequence,
+bool FinalRenderJob::start(const MovieTimeline& parTimeline,
                            std::filesystem::path parFrameDirectory,
                            std::filesystem::path parMoviePath,
                            std::filesystem::path parFfmpeg,
@@ -73,15 +74,17 @@ bool FinalRenderJob::start(const FilmSequence& parSequence,
     parError = "A final render is already running";
     return false;
   }
-  if (const std::optional<std::string> validation = parSequence.validate()) {
-    parError = *validation;
+  const TimelineValidation validation = validateMovieTimeline(parTimeline, true);
+  if (validation.hasErrors()) {
+    const auto diagnostic = std::find_if(
+        validation.diagnostics.begin(), validation.diagnostics.end(),
+        [](const TimelineDiagnostic& item) {
+          return item.severity == TimelineDiagnostic::Severity::Error;
+        });
+    parError = diagnostic != validation.diagnostics.end()
+                   ? diagnostic->message
+                   : "Movie is not valid for final render";
     return false;
-  }
-  for (int frame = 0; frame < parSequence.duration_frames; ++frame) {
-    if (!parSequence.evaluateCamera(frame).has_value()) {
-      parError = "Every final frame needs exactly one valid camera cut";
-      return false;
-    }
   }
   if (!executableFile(parFfmpeg)) {
     parError = "ffmpeg was not found; install it or add it to PATH";
@@ -104,7 +107,7 @@ bool FinalRenderJob::start(const FilmSequence& parSequence,
   m_impl->frame_directory = std::move(parFrameDirectory);
   m_impl->movie_path = std::move(parMoviePath);
   m_impl->ffmpeg = std::move(parFfmpeg);
-  m_impl->end_frame = parSequence.duration_frames;
+  m_impl->end_frame = parTimeline.durationFrames();
   m_impl->next_frame = 0;
   m_impl->color.allocate2D(GL_RGBA8, 3840, 2160, 1);
   m_impl->depth.allocate2D(GL_DEPTH_COMPONENT24, 3840, 2160, 1);
@@ -115,7 +118,7 @@ bool FinalRenderJob::start(const FilmSequence& parSequence,
   return true;
 }
 
-void FinalRenderJob::advance(const FilmSequence& parSequence,
+void FinalRenderJob::advance(const MovieTimeline& parTimeline,
                              const FilmRenderFunction& parRender) {
   if (m_impl->state != FinalRenderState::Rendering) {
     return;
@@ -140,7 +143,7 @@ void FinalRenderJob::advance(const FilmSequence& parSequence,
 
   std::ofstream manifest(m_impl->frame_directory / "manifest.json");
   manifest << "{\n"
-           << "  \"name\": \"" << parSequence.name << "\",\n"
+           << "  \"name\": \"" << parTimeline.name << "\",\n"
            << "  \"fps\": 30,\n"
            << "  \"width\": 3840,\n"
            << "  \"height\": 2160,\n"

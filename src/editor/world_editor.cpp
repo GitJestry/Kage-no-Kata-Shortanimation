@@ -41,18 +41,6 @@ void WorldEditor::update(float parDeltaSeconds,
     m_gizmo_controller.end();
     m_engine.clearGizmoGuide();
   }
-  if (m_session.solo_clip_preview) {
-    const film::FilmClip* clip = m_engine.getFilmSequence().findClip(
-        m_session.selected_film_clip);
-    if (clip == nullptr ||
-        m_engine.getFilmPlayback().playhead_frame >= clip->end_frame) {
-      m_session.solo_clip_preview = false;
-      m_engine.getFilmPlayback().playing = false;
-      if (clip != nullptr) {
-        m_engine.getFilmPlayback().playhead_frame = clip->start_frame;
-      }
-    }
-  }
   m_engine.setGizmoAxisSpace(
       m_gizmo_controller.getAxisSpace() == GizmoController::AxisSpace::World
           ? render::GizmoAxisSpace::World
@@ -96,11 +84,7 @@ void WorldEditor::render(const glm::vec2& parViewportSize) {
   m_engine.render(m_viewport,
                   m_session.workspace == Workspace::Movie,
                   m_session.shot_preview, -1.0,
-                  !m_session.shot_preview, 0,
-                  m_session.selected_film_clip,
-                  m_session.solo_clip_preview
-                      ? m_session.selected_film_clip
-                      : 0);
+                  !m_session.shot_preview, 0);
   m_engine.advanceFilmExport();
 }
 

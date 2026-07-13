@@ -72,16 +72,35 @@ if(BUILD_TESTING)
     tests/film_sequence_check.cpp
     src/film/movie_timeline.cpp
     src/film/timeline_edit_service.cpp
-    src/film/film_sequence.cpp
   )
   kage_add_check(timeline_edit_service_check
     tests/timeline_edit_service_check.cpp
     src/film/movie_timeline.cpp
     src/film/timeline_edit_service.cpp
-    src/film/film_sequence.cpp
   )
+  kage_add_check(film_serializer_check
+    tests/film_serializer_check.cpp
+    src/film/movie_timeline.cpp
+    src/film/movie_timeline_serializer.cpp
+    src/scene/world.cpp
+  )
+  kage_add_check(lighting_film_state_check
+    tests/lighting_film_state_check.cpp
+    src/film/movie_timeline.cpp
+    src/lighting/lighting_system.cpp
+    src/scene/world.cpp
+  )
+  kage_add_check(animation_fallback_check
+    tests/animation_fallback_check.cpp
+  )
+  target_link_libraries(film_serializer_check PRIVATE framework tinygltf)
+  target_compile_definitions(film_serializer_check PRIVATE
+    KAGE_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME film_sequence COMMAND film_sequence_check)
   add_test(NAME timeline_edit_service COMMAND timeline_edit_service_check)
+  add_test(NAME film_serializer COMMAND film_serializer_check)
+  add_test(NAME lighting_film_state COMMAND lighting_film_state_check)
+  add_test(NAME animation_fallback COMMAND animation_fallback_check)
 endif()
 
 if(MSVC)

@@ -23,6 +23,17 @@ LightingState LightingSystem::extract(
           : glm::vec3(0.35f, 0.85f, 0.45f);
   state.sun.color = parSun.color;
   state.sun.intensity = std::max(parSun.intensity, 0.0f);
+  if (parFilmState != nullptr && parFilmState->sun.has_value()) {
+    const film::EvaluatedSunState& sun = *parFilmState->sun;
+    const float evaluated_length = glm::length(sun.direction_to_sun);
+    state.sun.direction_to_light =
+        evaluated_length > 0.0001f
+            ? sun.direction_to_sun / evaluated_length
+            : state.sun.direction_to_light;
+    state.sun.color = glm::max(sun.color, glm::vec3(0.0f));
+    state.sun.intensity = std::max(sun.intensity, 0.0f);
+    state.sun.enabled = state.sun.intensity > 0.0f;
+  }
 
   struct Candidate final {
     PointLight light;
@@ -55,6 +66,9 @@ LightingState LightingSystem::extract(
             break;
           case film::FilmPropertyKind::LightRange:
             source.range = std::max(property.value.x, 0.001f);
+            break;
+          case film::FilmPropertyKind::LightCastsShadows:
+            source.casts_shadows = property.value.x >= 0.5f;
             break;
           case film::FilmPropertyKind::CameraFov:
             break;

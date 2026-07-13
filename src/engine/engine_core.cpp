@@ -324,36 +324,30 @@ std::filesystem::path EngineCore::getLocalSessionSavePath() const {
 }
 
 std::optional<camera::Camera> EngineCore::evaluateFilmCamera(
-    double parFrame) const {
-  const auto sample = getActiveScene().film_sequence.evaluateCamera(parFrame);
-  if (!sample.has_value()) {
+    const film::FilmFrameState& parFrame) const {
+  if (parFrame.camera_output.kind != film::FilmOutputKind::Camera ||
+      !parFrame.camera_output.camera.has_value()) {
     return std::nullopt;
   }
+  const film::EvaluatedCameraState& sample = *parFrame.camera_output.camera;
   const scene::EntityRecord* entity =
-      getActiveScene().world.findEntity(sample->camera);
+      getActiveScene().world.findEntity(sample.source_entity);
   if (entity == nullptr || !entity->camera.has_value()) {
     return std::nullopt;
   }
   camera::Camera result;
-  result.position = entity->transform.transform.translation;
-  result.orientation = glm::normalize(entity->transform.transform.rotation);
-  result.vertical_fov_degrees = entity->camera->vertical_fov_degrees;
-  result.near_plane = entity->camera->near_plane;
-  result.far_plane = entity->camera->far_plane;
-  if (sample->transform.has_value()) {
-    result.position = sample->transform->translation;
-    result.orientation = glm::normalize(sample->transform->rotation);
-  }
-  if (sample->vertical_fov_degrees.has_value()) {
-    result.vertical_fov_degrees = *sample->vertical_fov_degrees;
-  }
+  result.position = sample.transform.translation;
+  result.orientation = glm::normalize(sample.transform.rotation);
+  result.vertical_fov_degrees = sample.vertical_fov_degrees;
+  result.near_plane = sample.near_plane;
+  result.far_plane = sample.far_plane;
   return result;
 }
 
 bool EngineCore::exportFilmSequence(std::string& parError) {
-  const std::string& name = getActiveScene().film_sequence.name;
+  const std::string& name = getActiveScene().movie_timeline.name;
   return m_final_render_job.start(
-      getActiveScene().film_sequence,
+      getActiveScene().movie_timeline,
       std::filesystem::path("output") / "frames" / name,
       std::filesystem::path("output") / (name + ".mp4"),
       film::findFfmpegExecutable(), parError);
@@ -364,11 +358,11 @@ void EngineCore::advanceFilmExport() {
     return;
   }
   m_final_render_job.advance(
-      getActiveScene().film_sequence,
+      getActiveScene().movie_timeline,
       [&](int frame, int width, int height,
           unsigned int destination_framebuffer) {
         render(render::ViewportRect{{0, 0}, {width, height}, height},
-               true, true, frame, false, destination_framebuffer, 0, 0, 4);
+               true, true, frame, false, destination_framebuffer, 4);
       });
 }
 
@@ -390,9 +384,10 @@ void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace) {
   }
   m_camera_system.update(parDeltaSeconds);
   if (parMovieWorkspace) {
-    m_film_playback.update(parDeltaSeconds, getActiveScene().film_sequence);
+    m_film_playback.update(parDeltaSeconds, getActiveScene().movie_timeline);
   } else {
     m_film_playback.playing = false;
+    m_film_playback.previewing = false;
   }
   const float fly_speed = m_camera_system.getFlyMoveSpeed();
   if (std::abs(fly_speed - m_last_session_fly_speed) > 0.0001f) {
@@ -416,25 +411,19 @@ void EngineCore::render(const render::ViewportRect& parViewport,
                         bool parMovieWorkspace, bool parShotPreview,
                         double parFilmFrame, bool parShowOverlays,
                         unsigned int parDestinationFramebuffer,
-                        film::FilmClipId parSelectedFilmClip,
-                        film::FilmClipId parSoloFilmClip,
                         int parMsaaSamples) {
   const Clock::time_point render_begin = Clock::now();
   const double film_frame =
       parFilmFrame >= 0.0 ? parFilmFrame : m_film_playback.playhead_frame;
-  const std::optional<camera::Camera> film_camera =
-      parShotPreview ? evaluateFilmCamera(film_frame)
-                     : std::nullopt;
-  const camera::Camera& view_camera =
-      film_camera.has_value() ? *film_camera : m_camera_system.getEditorCamera();
   const film::FilmFrameState* film_state = nullptr;
-  if (parMovieWorkspace) {
-    if (parSoloFilmClip != 0) {
-      getActiveScene().film_sequence.evaluateClip(
-          parSoloFilmClip, film_frame, m_film_frame_state);
-    } else {
-      getActiveScene().film_sequence.evaluate(film_frame, m_film_frame_state);
-    }
+  const bool consume_film_state = film::requiresFilmFrameState(
+      parMovieWorkspace, parShotPreview, parFilmFrame, m_film_playback);
+  if (consume_film_state) {
+    const auto frame = static_cast<film::FilmFrame>(std::clamp(
+        std::floor(film_frame), 0.0,
+        static_cast<double>(film::MAX_FILM_FRAMES)));
+    m_film_frame_state =
+        film::evaluateMovieTimeline(getActiveScene().movie_timeline, frame);
     film_state = &m_film_frame_state;
     const Clock::time_point animation_begin = Clock::now();
     m_animation_system.evaluateFilmFrame(getActiveScene().world,
@@ -442,20 +431,34 @@ void EngineCore::render(const render::ViewportRect& parViewport,
                                          m_film_skin_palettes);
     m_performance_snapshot.animation_update_ms =
         elapsedMilliseconds(animation_begin, Clock::now());
+  } else {
+    m_film_skin_palettes.clear();
+    m_performance_snapshot.animation_update_ms = 0.0f;
   }
+  const std::optional<camera::Camera> film_camera =
+      parShotPreview && film_state != nullptr
+          ? evaluateFilmCamera(*film_state)
+          : std::nullopt;
+  const bool black_camera_output =
+      parShotPreview && film_state != nullptr && !film_camera.has_value();
+  const camera::Camera* view_camera =
+      black_camera_output
+          ? nullptr
+          : (film_camera.has_value() ? &*film_camera
+                                     : &m_camera_system.getEditorCamera());
   const lighting::LightingState frame_lighting = buildLightingState(
-      view_camera, film_state);
+      view_camera != nullptr ? *view_camera : m_camera_system.getEditorCamera(),
+      film_state);
   const render::ViewportView view{
-      &view_camera,
-      parMovieWorkspace ? &getActiveScene().film_sequence : nullptr,
-      film_frame,
+      view_camera,
+      film_state,
+      black_camera_output,
       parDestinationFramebuffer,
       parDestinationFramebuffer != 0,
-      parMovieWorkspace
+      consume_film_state
           ? std::span<const animation::EvaluatedSkinPalette>(
                 m_film_skin_palettes)
           : std::span<const animation::EvaluatedSkinPalette>{},
-      parSelectedFilmClip,
       parMsaaSamples,
   };
   render::EditorRenderSettings settings = m_render_settings;
@@ -603,8 +606,8 @@ render::ViewportMode EngineCore::getViewportMode() const {
   return m_render_settings.viewport.mode;
 }
 
-film::FilmSequence& EngineCore::getFilmSequence() {
-  return getActiveScene().film_sequence;
+film::MovieTimeline& EngineCore::getMovieTimeline() {
+  return getActiveScene().movie_timeline;
 }
 
 film::FilmPlayback& EngineCore::getFilmPlayback() {
