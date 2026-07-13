@@ -40,10 +40,3 @@ releases transient CPU geometry and pixels. Panorama decode also runs
 off-thread, limits the GPU panorama to 8192×4096 while retaining the source,
 and uploads only on the main thread. `.kage_cache/` is reserved
 for reproducible generated data and is never committed.
-
-## Checks
-
-```bash
-ctest --test-dir build --output-on-failure
-build/asset_fidelity_check assets/models
-```

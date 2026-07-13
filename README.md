@@ -32,12 +32,6 @@ CMake fetches the pinned framework version. Run from the project root:
 build/kage_engine
 ```
 
-Import checks:
-
-```bash
-ctest --test-dir build --output-on-failure
-```
-
 ## Where To Look
 
 - [Architecture](docs/ARCHITECTURE.md)
