@@ -213,6 +213,8 @@ void FilmTimeline::evaluate(double parFrame, FilmFrameState& state) const {
   state.transforms.clear();
   state.properties.clear();
   state.rig_animations.clear();
+  state.camera_output = {};
+  state.sun.reset();
   if (const CameraCut* cut = findCameraCut(parFrame)) {
     state.active_camera = cut->camera;
   }
@@ -260,6 +262,8 @@ void FilmTimeline::evaluateClip(FilmClipId parClip, double parFrame,
   state.transforms.clear();
   state.properties.clear();
   state.rig_animations.clear();
+  state.camera_output = {};
+  state.sun.reset();
   for (const FilmTrack& track : tracks) {
     for (const FilmClip& clip : track.clips) {
       if (clip.id != parClip || !isActive(clip, parFrame)) {

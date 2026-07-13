@@ -12,6 +12,7 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 endif()
 
 include(FetchContent)
+include(CTest)
 include(cmake/Sources.cmake)
 include(cmake/PatchGltemplate.cmake)
 
@@ -58,6 +59,30 @@ target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf meshoptimizer)
 target_compile_definitions(framework PRIVATE
   KAGE_GL_VALIDATION=$<IF:$<CONFIG:Debug>,1,0>)
+
+function(kage_add_check TARGET_NAME)
+  add_executable(${TARGET_NAME} ${ARGN})
+  target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
+  target_include_directories(${TARGET_NAME} PRIVATE src)
+  target_link_libraries(${TARGET_NAME} PRIVATE glm)
+endfunction()
+
+if(BUILD_TESTING)
+  kage_add_check(film_sequence_check
+    tests/film_sequence_check.cpp
+    src/film/movie_timeline.cpp
+    src/film/timeline_edit_service.cpp
+    src/film/film_sequence.cpp
+  )
+  kage_add_check(timeline_edit_service_check
+    tests/timeline_edit_service_check.cpp
+    src/film/movie_timeline.cpp
+    src/film/timeline_edit_service.cpp
+    src/film/film_sequence.cpp
+  )
+  add_test(NAME film_sequence COMMAND film_sequence_check)
+  add_test(NAME timeline_edit_service COMMAND timeline_edit_service_check)
+endif()
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)

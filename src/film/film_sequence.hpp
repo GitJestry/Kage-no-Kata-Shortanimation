@@ -92,11 +92,37 @@ struct RigAnimationOverride final {
   float weight = 1.0f;
 };
 
+// These output types are deliberately data-only.  The isolated MovieTimeline
+// model writes them, but EngineCore does not consume them until the runtime
+// cutover milestone.
+enum class FilmOutputKind { Camera, Black };
+
+struct EvaluatedCameraState final {
+  scene::EntityId source_entity;
+  math::Transform transform;
+  float vertical_fov_degrees = 45.0f;
+  float near_plane = 0.1f;
+  float far_plane = 1000.0f;
+};
+
+struct FilmCameraOutput final {
+  FilmOutputKind kind = FilmOutputKind::Black;
+  std::optional<EvaluatedCameraState> camera;
+};
+
+struct EvaluatedSunState final {
+  glm::vec3 direction_to_sun{0.0f, -1.0f, 0.0f};
+  glm::vec3 color{1.0f};
+  float intensity = 1.0f;
+};
+
 struct FilmFrameState final {
   std::optional<scene::EntityId> active_camera;
   std::vector<TransformOverride> transforms;
   std::vector<PropertyOverride> properties;
   std::vector<RigAnimationOverride> rig_animations;
+  FilmCameraOutput camera_output;
+  std::optional<EvaluatedSunState> sun;
 };
 
 struct CameraSample final {
