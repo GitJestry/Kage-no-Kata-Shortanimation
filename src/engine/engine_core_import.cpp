@@ -5,6 +5,7 @@
 #include "assets/project_asset_catalog.hpp"
 
 #include <exception>
+#include <algorithm>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -13,6 +14,7 @@ namespace {
 
 [[nodiscard]] kage::assets::ProjectAssetCatalog buildCatalog(
     const kage::assets::AssetRegistry& parRegistry,
+    std::span<const kage::assets::EnvironmentAsset> parEnvironments,
     const std::filesystem::path& parRegistryProjectRoot) {
   kage::assets::ProjectAssetCatalog catalog;
   const std::filesystem::path project_root = parRegistryProjectRoot;
@@ -35,6 +37,11 @@ namespace {
           {pack.label, project_relative(pack.path)});
     }
     catalog.assets.push_back(std::move(entry));
+  }
+  for (const kage::assets::EnvironmentAsset& environment : parEnvironments) {
+    kage::assets::EnvironmentAsset entry = environment;
+    entry.path = project_relative(entry.path);
+    catalog.environments.push_back(std::move(entry));
   }
   return catalog;
 }
@@ -65,6 +72,7 @@ void EngineCore::loadProjectAssetCatalog(
       asset->animation_packs = entry.animation_packs;
     }
   }
+  m_environment_assets = catalog.environments;
 }
 
 std::optional<std::size_t> EngineCore::importModelAsset(
@@ -112,6 +120,7 @@ std::optional<std::size_t> EngineCore::importModelAsset(
   }
   assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
                                   buildCatalog(m_asset_registry,
+                                               m_environment_assets,
                                                m_runtime_paths.getProjectRoot()));
   markProjectDirty();
   return asset_index;
@@ -159,9 +168,49 @@ bool EngineCore::importAnimationForEntity(
   }
   assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
                                   buildCatalog(m_asset_registry,
+                                               m_environment_assets,
                                                m_runtime_paths.getProjectRoot()));
   markProjectDirty();
   return true;
+}
+
+std::optional<assets::AssetId> EngineCore::importPanorama(
+    const std::filesystem::path& parSourcePath, std::string parLabel,
+    std::string& parError) {
+  parError.clear();
+  if (!std::filesystem::exists(parSourcePath) ||
+      !assets::hasPanoramaExtension(parSourcePath)) {
+    parError = "choose an .hdr, .png, .jpg, or .jpeg panorama";
+    return std::nullopt;
+  }
+  if (parLabel.empty()) {
+    parLabel = assets::defaultAssetLabelFromPath(parSourcePath);
+  }
+  const std::filesystem::path destination = assets::copyIntoProjectAssets(
+      parSourcePath, m_runtime_paths.getTexturePath("environments"),
+      m_runtime_paths.getAssetDirectory(), parError);
+  if (destination.empty()) {
+    return std::nullopt;
+  }
+  const assets::AssetId id =
+      assets::makeStableAssetId("environment", destination);
+  const auto existing = std::find_if(
+      m_environment_assets.begin(), m_environment_assets.end(),
+      [id](const assets::EnvironmentAsset& item) { return item.id == id; });
+  if (existing == m_environment_assets.end()) {
+    m_environment_assets.push_back(
+        {id, std::move(parLabel), destination,
+         assets::hasHdrExtension(destination)});
+  }
+  assets::saveProjectAssetCatalog(
+      m_runtime_paths.getProjectAssetCatalogPath(),
+      buildCatalog(m_asset_registry, m_environment_assets,
+                   m_runtime_paths.getProjectRoot()));
+  render::EnvironmentSettings settings = m_render_settings.scene.environment;
+  settings.asset_id = id;
+  settings.visible = true;
+  setEnvironmentSettings(settings);
+  return id;
 }
 
 }  // namespace kage::engine

@@ -8,7 +8,7 @@
 namespace {
 
 constexpr float MIN_SPEED = 0.2f;
-constexpr float MAX_SPEED = 40.0f;
+constexpr float MAX_SPEED = 20.0f;
 constexpr float SPEED_STEP = 1.12f;
 constexpr float MAX_PITCH_RADIANS = glm::radians(88.0f);
 constexpr float MIN_HORIZONTAL_FORWARD = 0.0001f;

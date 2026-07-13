@@ -22,6 +22,7 @@ function(kage_patch_gltemplate parSourceDir)
   )
   set(framework_cmake_file "${parSourceDir}/src/framework/CMakeLists.txt")
   set(context_file "${parSourceDir}/src/framework/context.hpp.in")
+  set(app_file "${parSourceDir}/src/framework/app.cpp")
 
   kage_replace_in_file("${fetch_dependencies_file}" [=[
     URL https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz
@@ -116,5 +117,25 @@ inline std::string getCWDWarning() {
         return {};
     #endif
 }
+]=])
+
+  kage_replace_in_file("${app_file}" [=[
+    gladSetGLPostCallback(gladPostCallback);
+]=] [=[
+    #if KAGE_GL_VALIDATION
+        gladSetGLPostCallback(gladPostCallback);
+    #else
+        gladSetGLPreCallback(gladNoopPreCallback);
+        gladSetGLPostCallback(gladNoopPostCallback);
+    #endif
+]=])
+
+  kage_replace_in_file("${app_file}" [=[
+void App::initGL() {
+]=] [=[
+void gladNoopPreCallback(const char*, GLADapiproc, int, ...) {}
+void gladNoopPostCallback(void*, const char*, GLADapiproc, int, ...) {}
+
+void App::initGL() {
 ]=])
 endfunction()

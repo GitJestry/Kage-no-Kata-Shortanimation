@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor/file_browser_dialog.hpp"
+#include "editor/editor_session.hpp"
 #include "editor/ui_panel_rect.hpp"
 #include "engine/engine_core.hpp"
 
@@ -13,7 +14,7 @@
 namespace kage::editor {
 
 [[nodiscard]] std::optional<UiPanelRect> drawTimelinePanel(
-    engine::EngineCore& parEngine, bool& parVisible,
+    engine::EngineCore& parEngine, EditorSession& parSession,
     const glm::vec2& parViewportSize, FileBrowserDialog& parImportBrowser,
     std::array<char, 128>& parImportLabelBuffer, std::string& parImportError);
 

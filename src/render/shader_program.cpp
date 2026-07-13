@@ -166,6 +166,17 @@ void ShaderProgram::setInt(const char* parName, int parValue) const {
   glUniform1i(getUniformLocation(parName), parValue);
 }
 
+void ShaderProgram::setIntArray(const char* parName, const int* parValues,
+                                GLsizei parCount) const {
+  if (parValues != nullptr && parCount > 0) {
+    glUniform1iv(getUniformLocation(parName), parCount, parValues);
+  }
+}
+
+void ShaderProgram::setUInt(const char* parName, unsigned int parValue) const {
+  glUniform1ui(getUniformLocation(parName), parValue);
+}
+
 void ShaderProgram::setVec2(const char* parName,
                             const glm::vec2& parValue) const {
   glUniform2f(getUniformLocation(parName), parValue.x, parValue.y);
@@ -175,6 +186,18 @@ void ShaderProgram::setVec3(const char* parName,
                             const glm::vec3& parValue) const {
   glUniform3f(getUniformLocation(parName), parValue.x, parValue.y,
               parValue.z);
+}
+
+void ShaderProgram::setVec3Array(const char* parName,
+                                 const glm::vec3* parValues,
+                                 GLsizei parCount) const {
+  glUniform3fv(getUniformLocation(parName), parCount,
+               reinterpret_cast<const float*>(parValues));
+}
+
+void ShaderProgram::setFloatArray(const char* parName, const float* parValues,
+                                  GLsizei parCount) const {
+  glUniform1fv(getUniformLocation(parName), parCount, parValues);
 }
 
 void ShaderProgram::setVec4(const char* parName,

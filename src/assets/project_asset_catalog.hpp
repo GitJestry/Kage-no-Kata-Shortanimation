@@ -15,8 +15,16 @@ struct ProjectAssetEntry final {
   std::vector<AssetRegistry::AnimationPackEntry> animation_packs;
 };
 
+struct EnvironmentAsset final {
+  AssetId id;
+  std::string label;
+  std::filesystem::path path;
+  bool hdr = false;
+};
+
 struct ProjectAssetCatalog final {
   std::vector<ProjectAssetEntry> assets;
+  std::vector<EnvironmentAsset> environments;
 };
 
 [[nodiscard]] ProjectAssetCatalog loadProjectAssetCatalog(

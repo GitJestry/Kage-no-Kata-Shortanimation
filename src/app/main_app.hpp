@@ -41,6 +41,7 @@ class MainApp final : public App {
   bool m_last_escape_down = false;
   bool m_last_delete_down = false;
   bool m_last_tab_down = false;
+  bool m_last_z_down = false;
   float m_scroll_y = 0.0f;
   std::string m_imgui_ini_path;
 };

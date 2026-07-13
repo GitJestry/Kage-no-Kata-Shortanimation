@@ -14,20 +14,25 @@
 | 23 July 2026, 23:59 | Source, dependencies, runtime data, and illustrated HTML/PDF report |
 | 24 July 2026 | Screening, making-of, and five-minute talk per team member |
 
-## Feature Plan
+## Claimed Feature Scope
 
 | Owner | Feature | Category | Points |
 | --- | --- | ---: | ---: |
-| Julian | Physical bamboo simulation | 0 | 50 |
-| Julian | Interactive mouse cut | 4 | 20 |
-| Julian | Sound | 4 | 20 |
-| Faouzi | Procedural terrain | 0 | 30 |
-| Faouzi | Particle system | 0 | 40 |
-| Faouzi | Temporal motion blur | 1 | 20 |
-| Faouzi | Film grain | 1 | 10 |
-| Shared | Rigging and blending | 0 | 50 |
+| Julian | Cinematic Engine | 4 | 50 |
+| Julian | Rigging and blending contribution | 0 | 25 |
+| Faouzi | Rigging and blending contribution | 0 | 25 |
+| Julian | Omnidirectional point-light shadow mapping | 2 | 30 |
+| Faouzi | Sound | 0 	| 20 |
+| Faouzi | Motionblur | 1 	| 20 |
+| Faouzi | Film grain | 1 	| 10 |
+| Faouzi | Procedural Generation | 0 | 30 |
 
-The project covers 240 points across categories 0, 1, and 4. Shared rigging contributes 25 points to each member, resulting in 115 points for Julian and 125 points for Faouzi.
+
+Julian's current scope is 105 points across categories 0, 2, and 4. No
+additional points are claimed for the editor, PBR materials, panorama, HDR
+framebuffer, sun-shadow support, tests, or MPEG4 delivery infrastructure.
+The small PCF kernel is not claimed as the separate 80-point filtered-shadow
+feature. 
 
 ## Assessment Evidence
 
@@ -50,10 +55,19 @@ Current samurai asset evidence:
 
 - `samurai.glb` imports as 84 primitives, 126,600 vertices, 1 skin, 49 joints,
   and two authored actions: `ReadyIdle` and `ArmAction`;
-- `asset_import_samurai_rig` validates rig data and sampled skinned bounds;
+- `asset_fidelity` validates the Samurai's complete rigged source data;
 - `animation_playback_samurai` proves `ArmAction` changes joint matrices over
   time;
 - the Timeline can play both clips and cross-fade between them.
+
+## Cinematic and Shadow Evidence
+
+- World Edit and Movie share one scene without Movie mutating base transforms.
+- FilmTimeline provides camera cuts, stable animation clips, typed property
+  lanes, cubic movement timing, shot preview, and deterministic 2160p30 output.
+- At most two point lights render six depth faces each; selection is
+  deterministic and additional point lights remain illuminated.
+- Alpha-masked, double-sided, and off-camera casters participate in shadows.
 
 ## Sources
 

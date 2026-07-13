@@ -18,12 +18,6 @@ namespace kage::assets {
 
 namespace {
 
-[[nodiscard]] float elapsedMilliseconds(
-    std::chrono::steady_clock::time_point parStart,
-    std::chrono::steady_clock::time_point parEnd) {
-  return std::chrono::duration<float, std::milli>(parEnd - parStart).count();
-}
-
 [[nodiscard]] std::string normalizedPathKey(const std::filesystem::path& parPath) {
   const std::filesystem::path normalized = parPath.lexically_normal();
   std::filesystem::path asset_relative;
@@ -134,18 +128,10 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
     }
   }
 
-  const AnimationClip* longest_clip = nullptr;
   for (const AnimationClip& clip : parSource.animation_clips) {
-    if (clip.channels.empty()) {
-      continue;
+    if (!clip.channels.empty()) {
+      clips.push_back(&clip);
     }
-    if (longest_clip == nullptr ||
-        clip.duration_seconds > longest_clip->duration_seconds) {
-      longest_clip = &clip;
-    }
-  }
-  if (longest_clip != nullptr) {
-    clips.push_back(longest_clip);
   }
 
   return clips;
@@ -286,8 +272,12 @@ const char* getAssetLoadStateLabel(AssetLoadState parState) {
   switch (parState) {
     case AssetLoadState::MetadataReady:
       return "Metadata";
-    case AssetLoadState::Loading:
-      return "Loading";
+    case AssetLoadState::Queued:
+      return "Queued";
+    case AssetLoadState::CpuLoading:
+      return "CPU";
+    case AssetLoadState::GpuUploading:
+      return "GPU";
     case AssetLoadState::Ready:
       return "Ready";
     case AssetLoadState::Error:
@@ -341,7 +331,6 @@ std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
     entry.label = std::move(parLabel);
     entry.path = std::move(parPath);
     entry.document = std::move(parDocument);
-    entry.pending_document.reset();
     entry.load_state = AssetLoadState::Ready;
     entry.load_error.clear();
     return *existing;
@@ -414,43 +403,24 @@ ModelAsset& AssetRegistry::loadAsset(std::size_t parAssetIndex) {
   }
 
   AssetLibraryEntry& asset = m_asset_library[parAssetIndex];
-  if (asset.pending_document.has_value()) {
-    try {
-      asset.document = asset.pending_document->get();
-      asset.pending_document.reset();
-      asset.last_cpu_import_ms =
-          elapsedMilliseconds(asset.load_started_at,
-                              std::chrono::steady_clock::now());
-      asset.load_state = AssetLoadState::Ready;
-      asset.load_error.clear();
-      applyAnimationPacks(asset);
-    } catch (const std::exception& error) {
-      asset.pending_document.reset();
-      asset.last_cpu_import_ms =
-          elapsedMilliseconds(asset.load_started_at,
-                              std::chrono::steady_clock::now());
-      asset.load_state = AssetLoadState::Error;
-      asset.load_error = error.what();
-      throw;
-    }
-  }
-
   if (!asset.document.has_value()) {
     try {
       GltfAssetLoader loader;
-      asset.load_state = AssetLoadState::Loading;
+      asset.load_state = AssetLoadState::CpuLoading;
       asset.load_started_at = std::chrono::steady_clock::now();
       asset.document = loader.loadDocument(asset.path);
       asset.last_cpu_import_ms =
-          elapsedMilliseconds(asset.load_started_at,
-                              std::chrono::steady_clock::now());
+          std::chrono::duration<float, std::milli>(
+              std::chrono::steady_clock::now() - asset.load_started_at)
+              .count();
       asset.load_state = AssetLoadState::Ready;
       asset.load_error.clear();
       applyAnimationPacks(asset);
     } catch (const std::exception& error) {
       asset.last_cpu_import_ms =
-          elapsedMilliseconds(asset.load_started_at,
-                              std::chrono::steady_clock::now());
+          std::chrono::duration<float, std::milli>(
+              std::chrono::steady_clock::now() - asset.load_started_at)
+              .count();
       asset.load_state = AssetLoadState::Error;
       asset.load_error = error.what();
       throw;
@@ -465,54 +435,75 @@ void AssetRegistry::requestLoad(std::size_t parAssetIndex) {
   }
 
   AssetLibraryEntry& asset = m_asset_library[parAssetIndex];
-  if (asset.document.has_value() || asset.pending_document.has_value()) {
+  if (asset.document.has_value() &&
+      (!asset.document->static_model.primitives.empty() ||
+       !asset.document->skins.empty())) {
     return;
   }
+  if (asset.load_state == AssetLoadState::Queued ||
+      asset.load_state == AssetLoadState::CpuLoading ||
+      asset.load_state == AssetLoadState::GpuUploading) {
+    return;
+  }
+  asset.document.reset();
 
-  asset.load_state = AssetLoadState::Loading;
+  asset.load_state = AssetLoadState::Queued;
   asset.load_error.clear();
   asset.last_cpu_import_ms = 0.0f;
   asset.load_started_at = std::chrono::steady_clock::now();
-  const std::filesystem::path path = asset.path;
-  asset.pending_document = std::async(std::launch::async, [path]() {
-    GltfAssetLoader loader;
-    return loader.loadDocument(path);
-  });
 }
 
-bool AssetRegistry::pollLoad(std::size_t parAssetIndex) {
+void AssetRegistry::beginCpuLoad(std::size_t parAssetIndex) {
+  if (parAssetIndex >= m_asset_library.size()) {
+    return;
+  }
+  m_asset_library[parAssetIndex].load_state = AssetLoadState::CpuLoading;
+}
+
+bool AssetRegistry::completeCpuLoad(std::size_t parAssetIndex,
+                                    std::optional<ModelAsset> parDocument,
+                                    std::string parError, float parCpuMs) {
   if (parAssetIndex >= m_asset_library.size()) {
     return false;
   }
-
   AssetLibraryEntry& asset = m_asset_library[parAssetIndex];
-  if (!asset.pending_document.has_value()) {
-    return false;
-  }
-
-  using namespace std::chrono_literals;
-  if (asset.pending_document->wait_for(0ms) != std::future_status::ready) {
-    return false;
-  }
-
-  try {
-    asset.document = asset.pending_document->get();
-    asset.pending_document.reset();
-    asset.last_cpu_import_ms =
-        elapsedMilliseconds(asset.load_started_at,
-                            std::chrono::steady_clock::now());
-    asset.load_state = AssetLoadState::Ready;
-    asset.load_error.clear();
-    applyAnimationPacks(asset);
-  } catch (const std::exception& error) {
-    asset.pending_document.reset();
-    asset.last_cpu_import_ms =
-        elapsedMilliseconds(asset.load_started_at,
-                            std::chrono::steady_clock::now());
+  asset.last_cpu_import_ms = parCpuMs;
+  if (!parDocument.has_value()) {
     asset.load_state = AssetLoadState::Error;
-    asset.load_error = error.what();
+    asset.load_error = std::move(parError);
+    return false;
   }
+  asset.document = std::move(parDocument);
+  asset.load_state = AssetLoadState::GpuUploading;
+  asset.load_error.clear();
+  applyAnimationPacks(asset);
   return true;
+}
+
+void AssetRegistry::completeGpuUpload(std::size_t parAssetIndex) {
+  AssetLibraryEntry* asset = getAssetLibraryEntry(parAssetIndex);
+  if (asset != nullptr && asset->load_state == AssetLoadState::GpuUploading) {
+    asset->load_state = AssetLoadState::Ready;
+  }
+}
+
+void AssetRegistry::failLoad(std::size_t parAssetIndex, std::string parError) {
+  AssetLibraryEntry* asset = getAssetLibraryEntry(parAssetIndex);
+  if (asset == nullptr) {
+    return;
+  }
+  asset->load_state = AssetLoadState::Error;
+  asset->load_error = std::move(parError);
+  asset->document.reset();
+}
+
+void AssetRegistry::releaseStaticGeometryPayload(std::size_t parAssetIndex) {
+  AssetLibraryEntry* asset = getAssetLibraryEntry(parAssetIndex);
+  if (asset == nullptr || !asset->document.has_value()) {
+    return;
+  }
+  asset->document->static_model.primitives.clear();
+  asset->document->static_model.primitives.shrink_to_fit();
 }
 
 std::string AssetRegistry::reserveInstanceName(std::size_t parAssetIndex) {

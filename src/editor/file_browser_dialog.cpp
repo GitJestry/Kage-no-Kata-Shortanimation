@@ -50,16 +50,27 @@ namespace {
   return fallbackDirectory();
 }
 
+[[nodiscard]] bool acceptsFile(
+    const std::filesystem::path& parPath,
+    kage::editor::FileBrowserFilter parFilter) {
+  if (parFilter == kage::editor::FileBrowserFilter::Gltf) {
+    return kage::assets::hasGltfExtension(parPath);
+  }
+  return kage::assets::hasPanoramaExtension(parPath);
+}
+
 }  // namespace
 
 namespace kage::editor {
 
 void FileBrowserDialog::open(std::string parTitle,
-                             std::filesystem::path parStartDirectory) {
+                             std::filesystem::path parStartDirectory,
+                             FileBrowserFilter parFilter) {
   m_title = std::move(parTitle);
   m_current_directory = resolveStartDirectory(parStartDirectory);
   m_asset_directory = findAssetDirectory(m_current_directory);
   m_selected_file.reset();
+  m_filter = parFilter;
   m_open = true;
   m_open_requested = true;
   refreshEntries();
@@ -153,7 +164,7 @@ void FileBrowserDialog::refreshEntries() {
       error_code.clear();
       continue;
     }
-    if (!directory && !assets::hasGltfExtension(entry.path())) {
+    if (!directory && !acceptsFile(entry.path(), m_filter)) {
       continue;
     }
     m_entries.push_back({

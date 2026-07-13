@@ -24,6 +24,9 @@ class VertexArray final {
                          GLenum parComponentType, GLsizei parStride,
                          std::size_t parByteOffset,
                          bool parNormalized = false) const;
+  void setIntegerAttribute(GLuint parLocation, GLint parComponentCount,
+                           GLenum parComponentType, GLsizei parStride,
+                           std::size_t parByteOffset) const;
   void release();
 
   [[nodiscard]] GLuint getHandle() const;
@@ -36,5 +39,3 @@ class VertexArray final {
 };
 
 }  // namespace kage::render
-
-

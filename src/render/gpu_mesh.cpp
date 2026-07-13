@@ -1,5 +1,9 @@
 #include "render/gpu_mesh.hpp"
 
+#include "render/texture_resource_cache.hpp"
+#include "render/shadow_renderer.hpp"
+#include "render/environment_renderer.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +12,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <meshoptimizer.h>
 
 namespace {
 
@@ -26,17 +31,21 @@ constexpr glm::vec4 DEFAULT_BASE_COLOR_FACTOR{1.0f};
 constexpr std::array<unsigned char, 4> FALLBACK_TEXTURE_PIXELS{
     255, 255, 255, 255};
 
-struct MeshVertex final {
+struct StaticMeshVertex final {
   glm::vec3 position{};
   glm::vec3 normal{};
   glm::vec4 tangent{};
   glm::vec2 tex_coord{};
-  glm::vec4 joints{};
-  glm::vec4 weights{};
 };
 
-constexpr GLsizei MESH_VERTEX_STRIDE =
-    static_cast<GLsizei>(sizeof(MeshVertex));
+struct SkinnedMeshVertex final {
+  StaticMeshVertex base;
+  std::array<std::uint16_t, 4> joints{};
+  std::array<std::uint16_t, 4> weights{};
+};
+
+static_assert(sizeof(StaticMeshVertex) == 48);
+static_assert(sizeof(SkinnedMeshVertex) == 64);
 
 struct TextureUploadPlan final {
   bool used = false;
@@ -115,22 +124,38 @@ struct TextureUploadPlan final {
   return upload_plan;
 }
 
-[[nodiscard]] std::vector<MeshVertex> buildVertices(
+[[nodiscard]] std::vector<StaticMeshVertex> buildStaticVertices(
     const kage::assets::StaticPrimitive& parPrimitive) {
-  std::vector<MeshVertex> vertices;
+  std::vector<StaticMeshVertex> vertices;
   vertices.reserve(parPrimitive.vertices.size());
   for (std::size_t index = 0; index < parPrimitive.vertices.size(); ++index) {
     const kage::assets::StaticVertex& source = parPrimitive.vertices[index];
-    MeshVertex vertex;
+    StaticMeshVertex vertex;
     vertex.position = source.position;
     vertex.normal = source.normal;
     vertex.tangent = source.tangent;
     vertex.tex_coord = source.tex_coord;
-    if (parPrimitive.hasSkinInfluences()) {
-      const kage::assets::SkinInfluence& influence =
-          parPrimitive.skin_influences[index];
-      vertex.joints = glm::vec4(influence.joints);
-      vertex.weights = influence.weights;
+    vertices.push_back(vertex);
+  }
+  return vertices;
+}
+
+[[nodiscard]] std::vector<SkinnedMeshVertex> buildSkinnedVertices(
+    const kage::assets::StaticPrimitive& parPrimitive) {
+  std::vector<SkinnedMeshVertex> vertices;
+  vertices.reserve(parPrimitive.vertices.size());
+  for (std::size_t index = 0; index < parPrimitive.vertices.size(); ++index) {
+    const kage::assets::StaticVertex& source = parPrimitive.vertices[index];
+    const kage::assets::SkinInfluence& influence =
+        parPrimitive.skin_influences[index];
+    SkinnedMeshVertex vertex;
+    vertex.base = {source.position, source.normal, source.tangent,
+                   source.tex_coord};
+    for (std::size_t component = 0; component < 4; ++component) {
+      vertex.joints[component] = static_cast<std::uint16_t>(
+          std::min(influence.joints[component], std::uint32_t{65535}));
+      vertex.weights[component] = static_cast<std::uint16_t>(std::clamp(
+          influence.weights[component], 0.0f, 1.0f) * 65535.0f + 0.5f);
     }
     vertices.push_back(vertex);
   }
@@ -141,11 +166,56 @@ struct TextureUploadPlan final {
 
 namespace kage::render {
 
-void GpuMesh::upload(const assets::StaticModel& parModel) {
+GpuMesh::GpuMesh(GpuMesh&& parOther) noexcept
+    : m_primitives(std::move(parOther.m_primitives)),
+      m_index_count(std::exchange(parOther.m_index_count, 0)),
+      m_has_opaque_primitives(
+          std::exchange(parOther.m_has_opaque_primitives, false)),
+      m_has_blend_primitives(
+          std::exchange(parOther.m_has_blend_primitives, false)),
+      m_fallback_texture(std::move(parOther.m_fallback_texture)),
+      m_fallback_cube(std::exchange(parOther.m_fallback_cube, 0)),
+      m_textures(std::move(parOther.m_textures)) {}
+
+GpuMesh& GpuMesh::operator=(GpuMesh&& parOther) noexcept {
+  if (this != &parOther) {
+    clear();
+    m_primitives = std::move(parOther.m_primitives);
+    m_index_count = std::exchange(parOther.m_index_count, 0);
+    m_has_opaque_primitives =
+        std::exchange(parOther.m_has_opaque_primitives, false);
+    m_has_blend_primitives =
+        std::exchange(parOther.m_has_blend_primitives, false);
+    m_fallback_texture = std::move(parOther.m_fallback_texture);
+    m_fallback_cube = std::exchange(parOther.m_fallback_cube, 0);
+    m_textures = std::move(parOther.m_textures);
+  }
+  return *this;
+}
+
+GpuMesh::~GpuMesh() { clear(); }
+
+void GpuMesh::upload(const assets::StaticModel& parModel,
+                     TextureResourceCache& parTextureCache) {
   clear();
   m_fallback_texture.upload(1, 1, 4, FALLBACK_TEXTURE_PIXELS);
   m_fallback_texture.setSampling(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE,
                                  GL_CLAMP_TO_EDGE);
+  if (m_fallback_cube == 0) {
+    glGenTextures(1, &m_fallback_cube);
+  }
+  glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallback_cube);
+  constexpr float FAR_DEPTH = 1.0f;
+  for (int face = 0; face < 6; ++face) {
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_R32F, 1, 1, 0,
+                 GL_RED, GL_FLOAT, &FAR_DEPTH);
+  }
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
   const std::vector<TextureUploadPlan> texture_upload_plan =
       buildTextureUploadPlan(parModel);
@@ -165,14 +235,13 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
 
     const assets::StaticImage& image =
         parModel.images[static_cast<std::size_t>(texture.image_index)];
-    Texture2D& gpu_texture = m_textures[texture_index];
-    gpu_texture.upload(image.width, image.height, image.component_count,
-                       image.pixels,
-                       texture_upload_plan[texture_index].color_space);
-    gpu_texture.setSampling(getMinFilter(texture.min_filter),
-                            getMagFilter(texture.mag_filter),
-                            getWrapMode(texture.wrap_s),
-                            getWrapMode(texture.wrap_t));
+    TextureBinding& binding = m_textures[texture_index];
+    binding.storage = parTextureCache.acquire(
+        image, texture_upload_plan[texture_index].color_space);
+    binding.sampler.configure(getMinFilter(texture.min_filter),
+                              getMagFilter(texture.mag_filter),
+                              getWrapMode(texture.wrap_s),
+                              getWrapMode(texture.wrap_t));
   }
   Texture2D::unbind(BASE_COLOR_TEXTURE_UNIT);
 
@@ -188,7 +257,15 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
 
     PrimitiveGpuData gpu_primitive;
     gpu_primitive.transform = primitive.transform;
-    gpu_primitive.index_count = checkedIndexCount(primitive.indices.size());
+    if (primitive.bounds.is_valid) {
+      gpu_primitive.center = (primitive.bounds.min + primitive.bounds.max) *
+                             0.5f;
+    }
+    std::vector<std::uint32_t> optimized_indices = primitive.indices;
+    meshopt_optimizeVertexCache(optimized_indices.data(), primitive.indices.data(),
+                                primitive.indices.size(),
+                                primitive.vertices.size());
+    const bool skinned = primitive.hasSkinInfluences();
     gpu_primitive.has_skin = primitive.hasSkinInfluences();
     gpu_primitive.skin_index = primitive.skin_index;
     gpu_primitive.primitive_index = primitive_index;
@@ -212,8 +289,7 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
       gpu_primitive.normal_scale = material.normal_scale;
       gpu_primitive.alpha_cutoff = material.alpha_cutoff;
       gpu_primitive.emissive_factor = material.emissive_factor;
-      gpu_primitive.alpha_blend = material.alpha_blend;
-      gpu_primitive.alpha_mask = material.alpha_mask;
+      gpu_primitive.alpha_mode = material.alpha_mode;
       gpu_primitive.double_sided = material.double_sided;
     } else {
       gpu_primitive.base_color_factor = DEFAULT_BASE_COLOR_FACTOR;
@@ -224,33 +300,52 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
     gpu_primitive.index_buffer.create(GL_ELEMENT_ARRAY_BUFFER);
 
     gpu_primitive.vertex_array.bind();
-    const std::vector<MeshVertex> vertices = buildVertices(primitive);
-    gpu_primitive.vertex_buffer.setData(
-        vertices.size() * sizeof(MeshVertex), vertices.data(), GL_STATIC_DRAW);
+    const GLsizei vertex_stride = static_cast<GLsizei>(
+        skinned ? sizeof(SkinnedMeshVertex) : sizeof(StaticMeshVertex));
+    if (skinned) {
+      const std::vector<SkinnedMeshVertex> vertices =
+          buildSkinnedVertices(primitive);
+      gpu_primitive.vertex_buffer.setData(
+          vertices.size() * sizeof(SkinnedMeshVertex), vertices.data(),
+          GL_STATIC_DRAW);
+    } else {
+      const std::vector<StaticMeshVertex> vertices =
+          buildStaticVertices(primitive);
+      gpu_primitive.vertex_buffer.setData(
+          vertices.size() * sizeof(StaticMeshVertex), vertices.data(),
+          GL_STATIC_DRAW);
+    }
     gpu_primitive.index_buffer.setData(
-        primitive.indices.size() * sizeof(std::uint32_t),
-        primitive.indices.data(), GL_STATIC_DRAW);
+        optimized_indices.size() * sizeof(std::uint32_t),
+        optimized_indices.data(), GL_STATIC_DRAW);
+    gpu_primitive.index_count = checkedIndexCount(optimized_indices.size());
+    m_index_count += optimized_indices.size();
+    m_has_blend_primitives |=
+        gpu_primitive.alpha_mode == assets::AlphaMode::Blend;
+    m_has_opaque_primitives |=
+        gpu_primitive.alpha_mode != assets::AlphaMode::Blend;
 
     gpu_primitive.vertex_array.setFloatAttribute(
-        POSITION_ATTRIBUTE, 3, GL_FLOAT, MESH_VERTEX_STRIDE,
-        offsetof(MeshVertex, position));
+        POSITION_ATTRIBUTE, 3, GL_FLOAT, vertex_stride,
+        offsetof(StaticMeshVertex, position));
     gpu_primitive.vertex_array.setFloatAttribute(
-        NORMAL_ATTRIBUTE, 3, GL_FLOAT, MESH_VERTEX_STRIDE,
-        offsetof(MeshVertex, normal));
+        NORMAL_ATTRIBUTE, 3, GL_FLOAT, vertex_stride,
+        offsetof(StaticMeshVertex, normal));
     gpu_primitive.vertex_array.setFloatAttribute(
-        TEX_COORD_ATTRIBUTE, 2, GL_FLOAT, MESH_VERTEX_STRIDE,
-        offsetof(MeshVertex, tex_coord));
+        TEX_COORD_ATTRIBUTE, 2, GL_FLOAT, vertex_stride,
+        offsetof(StaticMeshVertex, tex_coord));
     gpu_primitive.vertex_array.setFloatAttribute(
-        TANGENT_ATTRIBUTE, 4, GL_FLOAT, MESH_VERTEX_STRIDE,
-        offsetof(MeshVertex, tangent));
-    gpu_primitive.vertex_array.setFloatAttribute(
-        JOINTS_ATTRIBUTE, 4, GL_FLOAT, MESH_VERTEX_STRIDE,
-        offsetof(MeshVertex, joints));
-    gpu_primitive.vertex_array.setFloatAttribute(
-        WEIGHTS_ATTRIBUTE, 4, GL_FLOAT, MESH_VERTEX_STRIDE,
-        offsetof(MeshVertex, weights));
+        TANGENT_ATTRIBUTE, 4, GL_FLOAT, vertex_stride,
+        offsetof(StaticMeshVertex, tangent));
+    if (skinned) {
+      gpu_primitive.vertex_array.setIntegerAttribute(
+          JOINTS_ATTRIBUTE, 4, GL_UNSIGNED_SHORT, vertex_stride,
+          offsetof(SkinnedMeshVertex, joints));
+      gpu_primitive.vertex_array.setFloatAttribute(
+          WEIGHTS_ATTRIBUTE, 4, GL_UNSIGNED_SHORT, vertex_stride,
+          offsetof(SkinnedMeshVertex, weights), true);
+    }
 
-    m_index_count += primitive.indices.size();
     m_primitives.push_back(std::move(gpu_primitive));
   }
 
@@ -260,54 +355,54 @@ void GpuMesh::upload(const assets::StaticModel& parModel) {
 }
 
 void GpuMesh::draw(const ShaderProgram& parShader,
-                   const glm::mat4& parViewProjection,
                    const glm::vec3& parCameraPosition,
                    const glm::mat4& parEntityTransform,
-                   const lighting::LightingState& parLighting,
                    std::span<const std::vector<glm::mat4>> parSkinMatrices,
                    float parEntityOpacity,
-                   MaterialDebugMode parDebugMode) const {
-  if (m_primitives.empty()) {
+                   bool parSolidMode,
+                   MeshDrawPass parPass) const {
+  if (!isValid() ||
+      !hasPrimitivesForPass(parEntityOpacity, parSolidMode, parPass)) {
     return;
   }
 
   parShader.use();
-  parShader.setMat4("u_view_projection", parViewProjection);
-  parShader.setVec3("u_camera_position", parCameraPosition);
-  parShader.setInt("u_base_color_texture", BASE_COLOR_TEXTURE_UNIT);
-  parShader.setInt("u_normal_texture", NORMAL_TEXTURE_UNIT);
-  parShader.setInt("u_metallic_roughness_texture",
-                   METALLIC_ROUGHNESS_TEXTURE_UNIT);
-  parShader.setInt("u_emissive_texture", EMISSIVE_TEXTURE_UNIT);
-  parShader.setVec3("u_ambient_diffuse", parLighting.ambient_diffuse);
-  parShader.setVec3("u_ambient_specular", parLighting.ambient_specular);
-  parShader.setFloat("u_exposure", parLighting.exposure);
-  parShader.setInt("u_sun_enabled", parLighting.sun.enabled ? 1 : 0);
-  parShader.setVec3("u_sun_direction_to_light",
-                    glm::normalize(parLighting.sun.direction_to_light));
-  parShader.setVec3("u_sun_color", parLighting.sun.color);
-  parShader.setFloat("u_sun_intensity", parLighting.sun.intensity);
-  const std::size_t point_light_count =
-      std::min(parLighting.point_light_count,
-               parLighting.point_lights.size());
-  parShader.setInt("u_point_light_count",
-                   static_cast<int>(point_light_count));
-  for (std::size_t index = 0; index < point_light_count; ++index) {
-    const lighting::PointLight& light = parLighting.point_lights[index];
-    const std::string suffix = "[" + std::to_string(index) + "]";
-    parShader.setVec3(("u_point_light_positions" + suffix).c_str(),
-                      light.position);
-    parShader.setVec3(("u_point_light_colors" + suffix).c_str(),
-                      light.color);
-    parShader.setFloat(("u_point_light_intensities" + suffix).c_str(),
-                       light.intensity);
-    parShader.setFloat(("u_point_light_ranges" + suffix).c_str(),
-                       light.range);
-  }
-  parShader.setInt("u_material_debug_mode",
-                   static_cast<int>(parDebugMode));
 
+  thread_local std::vector<const PrimitiveGpuData*> draw_primitives;
+  draw_primitives.clear();
+  draw_primitives.reserve(m_primitives.size());
   for (const PrimitiveGpuData& primitive : m_primitives) {
+    const bool blended = parEntityOpacity < 0.999f ||
+                         (!parSolidMode &&
+                          primitive.alpha_mode == assets::AlphaMode::Blend);
+    if ((parPass == MeshDrawPass::Opaque && blended) ||
+        (parPass == MeshDrawPass::Blend && !blended)) {
+      continue;
+    }
+    draw_primitives.push_back(&primitive);
+  }
+  if (parPass == MeshDrawPass::Blend) {
+    std::sort(draw_primitives.begin(), draw_primitives.end(),
+              [&](const PrimitiveGpuData* left,
+                  const PrimitiveGpuData* right) {
+                const glm::vec3 left_center = glm::vec3(
+                    parEntityTransform * glm::vec4(left->center, 1.0f));
+                const glm::vec3 right_center = glm::vec3(
+                    parEntityTransform * glm::vec4(right->center, 1.0f));
+                return glm::dot(left_center - parCameraPosition,
+                                left_center - parCameraPosition) >
+                       glm::dot(right_center - parCameraPosition,
+                                right_center - parCameraPosition);
+              });
+  }
+  for (const PrimitiveGpuData* primitive_pointer : draw_primitives) {
+    const PrimitiveGpuData& primitive = *primitive_pointer;
+    if (primitive.double_sided) {
+      glDisable(GL_CULL_FACE);
+    } else {
+      glEnable(GL_CULL_FACE);
+      glCullFace(GL_BACK);
+    }
     parShader.setMat4("u_model", parEntityTransform * primitive.transform);
     parShader.setVec4("u_base_color_factor", primitive.base_color_factor);
     parShader.setFloat("u_metallic_factor", primitive.metallic_factor);
@@ -315,7 +410,11 @@ void GpuMesh::draw(const ShaderProgram& parShader,
     parShader.setFloat("u_normal_scale", primitive.normal_scale);
     parShader.setFloat("u_alpha_cutoff", primitive.alpha_cutoff);
     parShader.setVec3("u_emissive_factor", primitive.emissive_factor);
-    parShader.setInt("u_alpha_mask", primitive.alpha_mask ? 1 : 0);
+    parShader.setInt(
+        "u_alpha_mask",
+        !parSolidMode && primitive.alpha_mode == assets::AlphaMode::Mask ? 1
+                                                                         : 0);
+    parShader.setInt("u_double_sided", primitive.double_sided ? 1 : 0);
     parShader.setFloat("u_entity_opacity", parEntityOpacity);
 
     const auto bind_slot = [&](const char* has_name, const char* offset_name,
@@ -324,17 +423,21 @@ void GpuMesh::draw(const ShaderProgram& parShader,
                                const assets::MaterialTextureSlot& slot,
                                GLuint texture_unit) {
       const bool has_texture =
-          slot.isValid() && static_cast<std::size_t>(slot.texture_index) <
+          !parSolidMode && slot.isValid() && static_cast<std::size_t>(slot.texture_index) <
                                 m_textures.size() &&
-          m_textures[slot.texture_index].isValid();
+          m_textures[slot.texture_index].storage != nullptr &&
+          m_textures[slot.texture_index].storage->isValid();
       parShader.setInt(has_name, has_texture ? 1 : 0);
       parShader.setVec2(offset_name, slot.transform.offset);
       parShader.setVec2(scale_name, slot.transform.scale);
       parShader.setFloat(rotation_name, slot.transform.rotation);
       if (has_texture) {
-        m_textures[slot.texture_index].bind(texture_unit);
+        const TextureBinding& binding = m_textures[slot.texture_index];
+        binding.storage->bind(texture_unit);
+        binding.sampler.bind(texture_unit);
       } else {
         m_fallback_texture.bind(texture_unit);
+        glBindSampler(texture_unit, 0);
       }
     };
 
@@ -370,15 +473,13 @@ void GpuMesh::draw(const ShaderProgram& parShader,
     }
 
     primitive.vertex_array.bind();
-    glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,
-                   nullptr);
+    primitive.index_buffer.bind();
+    glDrawElements(GL_TRIANGLES, primitive.index_count,
+                   GL_UNSIGNED_INT, nullptr);
   }
 
   VertexArray::unbind();
-  Texture2D::unbind(BASE_COLOR_TEXTURE_UNIT);
-  Texture2D::unbind(NORMAL_TEXTURE_UNIT);
-  Texture2D::unbind(METALLIC_ROUGHNESS_TEXTURE_UNIT);
-  Texture2D::unbind(EMISSIVE_TEXTURE_UNIT);
+  glDisable(GL_CULL_FACE);
 }
 
 void GpuMesh::drawOutline(const ShaderProgram& parShader,
@@ -388,7 +489,7 @@ void GpuMesh::drawOutline(const ShaderProgram& parShader,
                               parSkinMatrices,
                           const glm::vec4& parColor,
                           float parThickness) const {
-  if (m_primitives.empty()) {
+  if (!isValid()) {
     return;
   }
 
@@ -416,6 +517,7 @@ void GpuMesh::drawOutline(const ShaderProgram& parShader,
               matrices.size(), static_cast<std::size_t>(MAX_SHADER_JOINTS))));
     }
     primitive.vertex_array.bind();
+    primitive.index_buffer.bind();
     glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,
                    nullptr);
   }
@@ -424,11 +526,153 @@ void GpuMesh::drawOutline(const ShaderProgram& parShader,
   VertexArray::unbind();
 }
 
+void GpuMesh::drawPicking(
+    const ShaderProgram& parShader, const glm::mat4& parViewProjection,
+    const glm::mat4& parEntityTransform,
+    std::span<const std::vector<glm::mat4>> parSkinMatrices,
+    std::uint32_t parEntityId) const {
+  if (!isValid()) {
+    return;
+  }
+  parShader.use();
+  parShader.setMat4("u_view_projection", parViewProjection);
+  parShader.setUInt("u_entity_id", parEntityId);
+  parShader.setInt("u_base_color_texture", BASE_COLOR_TEXTURE_UNIT);
+  for (const PrimitiveGpuData& primitive : m_primitives) {
+    parShader.setMat4("u_model", parEntityTransform * primitive.transform);
+    const bool can_skin =
+        primitive.has_skin &&
+        primitive.skin_index != assets::INVALID_SKIN_INDEX &&
+        primitive.primitive_index < parSkinMatrices.size() &&
+        !parSkinMatrices[primitive.primitive_index].empty();
+    parShader.setInt("u_skinning_enabled", can_skin ? 1 : 0);
+    if (can_skin) {
+      const std::vector<glm::mat4>& matrices =
+          parSkinMatrices[primitive.primitive_index];
+      parShader.setMat4Array(
+          "u_joint_matrices", matrices.data(),
+          static_cast<GLsizei>(std::min<std::size_t>(
+              matrices.size(), static_cast<std::size_t>(MAX_SHADER_JOINTS))));
+    }
+    const assets::MaterialTextureSlot& slot = primitive.base_color_texture;
+    const bool has_texture =
+        slot.isValid() &&
+        static_cast<std::size_t>(slot.texture_index) < m_textures.size() &&
+        m_textures[slot.texture_index].storage != nullptr &&
+        m_textures[slot.texture_index].storage->isValid();
+    parShader.setInt("u_alpha_mask",
+                     primitive.alpha_mode == assets::AlphaMode::Mask ? 1 : 0);
+    parShader.setFloat("u_alpha_cutoff", primitive.alpha_cutoff);
+    parShader.setFloat("u_base_color_alpha", primitive.base_color_factor.a);
+    parShader.setInt("u_has_base_color_texture", has_texture ? 1 : 0);
+    parShader.setVec2("u_base_color_offset", slot.transform.offset);
+    parShader.setVec2("u_base_color_scale", slot.transform.scale);
+    parShader.setFloat("u_base_color_rotation", slot.transform.rotation);
+    if (has_texture) {
+      const TextureBinding& binding = m_textures[slot.texture_index];
+      binding.storage->bind(BASE_COLOR_TEXTURE_UNIT);
+      binding.sampler.bind(BASE_COLOR_TEXTURE_UNIT);
+    } else {
+      m_fallback_texture.bind(BASE_COLOR_TEXTURE_UNIT);
+      glBindSampler(BASE_COLOR_TEXTURE_UNIT, 0);
+    }
+    primitive.vertex_array.bind();
+    primitive.index_buffer.bind();
+    glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,
+                   nullptr);
+  }
+  Texture2D::unbind(BASE_COLOR_TEXTURE_UNIT);
+  glBindSampler(BASE_COLOR_TEXTURE_UNIT, 0);
+  VertexArray::unbind();
+}
+
+void GpuMesh::drawShadow(
+    const ShaderProgram& parShader, const glm::mat4& parLightViewProjection,
+    const glm::mat4& parEntityTransform,
+    std::span<const std::vector<glm::mat4>> parSkinMatrices,
+    const glm::vec3* parPointLightPosition, float parPointLightRange) const {
+  if (!isValid()) {
+    return;
+  }
+  parShader.use();
+  parShader.setMat4("u_light_view_projection", parLightViewProjection);
+  parShader.setInt("u_point_shadow",
+                   parPointLightPosition != nullptr ? 1 : 0);
+  parShader.setVec3("u_light_position",
+                    parPointLightPosition != nullptr
+                        ? *parPointLightPosition
+                        : glm::vec3(0.0f));
+  parShader.setFloat("u_light_range", std::max(parPointLightRange, 0.001f));
+  parShader.setInt("u_base_color_texture", BASE_COLOR_TEXTURE_UNIT);
+  for (const PrimitiveGpuData& primitive : m_primitives) {
+    if (primitive.alpha_mode == assets::AlphaMode::Blend) {
+      continue;
+    }
+    if (primitive.double_sided) {
+      glDisable(GL_CULL_FACE);
+    } else {
+      glEnable(GL_CULL_FACE);
+      glCullFace(GL_FRONT);
+    }
+    parShader.setMat4("u_model", parEntityTransform * primitive.transform);
+    parShader.setInt("u_alpha_mask",
+                     primitive.alpha_mode == assets::AlphaMode::Mask ? 1 : 0);
+    parShader.setFloat("u_alpha_cutoff", primitive.alpha_cutoff);
+    parShader.setFloat("u_base_color_alpha", primitive.base_color_factor.a);
+    parShader.setVec2("u_base_color_offset",
+                      primitive.base_color_texture.transform.offset);
+    parShader.setVec2("u_base_color_scale",
+                      primitive.base_color_texture.transform.scale);
+    parShader.setFloat("u_base_color_rotation",
+                       primitive.base_color_texture.transform.rotation);
+    const bool has_texture =
+        primitive.base_color_texture.isValid() &&
+        static_cast<std::size_t>(primitive.base_color_texture.texture_index) <
+            m_textures.size() &&
+        m_textures[primitive.base_color_texture.texture_index].storage !=
+            nullptr;
+    parShader.setInt("u_has_base_color_texture", has_texture ? 1 : 0);
+    if (has_texture) {
+      const TextureBinding& binding =
+          m_textures[primitive.base_color_texture.texture_index];
+      binding.storage->bind(BASE_COLOR_TEXTURE_UNIT);
+      binding.sampler.bind(BASE_COLOR_TEXTURE_UNIT);
+    }
+    const bool can_skin =
+        primitive.has_skin &&
+        primitive.primitive_index < parSkinMatrices.size() &&
+        !parSkinMatrices[primitive.primitive_index].empty();
+    parShader.setInt("u_skinning_enabled", can_skin ? 1 : 0);
+    if (can_skin) {
+      const auto& matrices = parSkinMatrices[primitive.primitive_index];
+      parShader.setMat4Array(
+          "u_joint_matrices", matrices.data(),
+          static_cast<GLsizei>(std::min<std::size_t>(matrices.size(),
+                                                     MAX_SHADER_JOINTS)));
+    }
+    primitive.vertex_array.bind();
+    primitive.index_buffer.bind();
+    glDrawElements(GL_TRIANGLES, primitive.index_count, GL_UNSIGNED_INT,
+                   nullptr);
+  }
+  VertexArray::unbind();
+  Texture2D::unbind(BASE_COLOR_TEXTURE_UNIT);
+  glBindSampler(BASE_COLOR_TEXTURE_UNIT, 0);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_FRONT);
+}
+
 void GpuMesh::clear() {
   m_primitives.clear();
-  m_fallback_texture.release();
-  m_textures.clear();
   m_index_count = 0;
+  m_has_opaque_primitives = false;
+  m_has_blend_primitives = false;
+  m_fallback_texture.release();
+  if (m_fallback_cube != 0) {
+    glDeleteTextures(1, &m_fallback_cube);
+    m_fallback_cube = 0;
+  }
+  m_textures.clear();
 }
 
 std::size_t GpuMesh::getPrimitiveCount() const {
@@ -441,6 +685,22 @@ std::size_t GpuMesh::getIndexCount() const {
 
 bool GpuMesh::isValid() const {
   return !m_primitives.empty();
+}
+
+bool GpuMesh::hasPrimitivesForPass(float parEntityOpacity,
+                                   bool parSolidMode,
+                                   MeshDrawPass parPass) const {
+  if (parPass == MeshDrawPass::All) {
+    return !m_primitives.empty();
+  }
+  if (parEntityOpacity < 0.999f) {
+    return parPass == MeshDrawPass::Blend && !m_primitives.empty();
+  }
+  if (parSolidMode) {
+    return parPass == MeshDrawPass::Opaque && !m_primitives.empty();
+  }
+  return parPass == MeshDrawPass::Blend ? m_has_blend_primitives
+                                        : m_has_opaque_primitives;
 }
 
 }  // namespace kage::render

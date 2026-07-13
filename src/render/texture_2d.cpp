@@ -115,6 +115,24 @@ void Texture2D::upload(int parWidth, int parHeight, int parComponentCount,
   glPixelStorei(GL_UNPACK_ALIGNMENT, previous_unpack_alignment);
 }
 
+void Texture2D::uploadFloat(int parWidth, int parHeight, int parComponentCount,
+                            std::span<const float> parPixels) {
+  const GLenum format = getTextureFormat(parComponentCount);
+  const std::size_t expected_size =
+      getExpectedByteSize(parWidth, parHeight, parComponentCount);
+  if (parPixels.size() < expected_size) {
+    throw std::runtime_error("Floating-point texture data is incomplete");
+  }
+  if (m_handle == 0) {
+    create();
+  }
+  bind(0);
+  glTexImage2D(GL_TEXTURE_2D, 0,
+               parComponentCount == 4 ? GL_RGBA16F : GL_RGB16F, parWidth,
+               parHeight, 0, format, GL_FLOAT, parPixels.data());
+  glGenerateMipmap(GL_TEXTURE_2D);
+}
+
 void Texture2D::setSampling(GLint parMinFilter, GLint parMagFilter,
                             GLint parWrapS, GLint parWrapT) const {
   bind(0);
@@ -151,6 +169,46 @@ bool Texture2D::isValid() const {
 void Texture2D::unbind(GLuint parTextureUnit) {
   glActiveTexture(GL_TEXTURE0 + parTextureUnit);
   glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+TextureSampler::TextureSampler(TextureSampler&& parOther) noexcept
+    : m_handle(std::exchange(parOther.m_handle, 0)) {}
+
+TextureSampler& TextureSampler::operator=(TextureSampler&& parOther) noexcept {
+  if (this != &parOther) {
+    release();
+    m_handle = std::exchange(parOther.m_handle, 0);
+  }
+  return *this;
+}
+
+TextureSampler::~TextureSampler() {
+  release();
+}
+
+void TextureSampler::configure(GLint parMinFilter, GLint parMagFilter,
+                               GLint parWrapS, GLint parWrapT) {
+  if (m_handle == 0) {
+    glGenSamplers(1, &m_handle);
+  }
+  if (m_handle == 0) {
+    throw std::runtime_error("Failed to create OpenGL texture sampler");
+  }
+  glSamplerParameteri(m_handle, GL_TEXTURE_MIN_FILTER, parMinFilter);
+  glSamplerParameteri(m_handle, GL_TEXTURE_MAG_FILTER, parMagFilter);
+  glSamplerParameteri(m_handle, GL_TEXTURE_WRAP_S, parWrapS);
+  glSamplerParameteri(m_handle, GL_TEXTURE_WRAP_T, parWrapT);
+}
+
+void TextureSampler::bind(GLuint parTextureUnit) const {
+  glBindSampler(parTextureUnit, m_handle);
+}
+
+void TextureSampler::release() {
+  if (m_handle != 0) {
+    glDeleteSamplers(1, &m_handle);
+    m_handle = 0;
+  }
 }
 
 }  // namespace kage::render

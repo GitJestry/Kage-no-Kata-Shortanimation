@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <unordered_map>
 
 namespace {
 
@@ -42,6 +43,51 @@ constexpr int DEFAULT_SCENE_INDEX = 0;
   return std::string_view(header.data(),
                           static_cast<std::size_t>(input.gcount()))
       .starts_with(LFS_HEADER);
+}
+
+void mergeStaticPrimitivesByMaterial(kage::assets::StaticModel& parModel) {
+  if (parModel.primitives.size() < 2) {
+    return;
+  }
+  std::vector<kage::assets::StaticPrimitive> merged;
+  std::unordered_map<std::uint32_t, std::size_t> material_batches;
+  for (const kage::assets::StaticPrimitive& source : parModel.primitives) {
+    if (source.skin_index != kage::assets::INVALID_SKIN_INDEX) {
+      return;
+    }
+    auto [iterator, inserted] =
+        material_batches.emplace(source.material_index, merged.size());
+    if (inserted) {
+      kage::assets::StaticPrimitive batch;
+      batch.name = "material batch";
+      batch.material_index = source.material_index;
+      merged.push_back(std::move(batch));
+    }
+    kage::assets::StaticPrimitive& destination = merged[iterator->second];
+    const std::uint32_t vertex_offset =
+        static_cast<std::uint32_t>(destination.vertices.size());
+    const glm::mat3 normal_matrix =
+        glm::transpose(glm::inverse(glm::mat3(source.transform)));
+    destination.vertices.reserve(destination.vertices.size() +
+                                 source.vertices.size());
+    for (const kage::assets::StaticVertex& vertex : source.vertices) {
+      kage::assets::StaticVertex transformed = vertex;
+      transformed.position = glm::vec3(
+          source.transform * glm::vec4(vertex.position, 1.0f));
+      transformed.normal = glm::normalize(normal_matrix * vertex.normal);
+      transformed.tangent = glm::vec4(
+          glm::normalize(normal_matrix * glm::vec3(vertex.tangent)),
+          vertex.tangent.w);
+      destination.bounds.includePoint(transformed.position);
+      destination.vertices.push_back(transformed);
+    }
+    destination.indices.reserve(destination.indices.size() +
+                                source.indices.size());
+    for (std::uint32_t index : source.indices) {
+      destination.indices.push_back(vertex_offset + index);
+    }
+  }
+  parModel.primitives = std::move(merged);
 }
 
 [[nodiscard]] const tinygltf::Accessor& getAccessor(
@@ -620,6 +666,8 @@ void importMaterials(const tinygltf::Model& parModel,
                      const std::filesystem::path& parPath,
                      kage::assets::StaticModel& parOutput) {
   parOutput.materials.reserve(parModel.materials.size());
+  std::size_t declared_blend_count = 0;
+  std::size_t reclassified_blend_count = 0;
 
   for (const tinygltf::Material& material : parModel.materials) {
     kage::assets::StaticMaterial output_material;
@@ -640,12 +688,62 @@ void importMaterials(const tinygltf::Model& parModel,
         std::clamp(material.pbrMetallicRoughness.roughnessFactor, 0.0, 1.0));
     output_material.alpha_cutoff =
         static_cast<float>(std::max(material.alphaCutoff, 0.0));
-    output_material.alpha_blend = material.alphaMode == "BLEND";
-    output_material.alpha_mask = material.alphaMode == "MASK";
+    if (material.alphaMode == "MASK") {
+      output_material.alpha_mode = kage::assets::AlphaMode::Mask;
+    } else if (material.alphaMode == "BLEND") {
+      output_material.alpha_mode = kage::assets::AlphaMode::Blend;
+      ++declared_blend_count;
+    }
     output_material.double_sided = material.doubleSided;
 
     output_material.base_color_texture = readTextureSlot(
         material.pbrMetallicRoughness.baseColorTexture, parModel, parPath);
+
+    if (output_material.alpha_mode == kage::assets::AlphaMode::Blend &&
+        output_material.base_color_factor.a >= 0.999f) {
+      bool opaque = !output_material.base_color_texture.isValid();
+      bool mask = false;
+      if (output_material.base_color_texture.isValid()) {
+        const std::size_t texture_index =
+            output_material.base_color_texture.texture_index;
+        if (texture_index < parOutput.textures.size()) {
+          const std::size_t image_index =
+              parOutput.textures[texture_index].image_index;
+          if (image_index < parOutput.images.size()) {
+            const kage::assets::StaticImage& image =
+                parOutput.images[image_index];
+            opaque = image.component_count < 4;
+            if (image.component_count == 4) {
+              opaque = true;
+              std::size_t partial_alpha_count = 0;
+              std::size_t transparent_alpha_count = 0;
+              for (std::size_t pixel = 3; pixel < image.pixels.size();
+                   pixel += 4) {
+                const unsigned char alpha = image.pixels[pixel];
+                if (alpha != 255) {
+                  opaque = false;
+                  ++transparent_alpha_count;
+                }
+                if (alpha > 0 && alpha < 255) {
+                  ++partial_alpha_count;
+                }
+              }
+              const std::size_t pixel_count = image.pixels.size() / 4;
+              mask = transparent_alpha_count > 0 && pixel_count > 0 &&
+                     partial_alpha_count * 100 <= pixel_count;
+            }
+          }
+        }
+      }
+      if (opaque) {
+        output_material.alpha_mode = kage::assets::AlphaMode::Opaque;
+      } else if (mask) {
+        output_material.alpha_mode = kage::assets::AlphaMode::Mask;
+      }
+      if (output_material.alpha_mode != kage::assets::AlphaMode::Blend) {
+        ++reclassified_blend_count;
+      }
+    }
     output_material.metallic_roughness_texture =
         readTextureSlot(material.pbrMetallicRoughness.metallicRoughnessTexture,
                         parModel, parPath);
@@ -663,6 +761,31 @@ void importMaterials(const tinygltf::Model& parModel,
     }
 
     parOutput.materials.push_back(output_material);
+  }
+
+  const bool suspicious_all_blend_export =
+      !parModel.materials.empty() &&
+      declared_blend_count == parModel.materials.size() &&
+      reclassified_blend_count * 10 >= declared_blend_count * 9;
+  if (reclassified_blend_count > 0 && !parOutput.import_warning.empty()) {
+    parOutput.import_warning += '\n';
+  }
+  if (suspicious_all_blend_export) {
+    std::size_t remaining_blend_count = 0;
+    for (kage::assets::StaticMaterial& material : parOutput.materials) {
+      if (material.alpha_mode == kage::assets::AlphaMode::Blend) {
+        material.alpha_mode = kage::assets::AlphaMode::Mask;
+        ++remaining_blend_count;
+      }
+    }
+    parOutput.import_warning +=
+        "Suspicious Blender export: all materials were BLEND; reclassified " +
+        std::to_string(reclassified_blend_count + remaining_blend_count) +
+        " materials using effective alpha coverage";
+  } else if (reclassified_blend_count > 0) {
+    parOutput.import_warning +=
+        "Reclassified " + std::to_string(reclassified_blend_count) +
+        " suspicious BLEND materials using effective alpha coverage";
   }
 }
 
@@ -1029,6 +1152,16 @@ void importAnimations(const tinygltf::Model& parModel,
        animation_index < parModel.animations.size(); ++animation_index) {
     const tinygltf::Animation& animation = parModel.animations[animation_index];
     kage::assets::AnimationClip clip;
+    constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ull;
+    constexpr std::uint64_t FNV_PRIME = 1099511628211ull;
+    std::uint64_t clip_id = FNV_OFFSET;
+    const std::string clip_key = parPath.filename().generic_string() +
+        "#" + std::to_string(animation_index) + ":" + animation.name;
+    for (const unsigned char value : clip_key) {
+      clip_id ^= value;
+      clip_id *= FNV_PRIME;
+    }
+    clip.id = clip_id;
     clip.name = animation.name.empty()
                     ? "Animation " + std::to_string(animation_index)
                     : animation.name;
@@ -1249,6 +1382,27 @@ GltfDocument GltfAssetLoader::loadDocument(
   importMarkers(output);
   importAnimations(gltf_model, parPath, output);
 
+  if (output.skins.empty()) {
+    mergeStaticPrimitivesByMaterial(output.static_model);
+  } else {
+    output.primitive_skin_bindings.reserve(
+        output.static_model.primitives.size());
+    for (const StaticPrimitive& primitive : output.static_model.primitives) {
+      PrimitiveSkinBinding binding;
+      binding.skin_index = primitive.skin_index;
+      if (primitive.node_index != INVALID_NODE_INDEX &&
+          static_cast<std::size_t>(primitive.node_index) <
+              output.nodes.size()) {
+        binding.inverse_mesh_bind_transform = glm::inverse(
+            output.nodes[static_cast<std::size_t>(primitive.node_index)]
+                .global_transform);
+      } else {
+        binding.inverse_mesh_bind_transform = glm::inverse(primitive.transform);
+      }
+      output.primitive_skin_bindings.push_back(binding);
+    }
+  }
+
   output.bounds = output.static_model.bounds;
   output.stats.primitive_count = output.static_model.primitives.size();
   output.stats.vertex_count = output.static_model.stats.vertex_count;
@@ -1257,6 +1411,34 @@ GltfDocument GltfAssetLoader::loadDocument(
   output.stats.index_count = output.static_model.stats.index_count;
   output.stats.triangle_count = output.static_model.stats.triangle_count;
   output.stats.marker_count = output.markers.size();
+  int max_texture_dimension = 0;
+  for (const StaticImage& image : output.static_model.images) {
+    max_texture_dimension =
+        std::max({max_texture_dimension, image.width, image.height});
+  }
+  std::vector<std::string> performance_warnings;
+  if (output.stats.vertex_count > 500000) {
+    performance_warnings.push_back("more than 500k vertices");
+  }
+  if (output.stats.material_count > 32) {
+    performance_warnings.push_back("more than 32 materials");
+  }
+  if (max_texture_dimension > 2048) {
+    performance_warnings.push_back("texture larger than 2048px");
+  }
+  if (!performance_warnings.empty()) {
+    if (!output.import_warning.empty()) {
+      output.import_warning += "\n";
+    }
+    output.import_warning += "Viewport performance warning: ";
+    for (std::size_t index = 0; index < performance_warnings.size(); ++index) {
+      if (index != 0) {
+        output.import_warning += ", ";
+      }
+      output.import_warning += performance_warnings[index];
+    }
+    output.static_model.import_warning = output.import_warning;
+  }
   output.static_model.stats = output.stats;
   return output;
 }

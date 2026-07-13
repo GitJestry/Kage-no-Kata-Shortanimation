@@ -31,12 +31,12 @@ class CameraSystem final {
   void syncFlyControllerFromCamera();
   void setFlyMoveSpeed(float parMoveSpeed);
 
-  [[nodiscard]] const Camera& getCamera() const;
-  [[nodiscard]] Camera& getCamera();
+  [[nodiscard]] const Camera& getEditorCamera() const;
+  [[nodiscard]] Camera& getEditorCamera();
   [[nodiscard]] float getFlyMoveSpeed() const;
 
  private:
-  Camera m_camera;
+  Camera m_editor_camera;
   FlyCameraInput m_fly_input;
   FlyCameraController m_fly_controller;
 };
