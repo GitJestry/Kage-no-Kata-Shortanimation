@@ -21,7 +21,7 @@ class RuntimePaths final {
       const std::filesystem::path& parRelativePath) const;
   [[nodiscard]] std::filesystem::path getProjectAssetCatalogPath() const;
   [[nodiscard]] std::filesystem::path getProjectWorldPath() const;
- [[nodiscard]] std::filesystem::path getLocalSessionPath() const;
+  [[nodiscard]] std::filesystem::path getLocalSessionPath() const;
 
  private:
   std::filesystem::path m_project_root;

@@ -174,7 +174,6 @@ GpuMesh::GpuMesh(GpuMesh&& parOther) noexcept
       m_has_blend_primitives(
           std::exchange(parOther.m_has_blend_primitives, false)),
       m_fallback_texture(std::move(parOther.m_fallback_texture)),
-      m_fallback_cube(std::exchange(parOther.m_fallback_cube, 0)),
       m_textures(std::move(parOther.m_textures)) {}
 
 GpuMesh& GpuMesh::operator=(GpuMesh&& parOther) noexcept {
@@ -187,7 +186,6 @@ GpuMesh& GpuMesh::operator=(GpuMesh&& parOther) noexcept {
     m_has_blend_primitives =
         std::exchange(parOther.m_has_blend_primitives, false);
     m_fallback_texture = std::move(parOther.m_fallback_texture);
-    m_fallback_cube = std::exchange(parOther.m_fallback_cube, 0);
     m_textures = std::move(parOther.m_textures);
   }
   return *this;
@@ -201,21 +199,6 @@ void GpuMesh::upload(const assets::StaticModel& parModel,
   m_fallback_texture.upload(1, 1, 4, FALLBACK_TEXTURE_PIXELS);
   m_fallback_texture.setSampling(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE,
                                  GL_CLAMP_TO_EDGE);
-  if (m_fallback_cube == 0) {
-    glGenTextures(1, &m_fallback_cube);
-  }
-  glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallback_cube);
-  constexpr float FAR_DEPTH = 1.0f;
-  for (int face = 0; face < 6; ++face) {
-    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_R32F, 1, 1, 0,
-                 GL_RED, GL_FLOAT, &FAR_DEPTH);
-  }
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
   const std::vector<TextureUploadPlan> texture_upload_plan =
       buildTextureUploadPlan(parModel);
@@ -630,13 +613,18 @@ void GpuMesh::drawShadow(
         static_cast<std::size_t>(primitive.base_color_texture.texture_index) <
             m_textures.size() &&
         m_textures[primitive.base_color_texture.texture_index].storage !=
-            nullptr;
+            nullptr &&
+        m_textures[primitive.base_color_texture.texture_index].storage
+            ->isValid();
     parShader.setInt("u_has_base_color_texture", has_texture ? 1 : 0);
     if (has_texture) {
       const TextureBinding& binding =
           m_textures[primitive.base_color_texture.texture_index];
       binding.storage->bind(BASE_COLOR_TEXTURE_UNIT);
       binding.sampler.bind(BASE_COLOR_TEXTURE_UNIT);
+    } else {
+      m_fallback_texture.bind(BASE_COLOR_TEXTURE_UNIT);
+      glBindSampler(BASE_COLOR_TEXTURE_UNIT, 0);
     }
     const bool can_skin =
         primitive.has_skin &&
@@ -668,10 +656,6 @@ void GpuMesh::clear() {
   m_has_opaque_primitives = false;
   m_has_blend_primitives = false;
   m_fallback_texture.release();
-  if (m_fallback_cube != 0) {
-    glDeleteTextures(1, &m_fallback_cube);
-    m_fallback_cube = 0;
-  }
   m_textures.clear();
 }
 

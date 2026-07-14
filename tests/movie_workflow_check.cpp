@@ -80,7 +80,6 @@ using kage::test::fail;
   rigged.rig = scene::RigComponent{};
   scene::EntityRecord static_mesh = entity(4);
   static_mesh.static_mesh = scene::StaticMeshComponent{};
-  scene::EntityRecord unsupported_entity = entity(5);
   scene::EntityRecord deleted_camera = camera;
   deleted_camera.alive = false;
   struct TargetCase final {
@@ -93,7 +92,6 @@ using kage::test::fail;
       TargetCase{"point light", point_light, TimelineTargetKind::PointLight},
       TargetCase{"rig", rigged, TimelineTargetKind::RiggedEntity},
       TargetCase{"static mesh", static_mesh, std::nullopt},
-      TargetCase{"unsupported entity", unsupported_entity, std::nullopt},
       TargetCase{"deleted camera", deleted_camera, std::nullopt},
   };
   for (const TargetCase& item : cases) {

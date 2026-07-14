@@ -11,8 +11,8 @@ class EngineCore;
 
 namespace kage::editor {
 
-// Returns only targets which Movie mode can animate. Static meshes have no
-// Movie selection representation.
+// Maps a live entity to one of the entity-backed Movie targets:
+// camera, point light, or rigged entity.
 [[nodiscard]] std::optional<film::TimelineTarget> movieTargetForEntity(
     const scene::EntityRecord& parEntity);
 [[nodiscard]] bool movementTransitionAvailable(

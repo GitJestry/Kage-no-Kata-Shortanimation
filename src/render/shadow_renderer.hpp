@@ -45,7 +45,7 @@ class ShadowRenderer final {
       const lighting::LightingState& parLighting, int parSunResolution,
       bool parRenderPointShadows) const;
   void createResources();
-  void resizeSunDepth(int parResolution);
+  [[nodiscard]] bool resizeSunDepth(int parResolution);
   void drawCasters(std::span<const ShadowCaster> parCasters,
                    const glm::mat4& parViewProjection,
                    const glm::vec3* parPointPosition = nullptr,
@@ -57,6 +57,9 @@ class ShadowRenderer final {
   int m_sun_resolution = 0;
   std::size_t m_last_input_hash = 0;
   bool m_has_cached_frame = false;
+  bool m_sun_depth_valid = false;
+  bool m_reported_sun_allocation_error = false;
+  bool m_reported_sun_framebuffer_error = false;
 };
 
 }  // namespace kage::render

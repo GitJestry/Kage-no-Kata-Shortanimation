@@ -7,7 +7,8 @@
 #include <array>
 #include <cmath>
 #include <functional>
-#include <stdexcept>
+#include <iostream>
+#include <vector>
 
 namespace {
 
@@ -91,6 +92,8 @@ void main() {
   }
   if (u_point_shadow) {
     gl_FragDepth = length(worldPosition - u_light_position) / u_light_range;
+  } else {
+    gl_FragDepth = gl_FragCoord.z;
   }
 }
 )";
@@ -114,7 +117,7 @@ ShadowRenderer::~ShadowRenderer() {
 void ShadowRenderer::createResources() {
   glGenFramebuffers(1, &m_framebuffer);
   glGenTextures(1, &m_frame.sun_depth);
-  resizeSunDepth(4096);
+  (void)resizeSunDepth(4096);
 
   glGenTextures(static_cast<GLsizei>(m_frame.point_depth.size()),
                 m_frame.point_depth.data());
@@ -136,22 +139,60 @@ void ShadowRenderer::createResources() {
   glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 }
 
-void ShadowRenderer::resizeSunDepth(int parResolution) {
+bool ShadowRenderer::resizeSunDepth(int parResolution) {
   parResolution = std::clamp(parResolution, 256, 4096);
-  if (parResolution == m_sun_resolution) {
-    return;
+  if (parResolution == m_sun_resolution && m_sun_depth_valid) {
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return true;
   }
-  m_sun_resolution = parResolution;
+
+  (void)glGetError();
   glBindTexture(GL_TEXTURE_2D, m_frame.sun_depth);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, m_sun_resolution,
-               m_sun_resolution, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, parResolution,
+               parResolution, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
   constexpr float BORDER[] = {1.0f, 1.0f, 1.0f, 1.0f};
   glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, BORDER);
+  const GLenum setup_error = glGetError();
 
+  GLint width = 0;
+  GLint height = 0;
+  GLint internal_format = 0;
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT,
+                           &internal_format);
+  const GLenum validation_error = glGetError();
+  const GLenum gl_error = setup_error != GL_NO_ERROR ? setup_error
+                                                      : validation_error;
+  if (gl_error != GL_NO_ERROR || width != parResolution ||
+      height != parResolution ||
+      internal_format != static_cast<GLint>(GL_DEPTH_COMPONENT32F)) {
+    m_sun_depth_valid = false;
+    m_frame.sun_enabled = false;
+    glBindTexture(GL_TEXTURE_2D, 0);
+    if (!m_reported_sun_allocation_error) {
+      std::cerr << "Sun shadows disabled: depth allocation requested "
+                << parResolution << "x" << parResolution << ", received "
+                << width << "x" << height << " format " << internal_format
+                << " (GL error "
+                << static_cast<unsigned int>(gl_error) << ").\n";
+      m_reported_sun_allocation_error = true;
+    }
+    return false;
+  }
+
+  m_sun_resolution = parResolution;
+  m_sun_depth_valid = true;
+  m_has_cached_frame = false;
+  glBindTexture(GL_TEXTURE_2D, 0);
+  return true;
 }
 
 void ShadowRenderer::drawCasters(
@@ -208,18 +249,20 @@ const ShadowFrame& ShadowRenderer::render(
   const std::size_t input_hash = getInputHash(
       parCasters, parCamera, parLighting, parSunResolution,
       parRenderPointShadows);
-  if (m_has_cached_frame && input_hash == m_last_input_hash) {
+  if (m_has_cached_frame && m_sun_depth_valid &&
+      input_hash == m_last_input_hash) {
     m_frame.reused = true;
     return m_frame;
   }
   m_frame.reused = false;
-  resizeSunDepth(parSunResolution);
-  m_frame.sun_enabled = parLighting.sun.enabled;
+  const bool sun_depth_ready = resizeSunDepth(parSunResolution);
+  m_frame.sun_enabled = parLighting.sun.enabled && sun_depth_ready;
   m_frame.point_count = 0;
   glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
   glDrawBuffer(GL_NONE);
   glReadBuffer(GL_NONE);
   glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LESS);
   glDepthMask(GL_TRUE);
   glDisable(GL_BLEND);
   glEnable(GL_CULL_FACE);
@@ -249,8 +292,30 @@ const ShadowFrame& ShadowRenderer::render(
     projection[3][0] += offset.x;
     projection[3][1] += offset.y;
     m_frame.sun_view_projection = projection * view;
+    (void)glGetError();
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                            GL_TEXTURE_2D, m_frame.sun_depth, 0);
+    const GLenum attachment_error = glGetError();
+    const GLenum framebuffer_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (framebuffer_status != GL_FRAMEBUFFER_COMPLETE ||
+        attachment_error != GL_NO_ERROR) {
+      m_frame.sun_enabled = false;
+      m_sun_depth_valid = false;
+      m_has_cached_frame = false;
+      if (!m_reported_sun_framebuffer_error) {
+        std::cerr << "Sun shadows disabled: depth framebuffer is incomplete "
+                  << "(status "
+                  << static_cast<unsigned int>(framebuffer_status)
+                  << ", attachment GL error "
+                  << static_cast<unsigned int>(attachment_error)
+                  << "). Check the directional shadow depth texture "
+                  << "allocation and attachment.\n";
+        m_reported_sun_framebuffer_error = true;
+      }
+    }
+  }
+
+  if (m_frame.sun_enabled) {
     glViewport(0, 0, m_sun_resolution, m_sun_resolution);
     glClear(GL_DEPTH_BUFFER_BIT);
     drawCasters(parCasters, m_frame.sun_view_projection);
@@ -293,7 +358,7 @@ const ShadowFrame& ShadowRenderer::render(
   glDisable(GL_CULL_FACE);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   m_last_input_hash = input_hash;
-  m_has_cached_frame = true;
+  m_has_cached_frame = m_sun_depth_valid;
   return m_frame;
 }
 

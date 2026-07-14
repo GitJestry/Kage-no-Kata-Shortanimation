@@ -116,7 +116,6 @@ class GpuMesh final {
   bool m_has_opaque_primitives = false;
   bool m_has_blend_primitives = false;
   Texture2D m_fallback_texture;
-  GLuint m_fallback_cube = 0;
   std::vector<TextureBinding> m_textures;
 };
 

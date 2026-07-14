@@ -2,8 +2,15 @@
 
 #include <algorithm>
 #include <array>
+#include <iostream>
+#include <stdexcept>
 
 namespace {
+
+void clearGlErrors() {
+  while (glGetError() != GL_NO_ERROR) {
+  }
+}
 
 constexpr char STATIC_MESH_VERTEX_SHADER[] = R"(#version 410 core
 layout (location = 0) in vec3 inPosition;
@@ -432,6 +439,67 @@ MeshRenderer::MeshRenderer() {
   m_shader.create(STATIC_MESH_VERTEX_SHADER, STATIC_MESH_FRAGMENT_SHADER);
   m_outline_shader.create(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
   m_picking_shader.create(PICKING_VERTEX_SHADER, PICKING_FRAGMENT_SHADER);
+  createSunShadowFallback();
+  createPointShadowFallback();
+}
+
+MeshRenderer::~MeshRenderer() {
+  glDeleteTextures(1, &m_point_shadow_fallback);
+}
+
+void MeshRenderer::createSunShadowFallback() {
+  clearGlErrors();
+  m_sun_shadow_fallback.create();
+
+  glBindTexture(GL_TEXTURE_2D, m_sun_shadow_fallback.getHandle());
+  constexpr float FAR_DEPTH = 1.0f;
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0,
+               GL_DEPTH_COMPONENT, GL_FLOAT, &FAR_DEPTH);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  const GLenum gl_error = glGetError();
+  glBindTexture(GL_TEXTURE_2D, 0);
+  if (gl_error != GL_NO_ERROR) {
+    m_sun_shadow_fallback.release();
+    throw std::runtime_error("Failed to allocate Sun shadow fallback texture");
+  }
+}
+
+void MeshRenderer::createPointShadowFallback() {
+  clearGlErrors();
+  glGenTextures(1, &m_point_shadow_fallback);
+  if (m_point_shadow_fallback == 0) {
+    throw std::runtime_error("Failed to create point shadow fallback texture");
+  }
+
+  glBindTexture(GL_TEXTURE_CUBE_MAP, m_point_shadow_fallback);
+  constexpr float FAR_DEPTH = 1.0f;
+  for (int face = 0; face < 6; ++face) {
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0,
+                 GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT,
+                 GL_FLOAT, &FAR_DEPTH);
+  }
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, 0);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, 0);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  const GLenum gl_error = glGetError();
+  glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+  if (gl_error != GL_NO_ERROR) {
+    glDeleteTextures(1, &m_point_shadow_fallback);
+    m_point_shadow_fallback = 0;
+    throw std::runtime_error("Failed to allocate point shadow fallback texture");
+  }
 }
 
 void MeshRenderer::beginFrame(
@@ -461,18 +529,23 @@ void MeshRenderer::beginFrame(
   m_shader.setMat4("u_sun_shadow_matrix",
                    sun_shadow ? parShadows->sun_view_projection : glm::mat4(1.0f));
   m_shader.setInt("u_sun_shadow_map", 4);
-  if (sun_shadow) {
-    glActiveTexture(GL_TEXTURE4);
-    glBindSampler(4, 0);
-    glBindTexture(GL_TEXTURE_2D, parShadows->sun_depth);
-  }
+  glActiveTexture(GL_TEXTURE4);
+  glBindTexture(GL_TEXTURE_2D,
+                sun_shadow ? parShadows->sun_depth
+                           : m_sun_shadow_fallback.getHandle());
+  glBindSampler(4, 0);
   m_shader.setInt("u_point_shadow_map_0", 5);
   m_shader.setInt("u_point_shadow_map_1", 6);
-  for (std::size_t shadow = 0; parShadows != nullptr &&
-                               shadow < parShadows->point_count;
+  for (std::size_t shadow = 0; shadow < lighting::MAX_POINT_SHADOWS;
        ++shadow) {
     glActiveTexture(GL_TEXTURE5 + static_cast<GLenum>(shadow));
-    glBindTexture(GL_TEXTURE_CUBE_MAP, parShadows->point_depth[shadow]);
+    const bool point_shadow =
+        parShadows != nullptr && shadow < parShadows->point_count &&
+        parShadows->point_depth[shadow] != 0;
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  point_shadow ? parShadows->point_depth[shadow]
+                               : m_point_shadow_fallback);
+    glBindSampler(5 + static_cast<GLuint>(shadow), 0);
   }
 
   const std::size_t point_light_count = std::min(
