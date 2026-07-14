@@ -8,7 +8,8 @@
 - [x] Authored Samurai clips: `ReadyIdle` and `ArmAction`.
 - [x] Typed MovieTimeline movement, rig, camera, light, and sun clips.
 - [x] Model import into `assets/models/`.
-- [x] Compatible animation import into `assets/animations/`.
+- [x] Compatible animation packs in `assets/animations/` through the
+  catalog/content pipeline (not a runtime editor dialog).
 - [x] Scene/entity editor with placement, transform gizmos, delete confirmation,
   and project persistence.
 - [x] Directional sun, environment controls, and point light entities.

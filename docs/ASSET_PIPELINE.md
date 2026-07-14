@@ -6,7 +6,7 @@ evidence, not runtime files.
 ## Folders
 
 - `assets/models/`: bundled and imported model GLBs.
-- `assets/animations/`: imported compatible animation GLBs.
+- `assets/animations/`: catalogued compatible animation GLBs.
 - `assets/textures/environments/`: catalogued HDR/LDR panoramas.
 - `assets/source_blender/`: Blender source files.
 - `projects/kage_no_kata_assets.kage.json`: tracked asset catalog.
@@ -29,9 +29,11 @@ normal project asset.
 `Import Model...` validates GLB/GLTF, copies it into `assets/models/`, registers
 it in the project catalog, and starts placement.
 
-`Import Animation...` is available for a selected rigged entity. It validates
-joint names and hierarchy against the selected skeleton, copies the file into
-`assets/animations/`, and adds compatible clips to the Timeline.
+External animations use the `animation_packs` entries in
+`projects/kage_no_kata_assets.kage.json`. Each pack targets a catalog asset and
+loads a compatible GLB/GLTF alongside that asset; the runtime validates the
+skeleton and remaps animation channels by joint name. Embedded GLTF animations
+continue to load with their model assets.
 
 Runtime GLBs remain authoritative. Imports decode on a bounded worker queue.
 Every mesh mode uses one complete authored index buffer and source-resolution

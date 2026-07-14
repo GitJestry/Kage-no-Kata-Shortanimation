@@ -5,8 +5,9 @@ Cut**, a University of Bonn short animation project by Julian Meyer and Faouzi
 Homsani.
 
 Current scope: load Blender GLB assets, edit the film world, validate and render
-the samurai rig, play authored animation clips, import model/animation GLBs, and
-keep shared scene data in
+the samurai rig, play authored animation clips from catalog-driven animation
+packs and embedded GLTF animations, import models and panoramas, and keep
+shared scene data in
 `projects/kage_no_kata_world.kage.json`.
 
 ## Build

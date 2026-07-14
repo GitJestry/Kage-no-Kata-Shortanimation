@@ -126,54 +126,6 @@ std::optional<std::size_t> EngineCore::importModelAsset(
   return asset_index;
 }
 
-bool EngineCore::importAnimationForEntity(
-    scene::EntityId parEntity, const std::filesystem::path& parSourcePath,
-    std::string parLabel, std::string& parError) {
-  parError.clear();
-  const scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->static_mesh.has_value()) {
-    parError = "select a rigged mesh entity first";
-    return false;
-  }
-  if (!std::filesystem::exists(parSourcePath)) {
-    parError = "file does not exist";
-    return false;
-  }
-  if (!assets::hasGltfExtension(parSourcePath)) {
-    parError = "only .glb and .gltf animation files can be imported";
-    return false;
-  }
-  if (parLabel.empty()) {
-    parLabel = assets::defaultAssetLabelFromPath(parSourcePath);
-  }
-
-  const assets::AssetRegistry::AssetLibraryEntry* base_asset =
-      m_asset_registry.getAssetLibraryEntry(
-          entity->static_mesh->asset_library_index);
-  if (base_asset == nullptr) {
-    parError = "selected entity has no asset catalog entry";
-    return false;
-  }
-
-  const std::filesystem::path destination = assets::copyIntoProjectAssets(
-      parSourcePath, m_runtime_paths.getAnimationDirectory(),
-      m_runtime_paths.getAssetDirectory(), parError);
-  if (destination.empty()) {
-    return false;
-  }
-
-  if (!m_asset_registry.addAnimationPack(base_asset->id, parLabel, destination,
-                                         parError)) {
-    return false;
-  }
-  assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
-                                  buildCatalog(m_asset_registry,
-                                               m_environment_assets,
-                                               m_runtime_paths.getProjectRoot()));
-  markProjectDirty();
-  return true;
-}
-
 std::optional<assets::AssetId> EngineCore::importPanorama(
     const std::filesystem::path& parSourcePath, std::string parLabel,
     std::string& parError) {

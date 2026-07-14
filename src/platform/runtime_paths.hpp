@@ -13,7 +13,6 @@ class RuntimePaths final {
   [[nodiscard]] const std::filesystem::path& getProjectRoot() const;
   [[nodiscard]] const std::filesystem::path& getAssetDirectory() const;
   [[nodiscard]] const std::filesystem::path& getModelDirectory() const;
-  [[nodiscard]] const std::filesystem::path& getAnimationDirectory() const;
   [[nodiscard]] std::filesystem::path getProjectPath(
       const std::filesystem::path& parRelativePath) const;
   [[nodiscard]] std::filesystem::path getAssetPath(
@@ -29,7 +28,6 @@ class RuntimePaths final {
   std::filesystem::path m_project_root;
   std::filesystem::path m_asset_directory;
   std::filesystem::path m_model_directory;
-  std::filesystem::path m_animation_directory;
 };
 
 }  // namespace kage::platform

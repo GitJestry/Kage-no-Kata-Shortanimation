@@ -58,9 +58,6 @@ class AssetRegistry final {
   std::size_t registerModelAsset(std::string parLabel,
                                  std::filesystem::path parPath,
                                  ModelAsset parDocument);
-  bool addAnimationPack(AssetId parAssetId, std::string parLabel,
-                        std::filesystem::path parPath,
-                        std::string& parError);
   ModelAsset& loadAsset(std::size_t parAssetIndex);
   void requestLoad(std::size_t parAssetIndex);
   void beginCpuLoad(std::size_t parAssetIndex);
@@ -79,10 +76,6 @@ class AssetRegistry final {
       std::size_t parAssetIndex) const;
   [[nodiscard]] AssetLibraryEntry* getAssetLibraryEntry(
       std::size_t parAssetIndex);
-  [[nodiscard]] const AssetLibraryEntry* getAssetLibraryEntryById(
-      AssetId parAssetId) const;
-  [[nodiscard]] AssetLibraryEntry* getAssetLibraryEntryById(
-      AssetId parAssetId);
   [[nodiscard]] std::optional<std::size_t> getAssetIndexById(
       AssetId parAssetId) const;
   [[nodiscard]] const ModelAsset* getLoadedAsset(

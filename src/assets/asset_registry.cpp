@@ -48,12 +48,6 @@ namespace {
   return std::filesystem::absolute(parPath).lexically_normal();
 }
 
-[[nodiscard]] bool isSamePath(const std::filesystem::path& parLeft,
-                              const std::filesystem::path& parRight) {
-  return canonicalPathKey(parLeft).generic_string() ==
-         canonicalPathKey(parRight).generic_string();
-}
-
 [[nodiscard]] std::string normalizedTextKey(std::string_view parText) {
   std::string key;
   key.reserve(parText.size());
@@ -80,17 +74,6 @@ namespace {
   const std::string clip_key = normalizedTextKey(parClipName);
   for (const AnimationClip& clip : parAsset.animation_clips) {
     if (normalizedTextKey(clip.name) == clip_key) {
-      return true;
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] bool hasAnimationPackPath(
-    const AssetRegistry::AssetLibraryEntry& parAsset,
-    const std::filesystem::path& parPath) {
-  for (const AssetRegistry::AnimationPackEntry& pack : parAsset.animation_packs) {
-    if (isSamePath(pack.path, parPath)) {
       return true;
     }
   }
@@ -330,55 +313,6 @@ std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
   return m_asset_library.size() - 1;
 }
 
-bool AssetRegistry::addAnimationPack(AssetId parAssetId, std::string parLabel,
-                                     std::filesystem::path parPath,
-                                     std::string& parError) {
-  AssetLibraryEntry* asset = getAssetLibraryEntryById(parAssetId);
-  if (asset == nullptr) {
-    parError = "target asset was not found";
-    return false;
-  }
-
-  deduplicateAnimationPacks(*asset);
-  if (hasAnimationPackPath(*asset, parPath)) {
-    parError = "animation pack is already imported for this asset";
-    return false;
-  }
-
-  if (!asset->document.has_value()) {
-    try {
-      loadAsset(*getAssetIndexById(parAssetId));
-    } catch (const std::exception& error) {
-      parError = error.what();
-      return false;
-    }
-  }
-
-  try {
-    GltfAssetLoader loader;
-    ModelAsset animation_asset = loader.loadDocument(parPath);
-    if (animation_asset.animation_clips.empty()) {
-      parError = "imported file contains no animation clips";
-      return false;
-    }
-    if (!hasCompatibleJointNames(*asset->document, animation_asset, parError)) {
-      return false;
-    }
-    const std::size_t appended_count = appendRemappedAnimationClips(
-        *asset->document, animation_asset, parLabel, parError);
-    if (appended_count == 0) {
-      parError = "no compatible animation channels were found";
-      return false;
-    }
-  } catch (const std::exception& error) {
-    parError = error.what();
-    return false;
-  }
-
-  asset->animation_packs.push_back({std::move(parLabel), std::move(parPath)});
-  return true;
-}
-
 ModelAsset& AssetRegistry::loadAsset(std::size_t parAssetIndex) {
   if (parAssetIndex >= m_asset_library.size()) {
     throw std::runtime_error("Asset library index is out of range");
@@ -543,18 +477,6 @@ AssetRegistry::AssetLibraryEntry* AssetRegistry::getAssetLibraryEntry(
   }
 
   return &m_asset_library[parAssetIndex];
-}
-
-const AssetRegistry::AssetLibraryEntry*
-AssetRegistry::getAssetLibraryEntryById(AssetId parAssetId) const {
-  const std::optional<std::size_t> index = getAssetIndexById(parAssetId);
-  return index.has_value() ? &m_asset_library[*index] : nullptr;
-}
-
-AssetRegistry::AssetLibraryEntry* AssetRegistry::getAssetLibraryEntryById(
-    AssetId parAssetId) {
-  const std::optional<std::size_t> index = getAssetIndexById(parAssetId);
-  return index.has_value() ? &m_asset_library[*index] : nullptr;
 }
 
 std::optional<std::size_t> AssetRegistry::getAssetIndexById(

@@ -59,9 +59,6 @@ class EngineCore final {
   [[nodiscard]] std::optional<std::size_t> importModelAsset(
       const std::filesystem::path& parSourcePath, std::string parLabel,
       std::string& parError);
-  [[nodiscard]] bool importAnimationForEntity(
-      scene::EntityId parEntity, const std::filesystem::path& parSourcePath,
-      std::string parLabel, std::string& parError);
   [[nodiscard]] std::optional<assets::AssetId> importPanorama(
       const std::filesystem::path& parSourcePath, std::string parLabel,
       std::string& parError);

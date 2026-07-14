@@ -148,8 +148,7 @@ RuntimePaths::RuntimePaths(std::filesystem::path parExecutablePath)
           canonicalOrAbsolute(std::move(parExecutablePath)).parent_path()),
       m_project_root(resolveProjectRoot(m_executable_directory)),
       m_asset_directory(m_project_root / "assets"),
-      m_model_directory(m_asset_directory / "models"),
-      m_animation_directory(m_asset_directory / "animations") {}
+      m_model_directory(m_asset_directory / "models") {}
 
 RuntimePaths RuntimePaths::fromExecutable() {
   return RuntimePaths(getExecutablePath());
@@ -165,10 +164,6 @@ const std::filesystem::path& RuntimePaths::getAssetDirectory() const {
 
 const std::filesystem::path& RuntimePaths::getModelDirectory() const {
   return m_model_directory;
-}
-
-const std::filesystem::path& RuntimePaths::getAnimationDirectory() const {
-  return m_animation_directory;
 }
 
 std::filesystem::path RuntimePaths::getProjectPath(
