@@ -131,6 +131,30 @@ bool drawTransformControls(kage::engine::EngineCore& parEngine,
 
 namespace kage::editor {
 
+bool EditorUi::isPaintbrushEnabled() const {
+  return m_paintbrush_enabled;
+}
+
+int EditorUi::getPaintbrushBrushSize() const {
+  return m_paintbrush_brush_size;
+}
+
+int EditorUi::getPaintbrushPaintDensity() const {
+  return m_paintbrush_paint_density;
+}
+
+std::vector<std::size_t> EditorUi::getPaintbrushSelectedAssetIndices() const {
+  std::vector<std::size_t> selected_assets;
+  selected_assets.reserve(m_paintbrush_selected_assets.size());
+  for (std::size_t asset_index = 0;
+       asset_index < m_paintbrush_selected_assets.size(); ++asset_index) {
+    if (m_paintbrush_selected_assets[asset_index]) {
+      selected_assets.push_back(asset_index);
+    }
+  }
+  return selected_assets;
+}
+
 void EditorUi::draw(engine::EngineCore& parEngine,
                     EditorSession& parSession,
                     PlacementController& parPlacementController,
@@ -398,6 +422,9 @@ void EditorUi::drawLeftPanel(engine::EngineCore& parEngine,
   if (ImGui::CollapsingHeader("Add")) {
     drawCreationPalette(parEngine, parPlacementController);
   }
+  if(ImGui::CollapsingHeader("Paintbrush")) {
+    drawPaintbrushPalette(parEngine);
+  }
   if (ImGui::CollapsingHeader("World")) {
     drawWorldControls(parEngine);
     ImGui::Separator();
@@ -500,7 +527,51 @@ void EditorUi::drawCreationPalette(
     ImGui::TextWrapped("Import error: %s", m_model_import_error.c_str());
   }
 }
+void EditorUi::drawPaintbrushPalette(engine::EngineCore& parEngine) {
+  ImGui::Checkbox("Enable paintbrush", &m_paintbrush_enabled);
 
+  if (!m_paintbrush_enabled) {
+    ImGui::TextDisabled("Enable paintbrush to configure mesh placement");
+    return;
+  }
+
+  const auto library = parEngine.getAssetLibrary();
+  if (m_paintbrush_selected_assets.size() != library.size()) {
+    m_paintbrush_selected_assets.resize(library.size(), false);
+  }
+
+  ImGui::TextUnformatted("Mesh set");
+  if (library.empty()) {
+    ImGui::TextDisabled("No models available");
+    return;
+  }
+
+  ImGui::TextDisabled("Choose meshes to paint with");
+  for (std::size_t asset_index = 0; asset_index < library.size(); ++asset_index) {
+    const auto& asset = library[asset_index];
+    const std::string label = asset.label + "  (" +
+        getAssetCapabilityLabel(asset) + ")";
+    bool selected = m_paintbrush_selected_assets[asset_index];
+    ImGui::PushID(static_cast<int>(asset_index));
+    if (ImGui::Checkbox(label.c_str(), &selected)) {
+      m_paintbrush_selected_assets[asset_index] = selected;
+    }
+    ImGui::PopID();
+  }
+
+  ImGui::Separator();
+  ImGui::SliderInt("Brush size", &m_paintbrush_brush_size, 1, 64);
+  ImGui::SliderInt("Paint density", &m_paintbrush_paint_density, 1, 64);
+
+  const std::size_t selected_count = static_cast<std::size_t>(std::count(
+      m_paintbrush_selected_assets.begin(), m_paintbrush_selected_assets.end(),
+      true));
+  if (selected_count == 0) {
+    ImGui::TextDisabled("Select at least one mesh to enable painting");
+  } else {
+    ImGui::TextDisabled("%zu mesh(es) selected", selected_count);
+  }
+}
 void EditorUi::drawWorldControls(engine::EngineCore& parEngine) {
   ImGui::TextUnformatted("World");
   if (ImGui::Button("Frame World", ImVec2(-1.0f, 0.0f))) {

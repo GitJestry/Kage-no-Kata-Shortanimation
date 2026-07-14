@@ -106,6 +106,9 @@ class EngineCore final {
   void setExposure(float parExposure);
   void setPlacementGhost(render::PlacementGhost parGhost);
   void clearPlacementGhost();
+  void setPaintbrushPreview(const glm::vec3& parPosition, float parRadius,
+                            int parDensity);
+  void clearPaintbrushPreview();
   void setGizmoGuide(render::GizmoGuide parGuide);
   void clearGizmoGuide();
   void requestAssetLoad(std::size_t parAssetIndex);

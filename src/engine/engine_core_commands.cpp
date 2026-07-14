@@ -315,6 +315,18 @@ void EngineCore::clearPlacementGhost() {
   m_placement_ghost = {};
 }
 
+void EngineCore::setPaintbrushPreview(const glm::vec3& parPosition,
+                                      float parRadius, int parDensity) {
+  m_placement_ghost.paintbrush_active = true;
+  m_placement_ghost.paintbrush_position = parPosition;
+  m_placement_ghost.paintbrush_radius = std::max(parRadius, 0.1f);
+  m_placement_ghost.paintbrush_density = std::max(parDensity, 8);
+}
+
+void EngineCore::clearPaintbrushPreview() {
+  m_placement_ghost.paintbrush_active = false;
+}
+
 void EngineCore::setGizmoGuide(render::GizmoGuide parGuide) {
   m_gizmo_guide = parGuide;
 }

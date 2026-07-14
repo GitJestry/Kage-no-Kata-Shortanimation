@@ -6,12 +6,57 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <optional>
+#include <random>
 #include <string>
 #include <system_error>
 #include <utility>
 
 namespace kage::editor {
+namespace {
+
+void paintBrushAssets(engine::EngineCore& parEngine,
+                      const glm::vec3& parCenter, float parRadius,
+                      int parDensity,
+                      const std::vector<std::size_t>& parAssetIndices) {
+  if (parAssetIndices.empty()) {
+    return;
+  }
+
+  std::mt19937 rng(std::random_device{}());
+  std::uniform_real_distribution<float> offset_distribution(-parRadius,
+                                                           parRadius);
+  std::uniform_real_distribution<float> rotation_distribution(
+      0.0f, glm::two_pi<float>());
+  std::uniform_int_distribution<std::size_t> asset_distribution(
+      0, parAssetIndices.size() - 1);
+
+  const int spawn_count = std::max(1, parDensity);
+  for (int spawn_index = 0; spawn_index < spawn_count; ++spawn_index) {
+    glm::vec3 offset(0.0f);
+    for (int attempt = 0; attempt < 8; ++attempt) {
+      offset = glm::vec3(offset_distribution(rng), 0.0f,
+                         offset_distribution(rng));
+      if (glm::length(glm::vec2(offset.x, offset.z)) <= parRadius) {
+        break;
+      }
+    }
+
+    const glm::vec3 position = parCenter + offset;
+    const float yaw_radians = rotation_distribution(rng);
+    const glm::quat rotation =
+        glm::angleAxis(yaw_radians, glm::vec3(0.0f, 0.0f, 1.0f));
+    const std::size_t asset_index = parAssetIndices[asset_distribution(rng)];
+    const scene::EntityId entity =
+        parEngine.instantiateAssetAt(asset_index, position);
+    parEngine.setEntityTransform(
+        entity, kage::math::Transform{position, rotation, glm::vec3(1.0f)});
+  }
+}
+
+}  // namespace
 
 WorldEditor::WorldEditor(engine::EngineCore& parEngine)
     : m_engine(parEngine) {
@@ -219,6 +264,24 @@ void WorldEditor::handlePointerInput(
 
   if (parInput.scroll_y != 0.0f && viewport_active) {
     m_engine.getCameraSystem().handleScroll(parInput.scroll_y);
+  }
+
+  if (world_edit && m_ui.isPaintbrushEnabled() && viewport_active) {
+    const glm::vec3 paintbrush_position =
+        m_engine.getPlacementPointOnFloor(viewport_cursor, viewport_size);
+    m_engine.setPaintbrushPreview(
+        paintbrush_position, static_cast<float>(m_ui.getPaintbrushBrushSize()),
+        m_ui.getPaintbrushPaintDensity());
+
+    if (parInput.left_mouse_down && !parInput.right_mouse_down) {
+      const std::vector<std::size_t> selected_assets =
+          m_ui.getPaintbrushSelectedAssetIndices();
+      paintBrushAssets(m_engine, paintbrush_position,
+                       static_cast<float>(m_ui.getPaintbrushBrushSize()),
+                       m_ui.getPaintbrushPaintDensity(), selected_assets);
+    }
+  } else {
+    m_engine.clearPaintbrushPreview();
   }
 
   if (world_edit && m_placement_controller.isActive()) {

@@ -30,6 +30,11 @@ class EditorUi final {
             unsigned int parFrameCount);
   [[nodiscard]] bool isCursorOverPanel(const glm::vec2& parUiCursor) const;
 
+  [[nodiscard]] bool isPaintbrushEnabled() const;
+  [[nodiscard]] int getPaintbrushBrushSize() const;
+  [[nodiscard]] int getPaintbrushPaintDensity() const;
+  [[nodiscard]] std::vector<std::size_t> getPaintbrushSelectedAssetIndices() const;
+
  private:
   void applyStyle();
   void beginPanelTracking();
@@ -50,6 +55,7 @@ class EditorUi final {
                          ConfirmationDialog& parConfirmationDialog);
   void drawCreationPalette(engine::EngineCore& parEngine,
                            PlacementController& parPlacementController);
+  void drawPaintbrushPalette(engine::EngineCore& parEngine);
   void drawWorldControls(engine::EngineCore& parEngine);
   void drawOutliner(engine::EngineCore& parEngine,
                     SelectionController& parSelectionController,
@@ -82,6 +88,10 @@ class EditorUi final {
   std::uint32_t m_entity_name_buffer_id =
       std::numeric_limits<std::uint32_t>::max();
   std::size_t m_selected_asset_index = 0;
+  std::vector<bool> m_paintbrush_selected_assets;
+  bool m_paintbrush_enabled = false;
+  int m_paintbrush_brush_size = 4;
+  int m_paintbrush_paint_density = 3;
   std::string m_model_import_error;
   std::string m_animation_import_error;
   std::string m_panorama_import_error;

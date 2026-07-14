@@ -116,6 +116,10 @@ struct PlacementGhost final {
   glm::vec3 light_color{1.0f, 0.94f, 0.84f};
   float light_intensity = 1.0f;
   float opacity = 0.38f;
+  bool paintbrush_active = false;
+  glm::vec3 paintbrush_position{0.0f};
+  float paintbrush_radius = 1.0f;
+  int paintbrush_density = 16;
 
   [[nodiscard]] bool isActive() const;
 };

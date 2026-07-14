@@ -210,6 +210,54 @@ void addCircle(std::vector<kage::render::LineVertex>& parVertices,
   }
 }
 
+void addHalfSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+                   const glm::vec3& parCenter, float parRadius,
+                   int parSegmentCount, const glm::vec4& parColor) {
+  if (parSegmentCount < 2 || parRadius <= 0.0f) {
+    return;
+  }
+
+  constexpr int LATITUDE_SEGMENTS = 10;
+  const int segment_count = std::clamp(parSegmentCount, 8, 96);
+  const glm::vec3 center = parCenter;
+  std::vector<glm::vec3> points;
+  points.reserve((LATITUDE_SEGMENTS + 1) * (segment_count + 1));
+
+  for (int latitude = 0; latitude <= LATITUDE_SEGMENTS; ++latitude) {
+    const float t = static_cast<float>(latitude) / static_cast<float>(LATITUDE_SEGMENTS);
+    const float polar = glm::pi<float>() * 0.5f * (1.0f - t);
+    const float radius_at_latitude = parRadius * std::sin(polar);
+    const float y_offset = parRadius * std::cos(polar);
+    for (int longitude = 0; longitude <= segment_count; ++longitude) {
+      const float angle =
+          (static_cast<float>(longitude) / static_cast<float>(segment_count)) *
+          glm::two_pi<float>();
+      const glm::vec3 point = center + glm::vec3(
+          std::cos(angle) * radius_at_latitude,
+          y_offset,
+          std::sin(angle) * radius_at_latitude);
+      points.push_back(point);
+    }
+  }
+
+  for (int latitude = 0; latitude < LATITUDE_SEGMENTS; ++latitude) {
+    const int row_a = latitude * (segment_count + 1);
+    const int row_b = (latitude + 1) * (segment_count + 1);
+    for (int longitude = 0; longitude < segment_count; ++longitude) {
+      const int a = row_a + longitude;
+      const int b = row_a + longitude + 1;
+      const int c = row_b + longitude + 1;
+      const int d = row_b + longitude;
+      const glm::vec3& p0 = points[a];
+      const glm::vec3& p1 = points[b];
+      const glm::vec3& p2 = points[c];
+      const glm::vec3& p3 = points[d];
+      addTriangle(parVertices, p0, p1, p2, parColor);
+      addTriangle(parVertices, p0, p2, p3, parColor);
+    }
+  }
+}
+
 void addFloorGrid(std::vector<kage::render::LineVertex>& parVertices,
                   const glm::vec3& parCameraPosition, int parRadius) {
   const int radius = std::clamp(parRadius, 8, GRID_LINE_CAP / 2);
@@ -832,6 +880,18 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     addFloorGrid(m_grid_line_vertices, camera.position,
                  parSettings.viewport.floor_grid_radius);
   }
+  if (parGhost.paintbrush_active) {
+    const glm::vec3 hemisphere_center =
+        glm::vec3(parGhost.paintbrush_position.x, 0.0f,
+                  parGhost.paintbrush_position.z);
+    addHalfSphere(
+        m_solid_vertices,
+        hemisphere_center,
+        parGhost.paintbrush_radius,
+        std::max(10, parGhost.paintbrush_density),
+        glm::vec4(1.0f, 1.0f, 1.0f, 0.16f));
+  }
+
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset &&
       find_mesh(parGhost.mesh_handle) == nullptr) {
     addCube(m_solid_vertices,
