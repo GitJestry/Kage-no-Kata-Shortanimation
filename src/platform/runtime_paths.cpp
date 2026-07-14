@@ -76,8 +76,10 @@ std::filesystem::path getExecutablePath() {
 }
 
 [[nodiscard]] bool isProjectRoot(const std::filesystem::path& parPath) {
-  return std::filesystem::exists(parPath / "assets") &&
-         std::filesystem::exists(parPath / "projects");
+  return std::filesystem::exists(parPath / "CMakeLists.txt") &&
+         std::filesystem::exists(parPath / "assets") &&
+         std::filesystem::exists(parPath / "projects") &&
+         std::filesystem::exists(parPath / "src");
 }
 
 [[nodiscard]] bool hasAssetDirectory(const std::filesystem::path& parPath) {
