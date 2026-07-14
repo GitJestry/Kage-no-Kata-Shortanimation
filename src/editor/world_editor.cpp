@@ -26,19 +26,16 @@ void paintBrushAssets(engine::EngineCore& parEngine,
   }
 
   std::mt19937 rng(std::random_device{}());
-  std::uniform_real_distribution<float> offset_distribution(-parRadius,
-                                                           parRadius);
-  std::uniform_real_distribution<float> rotation_distribution(
-      0.0f, glm::two_pi<float>());
-  std::uniform_int_distribution<std::size_t> asset_distribution(
-      0, parAssetIndices.size() - 1);
+  std::uniform_real_distribution<float> offset_distribution(-parRadius, parRadius);
+  std::uniform_real_distribution<float> rotation_distribution(0.0f, glm::two_pi<float>());
+  std::uniform_int_distribution<std::size_t> asset_distribution(0, parAssetIndices.size() - 1);
 
   const int spawn_count = std::max(1, parDensity);
   for (int spawn_index = 0; spawn_index < spawn_count; ++spawn_index) {
     glm::vec3 offset(0.0f);
+    // 1. Keep the Y offset at 0.0f so assets stay flat on the XZ grid floor
     for (int attempt = 0; attempt < 8; ++attempt) {
-      offset = glm::vec3(offset_distribution(rng), 0.0f,
-                         offset_distribution(rng));
+      offset = glm::vec3(offset_distribution(rng), 0.0f, offset_distribution(rng));
       if (glm::length(glm::vec2(offset.x, offset.z)) <= parRadius) {
         break;
       }
@@ -46,11 +43,14 @@ void paintBrushAssets(engine::EngineCore& parEngine,
 
     const glm::vec3 position = parCenter + offset;
     const float yaw_radians = rotation_distribution(rng);
-    const glm::quat rotation =
-        glm::angleAxis(yaw_radians, glm::vec3(0.0f, 0.0f, 1.0f));
+    
+    // 2. Rotate purely around the Y-axis (0.0, 1.0, 0.0) 
+    // This spins the mesh flat on the ground floor.
+    const glm::quat rotation = glm::angleAxis(yaw_radians, glm::vec3(0.0f, 1.0f, 0.0f));
+    
     const std::size_t asset_index = parAssetIndices[asset_distribution(rng)];
-    const scene::EntityId entity =
-        parEngine.instantiateAssetAt(asset_index, position);
+    const scene::EntityId entity = parEngine.instantiateAssetAt(asset_index, position);
+    
     parEngine.setEntityTransform(
         entity, kage::math::Transform{position, rotation, glm::vec3(1.0f)});
   }
