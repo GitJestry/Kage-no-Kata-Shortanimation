@@ -153,7 +153,7 @@ EngineCore::createFilmCameraFromView(film::FilmFrame parStartFrame) {
   const film::CapturedCameraState camera{
       editor_camera.vertical_fov_degrees, editor_camera.near_plane,
       editor_camera.far_plane};
-  const auto created = detail::createFilmCameraAtomically(
+  const auto created = createFilmCameraAtomically(
       getActiveScene(), transform, camera, parStartFrame);
   if (!created.has_value()) {
     return std::unexpected(created.error());

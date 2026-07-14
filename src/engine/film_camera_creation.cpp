@@ -7,7 +7,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace kage::engine::detail {
+namespace kage::engine {
 
 static_assert(std::is_nothrow_move_assignable_v<scene::World>);
 static_assert(std::is_nothrow_move_assignable_v<film::MovieTimeline>);
@@ -17,8 +17,7 @@ createFilmCameraAtomically(
     scene::SceneManager::SceneRecord& parScene,
     const math::Transform& parTransform,
     const film::CapturedCameraState& parCamera,
-    film::FilmFrame parStartFrame,
-    FilmCameraCreationFailurePoint parFailurePoint) {
+    film::FilmFrame parStartFrame) {
   constexpr film::FilmFrame CAMERA_SEQUENCE_DURATION = 300;
   if (parStartFrame < 0 ||
       parStartFrame > film::MAX_FILM_FRAMES - CAMERA_SEQUENCE_DURATION) {
@@ -41,11 +40,6 @@ createFilmCameraAtomically(
   camera.far_plane = parCamera.far_plane;
   candidate_world.setCamera(entity, camera);
 
-  if (parFailurePoint ==
-      FilmCameraCreationFailurePoint::BeforeSequenceCreation) {
-    return std::unexpected("Injected failure before sequence creation");
-  }
-
   film::CapturedEntityBaseState base;
   base.transform = parTransform;
   base.camera = parCamera;
@@ -63,10 +57,6 @@ createFilmCameraAtomically(
   if (!movement_clip.has_value()) {
     return std::unexpected(movement_clip.error());
   }
-  if (parFailurePoint == FilmCameraCreationFailurePoint::WhileAddingClips) {
-    return std::unexpected("Injected failure while adding clips");
-  }
-
   film::PropertyClip fov;
   fov.kind = film::PropertyKind::CameraFov;
   fov.start_value = glm::vec4(parCamera.vertical_fov_degrees);
@@ -83,13 +73,9 @@ createFilmCameraAtomically(
   if (!instance.has_value()) {
     return std::unexpected(instance.error());
   }
-  if (parFailurePoint == FilmCameraCreationFailurePoint::WhilePlacingInstance) {
-    return std::unexpected("Injected failure while placing the instance");
-  }
-
   parScene.world = std::move(candidate_world);
   parScene.movie_timeline = std::move(candidate_timeline);
   return FilmCameraCreationResult{entity, *sequence, *instance};
 }
 
-}  // namespace kage::engine::detail
+}  // namespace kage::engine

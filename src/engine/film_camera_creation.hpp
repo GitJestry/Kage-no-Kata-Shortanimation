@@ -6,14 +6,7 @@
 #include <expected>
 #include <string>
 
-namespace kage::engine::detail {
-
-enum class FilmCameraCreationFailurePoint {
-  None,
-  BeforeSequenceCreation,
-  WhileAddingClips,
-  WhilePlacingInstance,
-};
+namespace kage::engine {
 
 struct FilmCameraCreationResult final {
   scene::EntityId entity;
@@ -26,8 +19,6 @@ createFilmCameraAtomically(
     scene::SceneManager::SceneRecord& parScene,
     const math::Transform& parTransform,
     const film::CapturedCameraState& parCamera,
-    film::FilmFrame parStartFrame,
-    FilmCameraCreationFailurePoint parFailurePoint =
-        FilmCameraCreationFailurePoint::None);
+    film::FilmFrame parStartFrame);
 
-}  // namespace kage::engine::detail
+}  // namespace kage::engine

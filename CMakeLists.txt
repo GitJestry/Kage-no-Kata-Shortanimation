@@ -68,71 +68,37 @@ function(kage_add_check TARGET_NAME)
 endfunction()
 
 if(BUILD_TESTING)
-  kage_add_check(film_sequence_check
-    tests/film_sequence_check.cpp
+  kage_add_check(film_domain_check
+    tests/film_domain_check.cpp
     src/film/movie_timeline.cpp
     src/film/timeline_edit_service.cpp
   )
-  kage_add_check(timeline_edit_service_check
-    tests/timeline_edit_service_check.cpp
-    src/film/movie_timeline.cpp
-    src/film/timeline_edit_service.cpp
-  )
-  kage_add_check(film_serializer_check
-    tests/film_serializer_check.cpp
+  kage_add_check(film_persistence_check
+    tests/film_persistence_check.cpp
     src/film/movie_timeline.cpp
     src/film/movie_timeline_serializer.cpp
     src/film/timeline_edit_service.cpp
-    src/scene/world.cpp
-  )
-  kage_add_check(lighting_film_state_check
-    tests/lighting_film_state_check.cpp
-    src/film/movie_timeline.cpp
     src/lighting/lighting_system.cpp
     src/scene/world.cpp
   )
-  kage_add_check(movie_editor_controller_check
-    tests/movie_editor_controller_check.cpp
+  kage_add_check(movie_workflow_check
+    tests/movie_workflow_check.cpp
     src/assets/asset_registry.cpp
     src/assets/gltf_asset_loader.cpp
+    src/camera/camera.cpp
     src/editor/movie_editor_controller.cpp
+    src/engine/film_camera_creation.cpp
     src/film/movie_timeline.cpp
     src/film/movie_timeline_world_validation.cpp
     src/film/timeline_edit_service.cpp
+    src/scene/scene_manager.cpp
     src/scene/world.cpp
   )
-  kage_add_check(editor_session_check
-    tests/editor_session_check.cpp
-    src/editor/editor_session.cpp
-  )
-  kage_add_check(movie_editor_layout_check
-    tests/movie_editor_layout_check.cpp
-  )
-  kage_add_check(movie_imgui_scope_check
-    tests/movie_imgui_scope_check.cpp
-  )
-  kage_add_check(movie_viewport_check
-    tests/movie_viewport_check.cpp
-    src/camera/camera.cpp
-    src/film/movie_timeline.cpp
-    src/film/timeline_edit_service.cpp
-    src/scene/world.cpp
-  )
-  target_link_libraries(film_serializer_check PRIVATE framework tinygltf)
-  target_link_libraries(movie_editor_controller_check PRIVATE tinygltf)
-  target_link_libraries(editor_session_check PRIVATE framework tinygltf)
-  target_link_libraries(movie_imgui_scope_check PRIVATE imgui_glfw)
-  target_compile_definitions(film_serializer_check PRIVATE
-    KAGE_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-  add_test(NAME film_sequence COMMAND film_sequence_check)
-  add_test(NAME timeline_edit_service COMMAND timeline_edit_service_check)
-  add_test(NAME film_serializer COMMAND film_serializer_check)
-  add_test(NAME lighting_film_state COMMAND lighting_film_state_check)
-  add_test(NAME movie_editor_controller COMMAND movie_editor_controller_check)
-  add_test(NAME editor_session COMMAND editor_session_check)
-  add_test(NAME movie_editor_layout COMMAND movie_editor_layout_check)
-  add_test(NAME movie_imgui_scope COMMAND movie_imgui_scope_check)
-  add_test(NAME movie_viewport COMMAND movie_viewport_check)
+  target_link_libraries(film_persistence_check PRIVATE framework tinygltf)
+  target_link_libraries(movie_workflow_check PRIVATE tinygltf)
+  add_test(NAME film_domain COMMAND film_domain_check)
+  add_test(NAME film_persistence COMMAND film_persistence_check)
+  add_test(NAME movie_workflow COMMAND movie_workflow_check)
 endif()
 
 if(MSVC)
