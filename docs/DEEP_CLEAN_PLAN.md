@@ -45,6 +45,14 @@ timeline infrastructure.
 
 Keep each action in one obvious location.
 
+## Phase 3B result
+
+The Master and Sequence timelines already share the meaningful reusable
+mechanics. Further consolidation would introduce abstractions or couple distinct
+interaction behavior for an estimated reduction below 30 lines.
+
+No implementation change was made.
+
 ## Phase 4 — Film domain and controller
 
 Reduce duplicate state, forwarding methods and validation paths.

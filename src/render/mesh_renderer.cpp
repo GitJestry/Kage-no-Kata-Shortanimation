@@ -463,6 +463,7 @@ void MeshRenderer::beginFrame(
   m_shader.setInt("u_sun_shadow_map", 4);
   if (sun_shadow) {
     glActiveTexture(GL_TEXTURE4);
+    glBindSampler(4, 0);
     glBindTexture(GL_TEXTURE_2D, parShadows->sun_depth);
   }
   m_shader.setInt("u_point_shadow_map_0", 5);

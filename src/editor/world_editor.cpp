@@ -105,18 +105,40 @@ void WorldEditor::render(const glm::vec2& parViewportSize) {
     movie_selection_entity = m_session.movie_selection.target->entity;
   }
   if (m_session.workspace == Workspace::Movie) {
-    if (m_session.shown_movement_paths_sequence_id != 0 &&
-        m_session.shown_movement_paths_sequence_id ==
-            m_session.movie_selection.sequence_id) {
-      movement_paths = sequenceMovementPaths(
-          m_engine.getMovieTimeline(),
-          m_session.shown_movement_paths_sequence_id);
-    } else {
-      std::optional<film::ResolvedMovementPath> selected_path =
-          selectedMovementPath(m_engine.getMovieTimeline(),
-                               m_session.movie_selection);
-      if (selected_path.has_value()) {
-        movement_paths.push_back(std::move(*selected_path));
+    const MovieEditorSelection& selection = m_session.movie_selection;
+    const film::TargetSequence* sequence = selection.target.has_value()
+        ? m_engine.getMovieTimeline().findSequence(selection.sequence_id)
+        : nullptr;
+    if (sequence != nullptr && sequence->target == *selection.target) {
+      if (m_session.shown_movement_paths_sequence_id == sequence->id) {
+        std::vector<const film::SequenceClip*> clips;
+        clips.reserve(sequence->clips.size());
+        for (const film::SequenceClip& clip : sequence->clips) {
+          if (std::holds_alternative<film::MovementClip>(clip.payload)) {
+            clips.push_back(&clip);
+          }
+        }
+        std::sort(clips.begin(), clips.end(),
+                  [](const film::SequenceClip* parLeft,
+                     const film::SequenceClip* parRight) {
+                    if (parLeft->start_frame != parRight->start_frame) {
+                      return parLeft->start_frame < parRight->start_frame;
+                    }
+                    return parLeft->id < parRight->id;
+                  });
+        movement_paths.reserve(clips.size());
+        for (const film::SequenceClip* clip : clips) {
+          if (const auto path = film::resolveMovementPath(*sequence, clip->id);
+              path.has_value()) {
+            movement_paths.push_back(*path);
+          }
+        }
+      } else if (selection.clip_id != 0) {
+        if (const auto path = film::resolveMovementPath(*sequence,
+                                                        selection.clip_id);
+            path.has_value()) {
+          movement_paths.push_back(*path);
+        }
       }
     }
   }

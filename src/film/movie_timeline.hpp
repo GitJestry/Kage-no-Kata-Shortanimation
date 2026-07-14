@@ -84,13 +84,10 @@ struct MovementClip final {
 
 struct RigAnimationClip final {
   assets::AnimationClipId clip_id = 0;
-  std::size_t legacy_clip_index = 0;
   float source_in = 0.0f;
   float source_out = 1.0f;
   float speed = 1.0f;
   bool looping = false;
-  float blend_in_seconds = 0.0f;
-  float blend_out_seconds = 0.0f;
 };
 
 enum class PropertyKind {
@@ -100,8 +97,6 @@ enum class PropertyKind {
   SunDirection,
   SunIntensity,
   SunColor,
-  LegacyPointLightEnabled,
-  LegacyPointLightRange,
 };
 
 struct PropertyClip final {
@@ -155,7 +150,7 @@ struct MovieTimeline final {
   [[nodiscard]] TargetSequence* findSequence(TargetSequenceId parId);
   [[nodiscard]] const TargetSequence* findSequence(TargetSequenceId parId) const;
   [[nodiscard]] SequenceClip* findClip(SequenceClipId parId);
-  [[nodiscard]] const SequenceClip* findClip(SequenceClipId parId) const;
+  [[nodiscard]] SequenceInstance* findInstance(SequenceInstanceId parId);
 };
 
 struct MovementPathSegment final {
@@ -175,23 +170,12 @@ struct ResolvedMovementPath final {
 [[nodiscard]] std::optional<ResolvedMovementPath> resolveMovementPath(
     const TargetSequence& parSequence, SequenceClipId parClipId);
 
-enum class MovieTimelineOrigin { NewProject, LoadedProject };
-
-[[nodiscard]] bool requiresInitialFilmCamera(
-    MovieTimelineOrigin parOrigin, const MovieTimeline& parTimeline);
-
-// A default project creates its first film camera from the editor view at
-// frame zero.  Loaded projects and projects with any film data do not.
-[[nodiscard]] std::optional<FilmFrame> initialFilmCameraCreationFrame(
-    MovieTimelineOrigin parOrigin, const MovieTimeline& parTimeline);
-
 struct FilmPlayback final {
   double playhead_frame = 0.0;
   bool playing = false;
   bool previewing = false;
   bool looping = true;
 
-  void update(float parDeltaSeconds, const MovieTimeline& parTimeline);
   void update(float parDeltaSeconds, FilmFrame parDuration);
 };
 
@@ -218,12 +202,6 @@ struct TimelineValidation final {
   [[nodiscard]] bool hasErrors() const;
 };
 
-// The evaluator is pure: it reads only captured sequence data and never reads
-// or mutates World state.  The output remains a FilmFrameState so runtime
-// integration can happen in the later cutover milestone.
-void evaluateTargetSequence(const TargetSequence& parSequence,
-                            FilmFrame parLocalFrame,
-                            FilmFrameState& parState);
 [[nodiscard]] std::optional<FilmFrameState> evaluateTargetSequencePreview(
     const MovieTimeline& parTimeline, TargetSequenceId parSequenceId,
     FilmFrame parFrame);
@@ -233,10 +211,7 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
     const MovieTimeline& parTimeline, bool parForBake = false);
 
 [[nodiscard]] bool isCameraSequence(const TargetSequence& parSequence);
-[[nodiscard]] bool isValidTimelineTarget(const TimelineTarget& parTarget);
 [[nodiscard]] bool isPayloadCompatibleWithTarget(
-    TimelineTargetKind parTargetKind, const SequenceClipPayload& parPayload);
-[[nodiscard]] bool isAuthorablePayloadForTarget(
     TimelineTargetKind parTargetKind, const SequenceClipPayload& parPayload);
 
 }  // namespace kage::film

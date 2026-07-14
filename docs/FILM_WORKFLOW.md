@@ -37,7 +37,7 @@ provided.
 Bake is disabled until validation succeeds. It requires playable frames, valid
 camera output, no camera overlap, no used orphan or incompatible target, valid
 source/frame ranges, an end at or below frame 3600, and all placed rig-animation
-assets to resolve by stable ID or legacy index. Camera gaps are valid.
+assets to resolve by stable ID. Camera gaps are valid.
 
 `Bake Movie` renders overlay-free 3840×2160 frames with 4× MSAA to
 `output/frames/<movie-name>/`, then writes `output/<movie-name>.mp4` at 30 fps.
@@ -48,7 +48,7 @@ the Movie Inspector keeps the error visible; the editor remains usable.
 
 Save Project writes World schema v6 with Movie film schema v2. Reloading keeps
 stable sequence, instance, and clip IDs; captured bases; curve controls; frame
-ranges; animation trim, speed, loop, and fallback index; and camera placement.
+ranges; animation trim, speed, loop, and camera placement.
 Editor-only selection, view state, zoom, scroll, and panel height are not saved.
 
 For the project acceptance check, create a Samurai sequence with a movement

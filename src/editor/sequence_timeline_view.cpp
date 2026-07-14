@@ -98,21 +98,6 @@ struct SequenceLane final {
   return glm::vec4(0.0f);
 }
 
-[[nodiscard]] const assets::ModelAsset* movieAnimationAsset(
-    const engine::EngineCore& parEngine, const film::TargetSequence& parSequence) {
-  const scene::EntityRecord* entity =
-      parEngine.getWorld().findEntity(parSequence.target.entity);
-  if (entity == nullptr || !entity->static_mesh.has_value() ||
-      entity->static_mesh->asset_library_index ==
-          scene::INVALID_ASSET_LIBRARY_INDEX) {
-    return nullptr;
-  }
-  const assets::AssetRegistry::AssetLibraryEntry* asset =
-      parEngine.getAssetLibraryEntry(entity->static_mesh->asset_library_index);
-  return asset != nullptr && asset->document.has_value() ? &*asset->document
-                                                           : nullptr;
-}
-
 [[nodiscard]] film::SequenceClipPayload defaultPayloadForLane(
     const engine::EngineCore& parEngine, const film::TargetSequence& parSequence,
     const SequenceLane& parLane) {
@@ -129,7 +114,6 @@ struct SequenceLane final {
     if (const assets::ModelAsset* asset = movieAnimationAsset(parEngine, parSequence);
         asset != nullptr && !asset->animation_clips.empty()) {
       animation.clip_id = asset->animation_clips.front().id;
-      animation.legacy_clip_index = 0;
     }
     return animation;
   }
@@ -144,9 +128,12 @@ struct SequenceLane final {
   return property;
 }
 
+}  // namespace
+
 void drawSequenceTimeline(engine::EngineCore& parEngine,
                           editor::EditorSession& parSession,
-                          bool parFitToSequence, int parZoomDirection) {
+                          bool parFitToSequence, int parZoomDirection,
+                          std::string& parError) {
   const film::TargetSequenceId sequence_id =
       parSession.movie_selection.sequence_id;
   film::TargetSequence* sequence = parEngine.getMovieTimeline().findSequence(
@@ -154,8 +141,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
   if (sequence == nullptr) {
     const float canvas_height = std::max(1.0f, ImGui::GetContentRegionAvail().y);
     ImGui::BeginChild("TargetSequenceCanvas", ImVec2(0.0f, canvas_height), true);
-    ImGui::TextDisabled(
-        "Create or select a target sequence in the Target Inspector.");
     ImGui::EndChild();
     return;
   }
@@ -172,7 +157,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
     float mouse_x = 0.0f;
   };
   static ClipGesture gesture;
-  static std::string edit_error;
 
   const std::vector<SequenceLane> lanes = lanesFor(*sequence);
   const film::FilmFrame duration = sequence->durationFrames();
@@ -210,12 +194,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
   ImDrawList* draw_list = ImGui::GetWindowDrawList();
   drawTimelineRuler(*draw_list, origin, LABEL_WIDTH, pixels_per_frame,
                     content_width);
-  if (duration == 0) {
-    draw_list->AddText(ImVec2(origin.x + LABEL_WIDTH + 12.0f,
-                               origin.y + timelineRulerHeight() + 14.0f),
-                       IM_COL32(165, 175, 180, 255),
-                       "Empty sequence — add a clip to a lane.");
-  }
   static_cast<void>(scrubTimelineRuler("##TargetSequenceTimelineRuler", origin,
                                        LABEL_WIDTH, content_width,
                                        pixels_per_frame, parSession, duration,
@@ -223,8 +201,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
   const auto frame_x = [&](film::FilmFrame frame) {
     return timelineFrameX(origin, LABEL_WIDTH, frame, pixels_per_frame);
   };
-  std::optional<film::SequenceClipId> clip_to_duplicate;
-  std::optional<film::SequenceClipId> clip_to_delete;
 
   for (std::size_t lane_index = 0; lane_index < lanes.size(); ++lane_index) {
     const float y = origin.y + timelineRulerHeight() +
@@ -260,13 +236,13 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
         parEngine.markProjectDirty();
         parSession.movie_selection.clip_id = *added;
         parSession.movie_selection.instance_id = 0;
-        edit_error.clear();
+        parError.clear();
         sequence = parEngine.getMovieTimeline().findSequence(sequence_id);
         if (sequence == nullptr) {
           parSession.movie_selection.sequence_id = 0;
         }
       } else {
-        edit_error = added.error();
+        parError = added.error();
       }
       ImGui::PopID();
       ImGui::EndChild();
@@ -354,17 +330,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
                         IM_COL32(245, 248, 250, 255), movieClipLabel(clip.payload));
 
       pushMovieWidgetId(MovieWidgetIdKind::SequenceClip, clip.id);
-      const auto drawClipContextMenu = [&](const char* parId) {
-        if (ImGui::BeginPopupContextItem(parId)) {
-          if (ImGui::MenuItem("Duplicate Clip")) {
-            clip_to_duplicate = clip.id;
-          }
-          if (ImGui::MenuItem("Delete Clip")) {
-            clip_to_delete = clip.id;
-          }
-          ImGui::EndPopup();
-        }
-      };
       ImGui::SetCursorScreenPos(ImVec2(bar_min.x + HANDLE_WIDTH, bar_min.y));
       if (ImGui::InvisibleButton("##Move", ImVec2(
               std::max(1.0f, bar_max.x - bar_min.x - HANDLE_WIDTH * 2.0f),
@@ -375,10 +340,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
         gesture = {clip.id, ClipGesture::Mode::Move, clip.start_frame,
                    clip.end_frame, ImGui::GetIO().MousePos.x};
       }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Drag to move %s", movieClipLabel(clip.payload));
-      }
-      drawClipContextMenu("ClipMoveActions");
 
       ImGui::SetCursorScreenPos(bar_min);
       ImGui::InvisibleButton("##TrimStart", ImVec2(HANDLE_WIDTH, bar_max.y - bar_min.y));
@@ -393,7 +354,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
                            ImVec2(bar_min.x + 1.0f, bar_max.y - 2.0f),
                            IM_COL32(245, 248, 250, 255), 2.0f);
       }
-      drawClipContextMenu("ClipTrimStartActions");
       ImGui::SetCursorScreenPos(ImVec2(bar_max.x - HANDLE_WIDTH, bar_min.y));
       ImGui::InvisibleButton("##TrimEnd", ImVec2(HANDLE_WIDTH, bar_max.y - bar_min.y));
       if (ImGui::IsItemActivated()) {
@@ -407,7 +367,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
                            ImVec2(bar_max.x - 1.0f, bar_max.y - 2.0f),
                            IM_COL32(245, 248, 250, 255), 2.0f);
       }
-      drawClipContextMenu("ClipTrimEndActions");
       ImGui::PopID();
     }
   }
@@ -429,12 +388,10 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
       const auto [start, end] = previewRange(*clip);
       if (start != gesture.start_frame || end != gesture.end_frame) {
         film::TimelineEditService edits(parEngine.getMovieTimeline());
-        const auto result = gesture.mode == ClipGesture::Mode::Move
-                                ? edits.moveClip(gesture.clip_id, start, end)
-                                : edits.trimClip(gesture.clip_id, start, end);
+        const auto result = edits.moveClip(gesture.clip_id, start, end);
         if (result.has_value()) {
           parEngine.markProjectDirty();
-          edit_error.clear();
+          parError.clear();
           sequence = parEngine.getMovieTimeline().findSequence(sequence_id);
           if (sequence == nullptr) {
             parSession.movie_selection.sequence_id = 0;
@@ -443,7 +400,7 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
           ImGui::EndChild();
           return;
         } else {
-          edit_error = result.error();
+          parError = result.error();
         }
       }
     }
@@ -451,43 +408,6 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
   }
   ImGui::EndChild();
 
-  if (clip_to_duplicate.has_value()) {
-    film::TimelineEditService edits(parEngine.getMovieTimeline());
-    const auto duplicate = edits.duplicateClip(*clip_to_duplicate);
-    if (duplicate.has_value()) {
-      parEngine.markProjectDirty();
-      selectClip(*duplicate);
-      edit_error.clear();
-      return;
-    }
-    edit_error = duplicate.error();
-  }
-  if (clip_to_delete.has_value()) {
-    film::TimelineEditService edits(parEngine.getMovieTimeline());
-    const auto result = edits.deleteClip(*clip_to_delete);
-    if (result.has_value()) {
-      parEngine.markProjectDirty();
-      if (parSession.movie_selection.clip_id == *clip_to_delete) {
-        parSession.movie_selection.clip_id = 0;
-      }
-      edit_error.clear();
-      return;
-    }
-    edit_error = result.error();
-  }
-  if (!edit_error.empty()) {
-    ImGui::TextWrapped("%s", edit_error.c_str());
-  }
-}
-
-
-}  // namespace
-
-void drawSequenceTimelineView(engine::EngineCore& parEngine,
-                              EditorSession& parSession,
-                              bool parFitToSequence, int parZoomDirection) {
-  drawSequenceTimeline(parEngine, parSession, parFitToSequence,
-                       parZoomDirection);
 }
 
 }  // namespace kage::editor

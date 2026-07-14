@@ -22,6 +22,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -297,12 +298,11 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     }
   }
 
-  bool migrated_legacy = false;
   std::string film_error;
+  const auto film = parSceneJson.find("film");
   if (!kage::film::decodeMovieTimeline(
-          parSceneJson.value("film", json::object()).dump(), parScene.world,
-          parScene.sun_light, parScene.movie_timeline, migrated_legacy,
-          film_error)) {
+          film == parSceneJson.end() ? std::string_view{} : film->dump(),
+          parScene.movie_timeline, film_error)) {
     return false;
   }
 

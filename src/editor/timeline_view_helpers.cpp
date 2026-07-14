@@ -50,20 +50,6 @@ void pushMovieWidgetId(MovieWidgetIdKind parKind, std::uint64_t parId) {
   ImGui::PushID(identity.data(), id.ptr);
 }
 
-const char* movieTargetKindLabel(film::TimelineTargetKind parKind) {
-  switch (parKind) {
-    case film::TimelineTargetKind::RiggedEntity:
-      return "Rigged Entity";
-    case film::TimelineTargetKind::Camera:
-      return "Camera";
-    case film::TimelineTargetKind::PointLight:
-      return "Point Light";
-    case film::TimelineTargetKind::Sun:
-      return "Sun";
-  }
-  return "Target";
-}
-
 std::string movieTargetLabel(const engine::EngineCore& parEngine,
                              const film::TimelineTarget& parTarget) {
   if (parTarget.kind == film::TimelineTargetKind::Sun) {
@@ -72,7 +58,7 @@ std::string movieTargetLabel(const engine::EngineCore& parEngine,
   const scene::EntityRecord* entity =
       parEngine.getWorld().findEntity(parTarget.entity);
   if (entity == nullptr) {
-    return "Missing " + std::string(movieTargetKindLabel(parTarget.kind));
+    return "Missing target";
   }
   return entity->name.name;
 }
@@ -121,22 +107,6 @@ const assets::ModelAsset* movieAnimationAsset(
                                                            : nullptr;
 }
 
-void drawCapturedMovieBaseSummary(const film::CapturedTargetBaseState& parBase) {
-  if (const auto* entity = std::get_if<film::CapturedEntityBaseState>(&parBase)) {
-    ImGui::Text("Position  %.2f, %.2f, %.2f", entity->transform.translation.x,
-                entity->transform.translation.y, entity->transform.translation.z);
-    if (entity->camera.has_value()) {
-      ImGui::Text("Captured FOV  %.1f", entity->camera->vertical_fov_degrees);
-    }
-    if (entity->point_light.has_value()) {
-      ImGui::Text("Captured intensity  %.2f", entity->point_light->intensity);
-    }
-    return;
-  }
-  const auto& sun = std::get<film::CapturedSunBaseState>(parBase);
-  ImGui::Text("Captured intensity  %.2f", sun.intensity);
-}
-
 const char* movieClipLabel(const film::SequenceClipPayload& parPayload) {
   if (std::holds_alternative<film::MovementClip>(parPayload)) {
     return "Movement";
@@ -155,10 +125,6 @@ const char* movieClipLabel(const film::SequenceClipPayload& parPayload) {
       return "Color";
     case film::PropertyKind::SunDirection:
       return "Direction";
-    case film::PropertyKind::LegacyPointLightEnabled:
-      return "Enabled";
-    case film::PropertyKind::LegacyPointLightRange:
-      return "Range";
   }
   return "Property";
 }

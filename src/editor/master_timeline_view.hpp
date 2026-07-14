@@ -3,10 +3,12 @@
 #include "editor/editor_session.hpp"
 #include "engine/engine_core.hpp"
 
+#include <string>
+
 namespace kage::editor {
 
-void drawMasterTimelineView(engine::EngineCore& parEngine,
-                            EditorSession& parSession,
-                            bool parFitToMovie, int parZoomDirection);
+void drawMasterTimeline(engine::EngineCore& parEngine, EditorSession& parSession,
+                        bool parFitToMovie, int parZoomDirection,
+                        std::string& parError);
 
 }  // namespace kage::editor

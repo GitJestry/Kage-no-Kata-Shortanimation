@@ -78,9 +78,7 @@ int main() {
       editor::clampMovieAuthoringCursor(film::MAX_FILM_FRAMES) !=
           film::MAX_FILM_FRAMES ||
       editor::clampMovieAuthoringCursor(film::MAX_FILM_FRAMES + 1) !=
-          film::MAX_FILM_FRAMES ||
-      editor::moviePlaybackFrameForCursor(film::MAX_FILM_FRAMES, 30) != 29 ||
-      editor::moviePlaybackFrameForCursor(0, 0) != 0) {
+          film::MAX_FILM_FRAMES) {
     return fail("Movie authoring cursor boundaries were not kept separate from playback");
   }
   film::FilmPlayback cursor_playback;
@@ -100,18 +98,10 @@ int main() {
     return fail("zero-duration playback accepted an authoring cursor frame");
   }
 
-  editor::selectMovieTarget(session, *camera_target);
+  session.movie_selection.target = *camera_target;
   session.movie_selection.sequence_id = 7;
   session.movie_selection.clip_id = 8;
   session.movie_selection.instance_id = 9;
-  const film::MovieTimeline empty_timeline;
-  editor::handleMovieViewportPick(session, empty_timeline, std::nullopt);
-  if (session.movie_selection.target != camera_target ||
-      session.movie_selection.sequence_id != 7 ||
-      session.movie_selection.clip_id != 8 ||
-      session.movie_selection.instance_id != 9) {
-    return fail("empty Movie viewport deselected the current target");
-  }
   film::FilmPlayback deselect_playback;
   deselect_playback.playing = true;
   deselect_playback.previewing = true;
@@ -160,16 +150,6 @@ int main() {
       session.movie_selection.instance_id != 19) {
     return fail("movie instance selection did not preserve Movie Inspector context");
   }
-  if (!editor::openMovieInstanceSequence(session, navigation_timeline, 19) ||
-      session.movie_selection.target != camera_target ||
-      session.movie_selection.sequence_id != navigation_sequence.id ||
-      session.movie_selection.instance_id != 19) {
-    return fail("movie instance navigation did not open its referenced sequence");
-  }
-  if (editor::openMovieInstanceSequence(session, navigation_timeline, 999) ||
-      session.movie_selection.sequence_id != navigation_sequence.id) {
-    return fail("invalid movie instance navigation changed the active sequence");
-  }
   editor::deselectMovieTarget(session);
 
   film::FilmPlayback playback;
@@ -189,31 +169,6 @@ int main() {
   preview_timeline.instances.push_back({1, rig_sequence.id, 0});
 
   editor::selectMovieSequence(session, preview_timeline.sequences.front());
-  session.movie_selection.clip_id = 1;
-  if (!editor::selectedMovementPath(preview_timeline,
-                                    session.movie_selection)
-           .has_value()) {
-    return fail("selected movement clip did not expose its viewport path");
-  }
-  session.movie_selection.clip_id = 2;
-  if (editor::selectedMovementPath(preview_timeline,
-                                   session.movie_selection)
-          .has_value()) {
-    return fail("clip from another sequence exposed a viewport path");
-  }
-  session.movie_selection.clip_id = 3;
-  if (editor::selectedMovementPath(preview_timeline,
-                                   session.movie_selection)
-          .has_value()) {
-    return fail("selected non-movement clip exposed a viewport path");
-  }
-  session.movie_selection.clip_id = 999999;
-  if (editor::selectedMovementPath(preview_timeline,
-                                   session.movie_selection)
-          .has_value()) {
-    return fail("missing clip exposed a viewport path");
-  }
-
   film::MovementClip early_movement;
   early_movement.end.translation = {10.0f, 0.0f, 0.0f};
   film::MovementClip late_movement;
@@ -228,63 +183,30 @@ int main() {
   path_sequence.clips.push_back({12, 20, 30, late_movement});
   path_sequence.clips.push_back({13, 0, 30, film::PropertyClip{}});
   path_sequence.clips.push_back({11, 0, 10, early_movement});
-  film::TargetSequence property_only_sequence;
-  property_only_sequence.id = 45;
-  property_only_sequence.target = *camera_target;
-  property_only_sequence.clips.push_back(
-      {14, 0, 30, film::PropertyClip{}});
-  film::MovieTimeline path_timeline;
-  path_timeline.sequences.push_back(path_sequence);
-  path_timeline.sequences.push_back(property_only_sequence);
-
-  const std::vector<film::ResolvedMovementPath> sequence_paths =
-      editor::sequenceMovementPaths(path_timeline, path_sequence.id);
-  if (sequence_paths.size() != 2 ||
-      sequence_paths[0].movement.start.x != 0.0f ||
-      sequence_paths[0].movement.end.x != 10.0f ||
-      sequence_paths[0].transition_before.has_value() ||
-      sequence_paths[1].movement.start.x != 100.0f ||
-      sequence_paths[1].movement.end.x != 110.0f ||
-      !sequence_paths[1].transition_before.has_value() ||
-      sequence_paths[1].transition_before->start.x != 10.0f ||
-      sequence_paths[1].transition_before->end.x != 100.0f) {
-    return fail("sequence movement paths were not resolved chronologically");
-  }
-  if (!editor::sequenceMovementPaths(path_timeline,
-                                     property_only_sequence.id)
-           .empty() ||
-      !editor::sequenceMovementPaths(path_timeline, 999999).empty()) {
-    return fail("invalid or movement-free sequence exposed viewport paths");
-  }
-  film::MovementCurve initialized_curve;
-  if (!editor::initializeCustomMovementCurve(path_sequence, 12,
-                                              initialized_curve) ||
-      initialized_curve.automatic_position_controls ||
-      std::abs(initialized_curve.position_control_1.x -
+  const auto early_path = film::resolveMovementPath(path_sequence, 11);
+  const auto late_path = film::resolveMovementPath(path_sequence, 12);
+  if (!early_path.has_value() || !late_path.has_value() ||
+      early_path->movement.start.x != 0.0f ||
+      early_path->movement.end.x != 10.0f ||
+      early_path->transition_before.has_value() ||
+      late_path->movement.start.x != 100.0f ||
+      late_path->movement.end.x != 110.0f ||
+      std::abs(late_path->movement.control_1.x -
                (100.0f + 10.0f / 3.0f)) > 0.001f ||
-      std::abs(initialized_curve.position_control_2.x -
+      std::abs(late_path->movement.control_2.x -
                (110.0f - 10.0f / 3.0f)) > 0.001f ||
+      !late_path->transition_before.has_value() ||
+      late_path->transition_before->start.x != 10.0f ||
+      late_path->transition_before->end.x != 100.0f ||
+      std::abs(late_path->transition_before->control_1.x - 40.0f) > 0.001f ||
+      std::abs(late_path->transition_before->control_2.x - 70.0f) > 0.001f ||
       !editor::movementTransitionAvailable(path_sequence,
                                            path_sequence.clips.front()) ||
       editor::movementTransitionAvailable(path_sequence,
                                           path_sequence.clips.back()) ||
-      editor::initializeCustomMovementCurve(path_sequence, 999999,
-                                             initialized_curve)) {
-    return fail("custom curve initialization or transition eligibility failed");
-  }
-  film::MovementCurve initialized_transition_curve;
-  if (!editor::initializeCustomMovementTransitionCurve(
-          path_sequence, 12, initialized_transition_curve) ||
-      initialized_transition_curve.automatic_position_controls ||
-      std::abs(initialized_transition_curve.position_control_1.x - 40.0f) >
-          0.001f ||
-      std::abs(initialized_transition_curve.position_control_2.x - 70.0f) >
-          0.001f ||
-      editor::initializeCustomMovementTransitionCurve(
-          path_sequence, 11, initialized_transition_curve) ||
-      editor::initializeCustomMovementTransitionCurve(
-          path_sequence, 999999, initialized_transition_curve)) {
-    return fail("custom transition curve initialization failed");
+      film::resolveMovementPath(path_sequence, 13).has_value() ||
+      film::resolveMovementPath(path_sequence, 999999).has_value()) {
+    return fail("movement paths were not resolved chronologically");
   }
 
   session.movie_selection.clip_id = 0;
@@ -368,24 +290,11 @@ int main() {
       film::TimelineTargetKind::RiggedEntity, live_entity};
   const film::TimelineTarget orphan_target{
       film::TimelineTargetKind::RiggedEntity, {71}};
-  if (editor::isMovieTargetOrphaned(world, live_target) ||
-      !editor::isMovieTargetOrphaned(world, orphan_target) ||
-      editor::isMovieTargetOrphaned(
-          world, {film::TimelineTargetKind::Sun, {}})) {
-    return fail("Movie orphan detection did not follow World entity lifetime");
-  }
 
   film::MovieTimeline orphan_timeline;
   film::TimelineEditService orphan_edits(orphan_timeline);
   const auto orphan_sequence = orphan_edits.createSequence(
       "Orphan", orphan_target, film::CapturedEntityBaseState{});
-  const std::vector<film::TimelineTarget> discoverable_orphans =
-      editor::orphanMovieTargetsForKind(
-          world, orphan_timeline, film::TimelineTargetKind::RiggedEntity);
-  if (!orphan_sequence.has_value() || discoverable_orphans.size() != 1 ||
-      discoverable_orphans.front() != orphan_target) {
-    return fail("unplaced orphan sequence was not discoverable by the target list");
-  }
   const auto orphan_clip = orphan_sequence.has_value()
                                ? orphan_edits.appendClipToLane(
                                      *orphan_sequence, 10,
@@ -471,7 +380,6 @@ int main() {
       "Animated sequence", animated_target, film::CapturedEntityBaseState{});
   film::RigAnimationClip missing_animation;
   missing_animation.clip_id = 9001;
-  missing_animation.legacy_clip_index = 1;
   if (!animation_sequence.has_value() ||
       !animation_edits.appendClipToLane(*animation_sequence, 10,
                                          missing_animation)

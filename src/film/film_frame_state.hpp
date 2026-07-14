@@ -4,7 +4,6 @@
 #include "math/transform.hpp"
 #include "scene/entity_id.hpp"
 
-#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -21,12 +20,9 @@ enum class FilmPropertyKind {
 
 struct RigAnimationPlayback final {
   assets::AnimationClipId clip_id = 0;
-  std::size_t legacy_clip_index = 0;
   float source_in = 0.0f;
   float source_out = 1.0f;
   float speed = 1.0f;
-  float blend_in_seconds = 0.0f;
-  float blend_out_seconds = 0.0f;
   bool looping = false;
 };
 

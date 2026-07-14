@@ -55,8 +55,7 @@ depth and is omitted from film output.
 
 - World schema v6 stores Movie film schema v2: stable sequence, instance, and
   clip IDs; captured bases; movement curves; typed properties; instances; and
-  animation trim, speed, loop, and legacy fallback indexes. Legacy film data is
-  loader-only and migrates after World entities are available.
+  animation trim, speed, and loop state.
 - Asset catalog schema v2 stores models, animation packs, and catalogued HDR/LDR
   panoramas.
 - Local session schema v4 accepts only finite, normalized, range-checked camera

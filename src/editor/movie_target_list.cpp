@@ -9,9 +9,32 @@
 #include <cmath>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace kage::editor {
 namespace {
+
+[[nodiscard]] bool isMovieTargetOrphaned(
+    const scene::World& parWorld, const film::TimelineTarget& parTarget) {
+  return parTarget.kind != film::TimelineTargetKind::Sun &&
+         parWorld.findEntity(parTarget.entity) == nullptr;
+}
+
+[[nodiscard]] std::vector<film::TimelineTarget> orphanMovieTargetsForKind(
+    const scene::World& parWorld, const film::MovieTimeline& parTimeline,
+    film::TimelineTargetKind parKind) {
+  std::vector<film::TimelineTarget> targets;
+  for (const film::TargetSequence& sequence : parTimeline.sequences) {
+    if (sequence.target.kind != parKind ||
+        !isMovieTargetOrphaned(parWorld, sequence.target) ||
+        std::find(targets.begin(), targets.end(), sequence.target) !=
+            targets.end()) {
+      continue;
+    }
+    targets.push_back(sequence.target);
+  }
+  return targets;
+}
 
 void drawTargetSelectable(EditorSession& parSession,
                           engine::EngineCore& parEngine,
@@ -56,10 +79,6 @@ void drawMovieTargetList(engine::EngineCore& parEngine, EditorSession& parSessio
       parError = result.error();
     }
   }
-  if (!parError.empty()) {
-    ImGui::TextWrapped("%s", parError.c_str());
-  }
-
   const auto drawSection = [&](const char* label,
                                film::TimelineTargetKind kind) {
     ImGui::SeparatorText(label);

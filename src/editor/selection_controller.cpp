@@ -65,22 +65,19 @@ bool SelectionController::selectMovieTarget(
   const std::optional<scene::EntityId> picked =
       parEngine.pickMovieEntity(parCursorPixel, parViewportSize);
   if (!picked.has_value()) {
-    handleMovieViewportPick(parSession, parEngine.getMovieTimeline(),
-                            std::nullopt);
     return false;
   }
   const scene::EntityRecord* entity = parEngine.getWorld().findEntity(*picked);
   if (entity == nullptr) {
-    handleMovieViewportPick(parSession, parEngine.getMovieTimeline(),
-                            std::nullopt);
     return false;
   }
 
   const std::optional<film::TimelineTarget> target = movieTargetForEntity(*entity);
   if (target.has_value()) {
     resetMoviePreview(parEngine, parSession);
+    ::kage::editor::selectMovieTarget(
+        parSession, parEngine.getMovieTimeline(), *target);
   }
-  handleMovieViewportPick(parSession, parEngine.getMovieTimeline(), target);
   if (!target.has_value()) {
     return false;
   }

@@ -49,19 +49,20 @@ void drawFilmPreviewBars(const MovieEditorLayout& parLayout) {
 }
 
 void drawTimelineArea(engine::EngineCore& parEngine, editor::EditorSession& parSession,
-                      bool parFitTimeline, int parZoomDirection) {
+                      bool parFitTimeline, int parZoomDirection,
+                      std::string& parError) {
   if (parSession.movie_selection.target.has_value()) {
-    drawSequenceTimelineView(parEngine, parSession, parFitTimeline,
-                             parZoomDirection);
+    drawSequenceTimeline(parEngine, parSession, parFitTimeline,
+                         parZoomDirection, parError);
   } else {
-    drawMasterTimelineView(parEngine, parSession, parFitTimeline,
-                           parZoomDirection);
+    drawMasterTimeline(parEngine, parSession, parFitTimeline,
+                       parZoomDirection, parError);
   }
 }
 
 void drawTimelineWindow(engine::EngineCore& parEngine,
                         EditorSession& parSession, float parMinHeight,
-                        float parMaxHeight) {
+                        float parMaxHeight, std::string& parError) {
   constexpr float SPLITTER_HIT_HEIGHT = 12.0f;
   const ImVec2 content_cursor = ImGui::GetCursorScreenPos();
   const ImVec2 window_position = ImGui::GetWindowPos();
@@ -140,7 +141,7 @@ void drawTimelineWindow(engine::EngineCore& parEngine,
   }
   ImGui::Separator();
   drawTimelineArea(parEngine, parSession, fit_timeline,
-                   zoom_in ? 1 : (zoom_out ? -1 : 0));
+                   zoom_in ? 1 : (zoom_out ? -1 : 0), parError);
 }
 
 }  // namespace
@@ -186,7 +187,7 @@ std::vector<UiPanelRect> drawMovieEditorPanel(
   panel_rects.push_back(
       beginMovieRegion(timeline_title, positionOf(layout.timeline), timeline_size));
   drawTimelineWindow(parEngine, parSession, layout.timeline_min_height,
-                     layout.timeline_max_height);
+                     layout.timeline_max_height, editor_error);
   ImGui::End();
   return panel_rects;
 }

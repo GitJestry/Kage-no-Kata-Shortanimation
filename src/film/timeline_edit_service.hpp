@@ -33,8 +33,6 @@ class TimelineEditService final {
       SequenceClipId parClipId);
   [[nodiscard]] std::expected<void, std::string> moveClip(
       SequenceClipId parClipId, FilmFrame parStartFrame, FilmFrame parEndFrame);
-  [[nodiscard]] std::expected<void, std::string> trimClip(
-      SequenceClipId parClipId, FilmFrame parStartFrame, FilmFrame parEndFrame);
   [[nodiscard]] std::expected<void, std::string> deleteClip(SequenceClipId parClipId);
   [[nodiscard]] std::expected<void, std::string> setClipPayload(
       SequenceClipId parClipId, SequenceClipPayload parPayload);

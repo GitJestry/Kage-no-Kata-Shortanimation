@@ -91,16 +91,6 @@ if(BUILD_TESTING)
     src/lighting/lighting_system.cpp
     src/scene/world.cpp
   )
-  kage_add_check(animation_fallback_check
-    tests/animation_fallback_check.cpp
-  )
-  kage_add_check(initial_movie_camera_check
-    tests/initial_movie_camera_check.cpp
-    src/engine/film_camera_creation.cpp
-    src/film/movie_timeline.cpp
-    src/film/timeline_edit_service.cpp
-    src/scene/world.cpp
-  )
   kage_add_check(movie_editor_controller_check
     tests/movie_editor_controller_check.cpp
     src/assets/asset_registry.cpp
@@ -138,8 +128,6 @@ if(BUILD_TESTING)
   add_test(NAME timeline_edit_service COMMAND timeline_edit_service_check)
   add_test(NAME film_serializer COMMAND film_serializer_check)
   add_test(NAME lighting_film_state COMMAND lighting_film_state_check)
-  add_test(NAME animation_fallback COMMAND animation_fallback_check)
-  add_test(NAME initial_movie_camera COMMAND initial_movie_camera_check)
   add_test(NAME movie_editor_controller COMMAND movie_editor_controller_check)
   add_test(NAME editor_session COMMAND editor_session_check)
   add_test(NAME movie_editor_layout COMMAND movie_editor_layout_check)

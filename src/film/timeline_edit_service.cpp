@@ -1,7 +1,6 @@
 #include "film/timeline_edit_service.hpp"
 
 #include <algorithm>
-#include <functional>
 #include <limits>
 #include <utility>
 
@@ -19,11 +18,11 @@ using namespace kage::film;
                                                    : error->message;
 }
 
-template <typename Value, typename Mutation>
-[[nodiscard]] std::expected<Value, std::string> commit(
-    MovieTimeline& parTimeline, Mutation&& parMutation) {
+template <typename Mutation>
+[[nodiscard]] auto commit(MovieTimeline& parTimeline, Mutation&& parMutation)
+    -> decltype(parMutation(parTimeline)) {
   MovieTimeline candidate = parTimeline;
-  const std::expected<Value, std::string> result = parMutation(candidate);
+  const auto result = parMutation(candidate);
   if (!result.has_value()) {
     return std::unexpected(result.error());
   }
@@ -35,30 +34,23 @@ template <typename Value, typename Mutation>
   return result;
 }
 
-template <typename Mutation>
-[[nodiscard]] std::expected<void, std::string> commitVoid(
-    MovieTimeline& parTimeline, Mutation&& parMutation) {
-  MovieTimeline candidate = parTimeline;
-  const std::expected<void, std::string> result = parMutation(candidate);
-  if (!result.has_value()) {
-    return std::unexpected(result.error());
-  }
-  const TimelineValidation validation = validateMovieTimeline(candidate);
-  if (validation.hasErrors()) {
-    return std::unexpected(firstError(validation));
-  }
-  parTimeline = std::move(candidate);
-  return {};
-}
+struct LocatedClip final {
+  TargetSequence* sequence = nullptr;
+  SequenceClip* clip = nullptr;
+};
 
-[[nodiscard]] SequenceInstance* findInstance(MovieTimeline& parTimeline,
-                                              SequenceInstanceId parId) {
-  const auto found = std::find_if(parTimeline.instances.begin(),
-                                  parTimeline.instances.end(),
-                                  [parId](const SequenceInstance& item) {
-                                    return item.id == parId;
-                                  });
-  return found == parTimeline.instances.end() ? nullptr : &*found;
+[[nodiscard]] LocatedClip locateClip(MovieTimeline& parTimeline,
+                                     SequenceClipId parId) {
+  for (TargetSequence& sequence : parTimeline.sequences) {
+    const auto found = std::find_if(sequence.clips.begin(), sequence.clips.end(),
+                                    [parId](const SequenceClip& item) {
+                                      return item.id == parId;
+                                    });
+    if (found != sequence.clips.end()) {
+      return {&sequence, &*found};
+    }
+  }
+  return {};
 }
 
 [[nodiscard]] bool fitsWithinFilm(FilmFrame parStart, FilmFrame parDuration) {
@@ -164,8 +156,7 @@ TimelineEditService::TimelineEditService(MovieTimeline& parTimeline)
 std::expected<TargetSequenceId, std::string> TimelineEditService::createSequence(
     std::string parName, TimelineTarget parTarget,
     CapturedTargetBaseState parCapturedBase) {
-  return commit<TargetSequenceId>(timeline_,
-                                  [=, name = std::move(parName),
+  return commit(timeline_, [=, name = std::move(parName),
                                    base = std::move(parCapturedBase)](
                                       MovieTimeline& timeline) mutable {
     TargetSequence sequence;
@@ -185,7 +176,7 @@ std::expected<TargetSequenceId, std::string> TimelineEditService::createSequence
 
 std::expected<TargetSequenceId, std::string> TimelineEditService::duplicateSequence(
     TargetSequenceId parSequenceId) {
-  return commit<TargetSequenceId>(timeline_, [parSequenceId](MovieTimeline& timeline) {
+  return commit(timeline_, [parSequenceId](MovieTimeline& timeline) {
     const TargetSequence* source = timeline.findSequence(parSequenceId);
     if (source == nullptr) {
       return std::expected<TargetSequenceId, std::string>{
@@ -218,7 +209,7 @@ std::expected<TargetSequenceId, std::string> TimelineEditService::duplicateSeque
 
 std::expected<void, std::string> TimelineEditService::renameSequence(
     TargetSequenceId parSequenceId, std::string parName) {
-  return commitVoid(timeline_, [parSequenceId, name = std::move(parName)](
+  return commit(timeline_, [parSequenceId, name = std::move(parName)](
                                    MovieTimeline& timeline) mutable {
     if (name.empty()) {
       return std::expected<void, std::string>{
@@ -236,7 +227,7 @@ std::expected<void, std::string> TimelineEditService::renameSequence(
 
 std::expected<void, std::string> TimelineEditService::deleteSequence(
     TargetSequenceId parSequenceId) {
-  return commitVoid(timeline_, [parSequenceId](MovieTimeline& timeline) {
+  return commit(timeline_, [parSequenceId](MovieTimeline& timeline) {
     const std::size_t previous_size = timeline.sequences.size();
     std::erase_if(timeline.sequences, [parSequenceId](const TargetSequence& item) {
       return item.id == parSequenceId;
@@ -253,7 +244,7 @@ std::expected<void, std::string> TimelineEditService::deleteSequence(
 
 std::expected<void, std::string> TimelineEditService::setCameraGapMode(
     CameraGapMode parMode) {
-  return commitVoid(timeline_, [parMode](MovieTimeline& timeline) {
+  return commit(timeline_, [parMode](MovieTimeline& timeline) {
     if (parMode != CameraGapMode::HoldLastCameraState &&
         parMode != CameraGapMode::Black) {
       return std::expected<void, std::string>{
@@ -267,8 +258,7 @@ std::expected<void, std::string> TimelineEditService::setCameraGapMode(
 std::expected<SequenceClipId, std::string> TimelineEditService::appendClipToLane(
     TargetSequenceId parSequenceId, FilmFrame parDuration,
     SequenceClipPayload parPayload) {
-  return commit<SequenceClipId>(timeline_,
-                                [parSequenceId, parDuration,
+  return commit(timeline_, [parSequenceId, parDuration,
                                  payload = std::move(parPayload)](
                                     MovieTimeline& timeline) mutable {
     if (parDuration <= 0) {
@@ -280,7 +270,7 @@ std::expected<SequenceClipId, std::string> TimelineEditService::appendClipToLane
       return std::expected<SequenceClipId, std::string>{
           std::unexpected("Sequence was not found")};
     }
-    if (!isAuthorablePayloadForTarget(sequence->target.kind, payload)) {
+    if (!isPayloadCompatibleWithTarget(sequence->target.kind, payload)) {
       return std::expected<SequenceClipId, std::string>{
           std::unexpected("Clip is not authorable on this target type")};
     }
@@ -307,27 +297,14 @@ std::expected<SequenceClipId, std::string> TimelineEditService::appendClipToLane
 
 std::expected<SequenceClipId, std::string> TimelineEditService::duplicateClip(
     SequenceClipId parClipId) {
-  return commit<SequenceClipId>(timeline_, [parClipId](MovieTimeline& timeline) {
-    TargetSequence* sequence = nullptr;
-    SequenceClip* source = nullptr;
-    for (TargetSequence& candidate_sequence : timeline.sequences) {
-      const auto found = std::find_if(
-          candidate_sequence.clips.begin(), candidate_sequence.clips.end(),
-          [parClipId](const SequenceClip& candidate) {
-            return candidate.id == parClipId;
-          });
-      if (found != candidate_sequence.clips.end()) {
-        sequence = &candidate_sequence;
-        source = &*found;
-        break;
-      }
-    }
-    if (sequence == nullptr || source == nullptr) {
+  return commit(timeline_, [parClipId](MovieTimeline& timeline) {
+    const LocatedClip located = locateClip(timeline, parClipId);
+    if (located.sequence == nullptr || located.clip == nullptr) {
       return std::expected<SequenceClipId, std::string>{
           std::unexpected("Clip was not found")};
     }
 
-    const SequenceClip source_snapshot = *source;
+    const SequenceClip source_snapshot = *located.clip;
     const FilmFrame duration =
         source_snapshot.end_frame - source_snapshot.start_frame;
     if (duration <= 0 || source_snapshot.start_frame < 0 ||
@@ -343,7 +320,7 @@ std::expected<SequenceClipId, std::string> TimelineEditService::duplicateClip(
          candidate_start <= last_start; ++candidate_start) {
       const FilmFrame candidate_end = candidate_start + duration;
       const bool overlaps_existing = std::any_of(
-          sequence->clips.begin(), sequence->clips.end(),
+          located.sequence->clips.begin(), located.sequence->clips.end(),
           [lane, candidate_start, candidate_end](const SequenceClip& candidate) {
             return laneFor(candidate.payload) == lane &&
                    rangesOverlap(candidate_start, candidate_end,
@@ -364,79 +341,64 @@ std::expected<SequenceClipId, std::string> TimelineEditService::duplicateClip(
       return std::expected<SequenceClipId, std::string>{
           std::unexpected("No clip IDs remain")};
     }
-    sequence->clips.push_back({*id, start_frame, start_frame + duration,
-                               source_snapshot.payload});
+    located.sequence->clips.push_back({*id, start_frame, start_frame + duration,
+                                       source_snapshot.payload});
     return std::expected<SequenceClipId, std::string>{*id};
   });
 }
 
 std::expected<void, std::string> TimelineEditService::moveClip(
     SequenceClipId parClipId, FilmFrame parStartFrame, FilmFrame parEndFrame) {
-  return commitVoid(timeline_, [=](MovieTimeline& timeline) {
-    SequenceClip* clip = timeline.findClip(parClipId);
-    if (clip == nullptr) {
+  return commit(timeline_, [=](MovieTimeline& timeline) {
+    const LocatedClip located = locateClip(timeline, parClipId);
+    if (located.clip == nullptr) {
       return std::expected<void, std::string>{std::unexpected("Clip was not found")};
     }
-    clip->start_frame = parStartFrame;
-    clip->end_frame = parEndFrame;
+    located.clip->start_frame = parStartFrame;
+    located.clip->end_frame = parEndFrame;
     return std::expected<void, std::string>{};
   });
 }
 
-std::expected<void, std::string> TimelineEditService::trimClip(
-    SequenceClipId parClipId, FilmFrame parStartFrame, FilmFrame parEndFrame) {
-  return moveClip(parClipId, parStartFrame, parEndFrame);
-}
-
 std::expected<void, std::string> TimelineEditService::deleteClip(
     SequenceClipId parClipId) {
-  return commitVoid(timeline_, [parClipId](MovieTimeline& timeline) {
-    for (TargetSequence& sequence : timeline.sequences) {
-      const std::size_t previous_size = sequence.clips.size();
-      std::erase_if(sequence.clips, [parClipId](const SequenceClip& item) {
-        return item.id == parClipId;
-      });
-      if (sequence.clips.size() != previous_size) {
-        return std::expected<void, std::string>{};
-      }
+  return commit(timeline_, [parClipId](MovieTimeline& timeline) {
+    const LocatedClip located = locateClip(timeline, parClipId);
+    if (located.sequence == nullptr) {
+      return std::expected<void, std::string>{std::unexpected("Clip was not found")};
     }
-    return std::expected<void, std::string>{std::unexpected("Clip was not found")};
+    std::erase_if(located.sequence->clips, [parClipId](const SequenceClip& item) {
+      return item.id == parClipId;
+    });
+    return std::expected<void, std::string>{};
   });
 }
 
 std::expected<void, std::string> TimelineEditService::setClipPayload(
     SequenceClipId parClipId, SequenceClipPayload parPayload) {
-  return commitVoid(timeline_, [parClipId, payload = std::move(parPayload)](
+  return commit(timeline_, [parClipId, payload = std::move(parPayload)](
                                    MovieTimeline& timeline) mutable {
-    for (TargetSequence& sequence : timeline.sequences) {
-      SequenceClip* clip = nullptr;
-      for (SequenceClip& candidate : sequence.clips) {
-        if (candidate.id == parClipId) {
-          clip = &candidate;
-          break;
-        }
-      }
-      if (clip == nullptr) {
-        continue;
-      }
-      if (!isAuthorablePayloadForTarget(sequence.target.kind, payload)) {
-        return std::expected<void, std::string>{
-            std::unexpected("Clip is not authorable on this target type")};
-      }
-      clip->payload = std::move(payload);
-      return std::expected<void, std::string>{};
+    const LocatedClip located = locateClip(timeline, parClipId);
+    if (located.sequence == nullptr || located.clip == nullptr) {
+      return std::expected<void, std::string>{std::unexpected("Clip was not found")};
     }
-    return std::expected<void, std::string>{std::unexpected("Clip was not found")};
+    if (!isPayloadCompatibleWithTarget(located.sequence->target.kind, payload)) {
+      return std::expected<void, std::string>{
+          std::unexpected("Clip is not authorable on this target type")};
+    }
+    located.clip->payload = std::move(payload);
+    return std::expected<void, std::string>{};
   });
 }
 
 std::expected<void, std::string> TimelineEditService::setMovementStartMode(
     SequenceClipId parClipId, MovementStartMode parMode,
     std::optional<math::Transform> parExplicitStart) {
-  return commitVoid(timeline_, [=](MovieTimeline& timeline) {
-    SequenceClip* clip = timeline.findClip(parClipId);
+  return commit(timeline_, [=](MovieTimeline& timeline) {
+    const LocatedClip located = locateClip(timeline, parClipId);
     MovementClip* movement =
-        clip == nullptr ? nullptr : std::get_if<MovementClip>(&clip->payload);
+        located.clip == nullptr ? nullptr
+                                : std::get_if<MovementClip>(&located.clip->payload);
     if (movement == nullptr) {
       return std::expected<void, std::string>{std::unexpected("Movement clip was not found")};
     }
@@ -454,11 +416,12 @@ std::expected<void, std::string> TimelineEditService::setMovementStartMode(
 
 std::expected<void, std::string> TimelineEditService::setMovementTransition(
     SequenceClipId parClipId, MovementTransition parTransition) {
-  return commitVoid(timeline_, [parClipId, transition = std::move(parTransition)](
+  return commit(timeline_, [parClipId, transition = std::move(parTransition)](
                                    MovieTimeline& timeline) mutable {
-    SequenceClip* clip = timeline.findClip(parClipId);
+    const LocatedClip located = locateClip(timeline, parClipId);
     MovementClip* movement =
-        clip == nullptr ? nullptr : std::get_if<MovementClip>(&clip->payload);
+        located.clip == nullptr ? nullptr
+                                : std::get_if<MovementClip>(&located.clip->payload);
     if (movement == nullptr) {
       return std::expected<void, std::string>{std::unexpected("Movement clip was not found")};
     }
@@ -469,7 +432,7 @@ std::expected<void, std::string> TimelineEditService::setMovementTransition(
 
 std::expected<SequenceInstanceId, std::string> TimelineEditService::placeSequence(
     TargetSequenceId parSequenceId, FilmFrame parStartFrame) {
-  return commit<SequenceInstanceId>(timeline_, [=](MovieTimeline& timeline) {
+  return commit(timeline_, [=](MovieTimeline& timeline) {
     const TargetSequence* sequence = timeline.findSequence(parSequenceId);
     if (sequence == nullptr || sequence->durationFrames() <= 0) {
       return std::expected<SequenceInstanceId, std::string>{
@@ -491,8 +454,8 @@ std::expected<SequenceInstanceId, std::string> TimelineEditService::placeSequenc
 
 std::expected<SequenceInstanceId, std::string> TimelineEditService::duplicateInstance(
     SequenceInstanceId parInstanceId) {
-  return commit<SequenceInstanceId>(timeline_, [=](MovieTimeline& timeline) {
-    const SequenceInstance* source = findInstance(timeline, parInstanceId);
+  return commit(timeline_, [=](MovieTimeline& timeline) {
+    const SequenceInstance* source = timeline.findInstance(parInstanceId);
     if (source == nullptr) {
       return std::expected<SequenceInstanceId, std::string>{
           std::unexpected("Instance was not found")};
@@ -535,8 +498,8 @@ std::expected<SequenceInstanceId, std::string> TimelineEditService::duplicateIns
 
 std::expected<void, std::string> TimelineEditService::moveInstance(
     SequenceInstanceId parInstanceId, FilmFrame parStartFrame) {
-  return commitVoid(timeline_, [=](MovieTimeline& timeline) {
-    SequenceInstance* instance = findInstance(timeline, parInstanceId);
+  return commit(timeline_, [=](MovieTimeline& timeline) {
+    SequenceInstance* instance = timeline.findInstance(parInstanceId);
     if (instance == nullptr) {
       return std::expected<void, std::string>{std::unexpected("Instance was not found")};
     }
@@ -553,7 +516,7 @@ std::expected<void, std::string> TimelineEditService::moveInstance(
 
 std::expected<void, std::string> TimelineEditService::deleteInstance(
     SequenceInstanceId parInstanceId) {
-  return commitVoid(timeline_, [=](MovieTimeline& timeline) {
+  return commit(timeline_, [=](MovieTimeline& timeline) {
     const std::size_t previous_size = timeline.instances.size();
     std::erase_if(timeline.instances, [=](const SequenceInstance& item) {
       return item.id == parInstanceId;

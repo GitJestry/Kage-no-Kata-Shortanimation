@@ -10,7 +10,7 @@ including automated engineering tools.
 For Movie Editor work, the following documents are authoritative:
 
 1. docs/PROJECT_REQUIREMENTS.md
-2. docs/MOVIE_EDITOR_PLAN.md
+2. docs/MOVIE_EDITOR_ARCHITECTURE.md
 3. this developer contract
 
 When these documents conflict, project requirements take precedence.

@@ -83,12 +83,9 @@ TimelineValidation validateMovieTimelineWithWorld(
         continue;
       }
       const RigAnimationPlayback playback{animation->clip_id,
-                                          animation->legacy_clip_index,
                                           animation->source_in,
                                           animation->source_out,
                                           animation->speed,
-                                          animation->blend_in_seconds,
-                                          animation->blend_out_seconds,
                                           animation->looping};
       if (asset != nullptr &&
           animation::resolveAnimationClipIndex(*asset, playback).has_value()) {

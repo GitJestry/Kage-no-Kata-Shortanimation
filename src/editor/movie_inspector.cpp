@@ -258,9 +258,10 @@ void applyPropertyPreset(CurvePreset parPreset,
   if (ImGui::Combo("Path", &path_mode, "Straight\0Custom curve\0")) {
     if (path_mode == 0) {
       movement.curve.automatic_position_controls = true;
-    } else {
-      static_cast<void>(initializeCustomMovementCurve(
-          parSequence, parClip.id, movement.curve));
+    } else if (resolved_path.has_value()) {
+      movement.curve.position_control_1 = resolved_path->movement.control_1;
+      movement.curve.position_control_2 = resolved_path->movement.control_2;
+      movement.curve.automatic_position_controls = false;
     }
     changed = true;
   }
@@ -335,8 +336,10 @@ void applyPropertyPreset(CurvePreset parPreset,
       if (transition_curve_initialized) {
         return true;
       }
-      transition_curve_initialized = initializeCustomMovementTransitionCurve(
-          parSequence, parClip.id, transition.curve);
+      transition.curve.position_control_1 = transition_path.control_1;
+      transition.curve.position_control_2 = transition_path.control_2;
+      transition.curve.automatic_position_controls = false;
+      transition_curve_initialized = true;
       return transition_curve_initialized;
     };
 
@@ -396,13 +399,11 @@ void applyPropertyPreset(CurvePreset parPreset,
       }
     }
     if (ImGui::BeginCombo("Source clip", selected->name.c_str())) {
-      for (std::size_t index = 0; index < asset->animation_clips.size(); ++index) {
-        const assets::AnimationClip& candidate = asset->animation_clips[index];
+      for (const assets::AnimationClip& candidate : asset->animation_clips) {
         pushMovieWidgetId(MovieWidgetIdKind::AnimationAssetClip, candidate.id);
         if (ImGui::Selectable(candidate.name.c_str(),
                               candidate.id == animation.clip_id)) {
           animation.clip_id = candidate.id;
-          animation.legacy_clip_index = index;
           const bool mutated =
               setClipPayload(parEngine, parClip.id, animation, parError);
           ImGui::PopID();
@@ -484,14 +485,6 @@ bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
       start_label = "Start Direction";
       end_label = "End Direction";
       break;
-    case film::PropertyKind::LegacyPointLightEnabled:
-      start_label = "Start Enabled";
-      end_label = "End Enabled";
-      break;
-    case film::PropertyKind::LegacyPointLightRange:
-      start_label = "Start Range";
-      end_label = "End Range";
-      break;
   }
   CurvePreset interpolation = propertyPreset(property);
   bool changed = drawPropertyValue(start_label, property.start_value,
@@ -536,6 +529,22 @@ bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
   } else {
     mutated = drawPropertyInspector(parEngine, *clip, parError);
   }
+  const float action_width =
+      (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) *
+      0.5f;
+  if (!mutated && ImGui::Button("Duplicate Clip", ImVec2(action_width, 0.0f))) {
+    film::TimelineEditService edits(parEngine.getMovieTimeline());
+    const auto duplicate = edits.duplicateClip(clip_id);
+    if (duplicate.has_value()) {
+      parEngine.markProjectDirty();
+      parSession.movie_selection.clip_id = *duplicate;
+      parError.clear();
+      mutated = true;
+    } else {
+      parError = duplicate.error();
+    }
+  }
+  ImGui::SameLine();
   if (!mutated && ImGui::Button("Delete Clip", ImVec2(-1.0f, 0.0f))) {
     film::TimelineEditService edits(parEngine.getMovieTimeline());
     const auto result = edits.deleteClip(clip_id);
@@ -556,24 +565,15 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
                                editor::EditorSession& parSession,
                                std::string& parError) {
   film::MovieTimeline& timeline = parEngine.getMovieTimeline();
-  const auto instance = std::find_if(
-      timeline.instances.begin(), timeline.instances.end(),
-      [instance_id = parSession.movie_selection.instance_id](
-          const film::SequenceInstance& candidate) {
-        return candidate.id == instance_id;
-      });
-  const film::SequenceInstance* selected_instance =
-      instance == timeline.instances.end() ? nullptr : &*instance;
+  const film::SequenceInstance* selected_instance = timeline.findInstance(
+      parSession.movie_selection.instance_id);
 
   ImGui::SeparatorText("Selected Instance");
   if (selected_instance == nullptr) {
     parSession.movie_selection.instance_id = 0;
-    ImGui::TextDisabled("Select a Movie Timeline instance.");
   } else {
     const film::TargetSequence* sequence =
         timeline.findSequence(selected_instance->sequence_id);
-    ImGui::Text("Instance %llu",
-                static_cast<unsigned long long>(selected_instance->id));
     ImGui::Text("Start frame %d", selected_instance->start_frame);
     if (sequence != nullptr) {
       ImGui::Text("Target sequence: %s", sequence->name.c_str());
@@ -622,19 +622,6 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
     }
   }
 
-  const film::TimelineValidation authoring_validation =
-      parEngine.validateMovieTimeline();
-  const auto warning = std::find_if(
-      authoring_validation.diagnostics.begin(),
-      authoring_validation.diagnostics.end(),
-      [](const film::TimelineDiagnostic& diagnostic) {
-        return diagnostic.severity == film::TimelineDiagnostic::Severity::Warning;
-      });
-  if (warning != authoring_validation.diagnostics.end()) {
-    ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.28f, 1.0f), "Warning: %s",
-                       warning->message.c_str());
-  }
-
   ImGui::SeparatorText("Bake Movie");
   const film::FinalRenderJob& render_job = parEngine.getFinalRenderJob();
   const film::TimelineValidation validation = parEngine.validateMovieTimeline(true);
@@ -655,9 +642,7 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
       }
     }
   }
-  if (timeline.durationFrames() <= 0) {
-    ImGui::TextDisabled("Bake is unavailable until a non-empty sequence is placed.");
-  } else if (validation.hasErrors()) {
+  if (validation.hasErrors()) {
     const auto error = std::find_if(
         validation.diagnostics.begin(), validation.diagnostics.end(),
         [](const film::TimelineDiagnostic& diagnostic) {
@@ -665,7 +650,7 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
         });
     if (error != validation.diagnostics.end()) {
       ImGui::TextColored(ImVec4(1.0f, 0.42f, 0.28f, 1.0f),
-                         "Bake disabled: %s", error->message.c_str());
+                         "Bake blocked: %s", error->message.c_str());
     }
   }
   if (render_job.getState() == film::FinalRenderState::Error) {
@@ -684,19 +669,6 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
   const film::TimelineTarget target = *parSession.movie_selection.target;
   film::MovieTimeline& timeline = parEngine.getMovieTimeline();
   ImGui::Text("%s", movieTargetLabel(parEngine, target).c_str());
-  ImGui::TextDisabled("%s", movieTargetKindLabel(target.kind));
-  if (target.kind != film::TimelineTargetKind::Sun) {
-    scene::EntityRecord* entity = parEngine.getWorld().findEntity(target.entity);
-    if (entity != nullptr) {
-      static NameEditState entity_name_state;
-      refreshNameEditState(entity_name_state, entity->id.value, entity->name.name);
-      ImGui::SetNextItemWidth(-1.0f);
-      if (ImGui::InputText("Entity Name", entity_name_state.buffer.data(),
-                           entity_name_state.buffer.size())) {
-        parEngine.setEntityName(entity->id, entity_name_state.buffer.data());
-      }
-    }
-  }
   if (ImGui::Button("Deselect", ImVec2(-1.0f, 0.0f))) {
     deselectMovieTarget(parEngine, parSession);
     return;
@@ -704,9 +676,6 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
 
   const std::optional<film::CapturedTargetBaseState> current_base =
       captureMovieTargetBase(parEngine, target);
-  if (!current_base.has_value()) {
-    ImGui::TextWrapped("This target no longer exists. Its sequences are orphaned.");
-  }
   ImGui::SeparatorText("Sequences");
   for (const film::TargetSequence& sequence : timeline.sequences) {
     if (sequence.target != target) {
@@ -770,7 +739,6 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
       parSession.movie_selection.sequence_id = 0;
       parSession.movie_selection.clip_id = 0;
     }
-    ImGui::TextDisabled("Selected sequence: None");
   } else {
     static NameEditState sequence_name_state;
     refreshNameEditState(sequence_name_state, selected_sequence->id,
@@ -790,31 +758,7 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
         parError = result.error();
       }
     }
-    ImGui::Separator();
-    drawCapturedMovieBaseSummary(selected_sequence->captured_base);
-    const bool orphaned =
-        isMovieTargetOrphaned(parEngine.getWorld(), selected_sequence->target);
-    if (orphaned) {
-      const std::size_t associated_instances =
-          static_cast<std::size_t>(std::count_if(
-              timeline.instances.begin(), timeline.instances.end(),
-              [sequence_id = selected_sequence->id](
-                  const film::SequenceInstance& instance) {
-                return instance.sequence_id == sequence_id;
-              }));
-      ImGui::SeparatorText("Orphan Diagnostic");
-      ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f),
-                         "Target entity %u no longer exists.",
-                         selected_sequence->target.entity.value);
-      ImGui::TextWrapped(
-          associated_instances == 0
-              ? "This orphaned sequence has no instances. Delete it to remove stale movie data."
-              : "This orphaned sequence has %zu instance(s), blocks Bake, and must be deleted with its instances.",
-          associated_instances);
-    }
-    if (ImGui::Button(orphaned ? "Delete Orphaned Sequence and Instances"
-                               : "Delete Sequence",
-                      ImVec2(-1.0f, 0.0f))) {
+    if (ImGui::Button("Delete Sequence", ImVec2(-1.0f, 0.0f))) {
       const film::TargetSequenceId sequence_id = selected_sequence->id;
       film::TimelineEditService edits(timeline);
       const auto result = edits.deleteSequence(sequence_id);
@@ -832,9 +776,6 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
     if (drawClipInspector(parEngine, *selected_sequence, parSession, parError)) {
       return;
     }
-  }
-  if (!parError.empty()) {
-    ImGui::TextWrapped("%s", parError.c_str());
   }
 }
 

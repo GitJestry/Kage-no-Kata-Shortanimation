@@ -25,7 +25,6 @@ enum class MovieWidgetIdKind : std::uint64_t {
 
 void pushMovieWidgetId(MovieWidgetIdKind parKind, std::uint64_t parId);
 
-[[nodiscard]] const char* movieTargetKindLabel(film::TimelineTargetKind parKind);
 [[nodiscard]] std::string movieTargetLabel(const engine::EngineCore& parEngine,
                                            const film::TimelineTarget& parTarget);
 [[nodiscard]] std::optional<film::CapturedTargetBaseState> captureMovieTargetBase(
@@ -33,7 +32,6 @@ void pushMovieWidgetId(MovieWidgetIdKind parKind, std::uint64_t parId);
 [[nodiscard]] const assets::ModelAsset* movieAnimationAsset(
     const engine::EngineCore& parEngine, const film::TargetSequence& parSequence);
 
-void drawCapturedMovieBaseSummary(const film::CapturedTargetBaseState& parBase);
 [[nodiscard]] const char* movieClipLabel(const film::SequenceClipPayload& parPayload);
 
 [[nodiscard]] float timelineFrameX(const ImVec2& parOrigin, float parLabelWidth,

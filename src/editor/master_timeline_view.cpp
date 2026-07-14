@@ -15,11 +15,11 @@
 #include <vector>
 
 namespace kage::editor {
-namespace {
 
 void drawMasterTimeline(engine::EngineCore& parEngine,
                         editor::EditorSession& parSession,
-                        bool parFitToMovie, int parZoomDirection) {
+                        bool parFitToMovie, int parZoomDirection,
+                        std::string& parError) {
   constexpr float LABEL_WIDTH = 176.0f;
   constexpr float ROW_HEIGHT = 44.0f;
   struct TargetRow final {
@@ -32,7 +32,6 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
     float mouse_x = 0.0f;
   };
   static InstanceGesture gesture;
-  static std::string edit_error;
 
   film::MovieTimeline& timeline = parEngine.getMovieTimeline();
   const film::FilmFrame duration = timeline.durationFrames();
@@ -73,8 +72,6 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
   static_cast<void>(updateTimelineZoom(parSession, origin, canvas_width,
                                         LABEL_WIDTH));
   if (rows.empty()) {
-    ImGui::TextDisabled(
-        "Create a target sequence in Animation Targets to begin the movie.");
     ImGui::EndChild();
     return;
   }
@@ -97,8 +94,6 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
     return timelineFrameX(origin, LABEL_WIDTH, frame, pixels_per_frame);
   };
   std::optional<film::TargetSequenceId> sequence_to_place;
-  std::optional<film::SequenceInstanceId> instance_to_duplicate;
-  std::optional<film::SequenceInstanceId> instance_to_delete;
 
   for (std::size_t row_index = 0; row_index < rows.size(); ++row_index) {
     const TargetRow& row = rows[row_index];
@@ -110,8 +105,6 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
     draw_list->AddText(ImVec2(origin.x + 6.0f, y + 7.0f),
                       IM_COL32(205, 210, 212, 255),
                       movieTargetLabel(parEngine, row.target).c_str());
-    draw_list->AddText(ImVec2(origin.x + 6.0f, y + 23.0f),
-                      IM_COL32(135, 150, 155, 255), movieTargetKindLabel(row.target.kind));
     ImGui::SetCursorScreenPos(ImVec2(origin.x + LABEL_WIDTH - 32.0f, y + 9.0f));
     pushMovieWidgetId(MovieWidgetIdKind::TimelineTargetRow,
                       static_cast<std::uint64_t>(row_index));
@@ -198,29 +191,22 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
           left_clicked && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
       if (double_clicked) {
         resetMoviePreview(parEngine, parSession);
-        static_cast<void>(openMovieInstanceSequence(parSession, timeline,
-                                                     instance.id));
+        const film::SequenceInstance* selected_instance =
+            timeline.findInstance(instance.id);
+        const film::TargetSequence* selected_sequence =
+            selected_instance == nullptr
+                ? nullptr
+                : timeline.findSequence(selected_instance->sequence_id);
+        if (selected_sequence != nullptr) {
+          selectMovieSequence(parSession, *selected_sequence);
+          parSession.movie_selection.instance_id = instance.id;
+        }
       } else if (left_clicked) {
         resetMoviePreview(parEngine, parSession);
         selectMovieInstance(parSession, instance.id);
       }
       if (ImGui::IsItemActivated() && !double_clicked) {
         gesture = {instance.id, instance.start_frame, ImGui::GetIO().MousePos.x};
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(
-            "Full sequence instance: drag to move, double-click to open its "
-            "Target Sequence Timeline. Edit duration there. Right-click for "
-            "actions.");
-      }
-      if (ImGui::BeginPopupContextItem("InstanceActions")) {
-        if (ImGui::MenuItem("Duplicate Instance")) {
-          instance_to_duplicate = instance.id;
-        }
-        if (ImGui::MenuItem("Delete Instance")) {
-          instance_to_delete = instance.id;
-        }
-        ImGui::EndPopup();
       }
       ImGui::PopID();
     }
@@ -236,38 +222,6 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
   ImGui::EndChild();
 
   const film::FilmFrame authoring_cursor = parSession.authoring_cursor_frame;
-  if (instance_to_duplicate.has_value()) {
-    const auto source = std::find_if(
-        timeline.instances.begin(), timeline.instances.end(),
-        [&](const film::SequenceInstance& instance) {
-          return instance.id == *instance_to_duplicate;
-        });
-    const film::TargetSequence* sequence =
-        source == timeline.instances.end() ? nullptr
-                                           : timeline.findSequence(source->sequence_id);
-    if (source != timeline.instances.end() && sequence != nullptr) {
-      film::TimelineEditService edits(timeline);
-      const auto result = edits.duplicateInstance(*instance_to_duplicate);
-      if (result.has_value()) {
-        parEngine.markProjectDirty();
-        selectMovieInstance(parSession, *result);
-        edit_error.clear();
-        return;
-      }
-      edit_error = result.error();
-    }
-  }
-  if (instance_to_delete.has_value()) {
-    film::TimelineEditService edits(timeline);
-    const auto result = edits.deleteInstance(*instance_to_delete);
-    if (result.has_value()) {
-      parEngine.markProjectDirty();
-      parSession.movie_selection.instance_id = 0;
-      edit_error.clear();
-      return;
-    }
-    edit_error = result.error();
-  }
   if (sequence_to_place.has_value()) {
     film::TimelineEditService edits(timeline);
     const auto result = edits.placeSequence(*sequence_to_place,
@@ -275,19 +229,14 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
     if (result.has_value()) {
       parEngine.markProjectDirty();
       selectMovieInstance(parSession, *result);
-      edit_error.clear();
+      parError.clear();
       return;
     }
-    edit_error = result.error();
+    parError = result.error();
   }
   if (gesture.instance_id != 0 && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-    const auto instance_it = std::find_if(
-        timeline.instances.begin(), timeline.instances.end(),
-        [&](const film::SequenceInstance& value) {
-          return value.id == gesture.instance_id;
-        });
     const film::SequenceInstance* instance =
-        instance_it == timeline.instances.end() ? nullptr : &*instance_it;
+        timeline.findInstance(gesture.instance_id);
     if (instance != nullptr) {
       const film::TargetSequence* sequence = timeline.findSequence(instance->sequence_id);
       if (sequence != nullptr) {
@@ -301,29 +250,17 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
           const auto result = edits.moveInstance(gesture.instance_id, start);
           if (result.has_value()) {
             parEngine.markProjectDirty();
-            edit_error.clear();
+            parError.clear();
             gesture = {};
             return;
           } else {
-            edit_error = result.error();
+            parError = result.error();
           }
         }
       }
     }
     gesture = {};
   }
-  if (!edit_error.empty()) {
-    ImGui::TextWrapped("%s", edit_error.c_str());
-  }
-}
-
-
-}  // namespace
-
-void drawMasterTimelineView(engine::EngineCore& parEngine,
-                            EditorSession& parSession,
-                            bool parFitToMovie, int parZoomDirection) {
-  drawMasterTimeline(parEngine, parSession, parFitToMovie, parZoomDirection);
 }
 
 }  // namespace kage::editor

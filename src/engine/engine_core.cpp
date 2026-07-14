@@ -268,14 +268,9 @@ void EngineCore::createDefaultProject() {
     frameEntity(torii);
     clearSelection();
   }
-  if (const std::optional<film::FilmFrame> initial_camera_frame =
-          film::initialFilmCameraCreationFrame(
-              film::MovieTimelineOrigin::NewProject, scene->movie_timeline);
-      initial_camera_frame.has_value()) {
-    const auto film_camera = createFilmCameraFromView(*initial_camera_frame);
-    if (!film_camera.has_value()) {
-      throw std::runtime_error(film_camera.error());
-    }
+  const auto film_camera = createFilmCameraFromView(0);
+  if (!film_camera.has_value()) {
+    throw std::runtime_error(film_camera.error());
   }
   clearSelection();
   markProjectDirty();

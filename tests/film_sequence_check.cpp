@@ -1,3 +1,4 @@
+#include "animation/animation_system.hpp"
 #include "film/movie_timeline.hpp"
 #include "film/timeline_edit_service.hpp"
 
@@ -31,7 +32,7 @@ int main() {
   FilmPlayback empty_playback;
   empty_playback.playing = true;
   empty_playback.previewing = true;
-  empty_playback.update(1.0f, empty_timeline);
+  empty_playback.update(1.0f, empty_timeline.durationFrames());
   if (empty_playback.playing || empty_playback.previewing ||
       empty_playback.playhead_frame != 0.0) {
     return fail("zero-duration playback did not stop cleanly");
@@ -153,11 +154,10 @@ int main() {
       movement_edits.appendClipToLane(*movement_sequence, 10, first_movement);
   const auto second_movement_id =
       movement_edits.appendClipToLane(*movement_sequence, 10, second_movement);
-  FilmFrameState continuity_state;
-  evaluateTargetSequence(*movement_timeline.findSequence(*movement_sequence), 10,
-                         continuity_state);
-  if (continuity_state.transforms.empty() ||
-      !close(continuity_state.transforms.front().transform.translation.x, 10.0f)) {
+  const std::optional<FilmFrameState> continuity_state =
+      evaluateTargetSequencePreview(movement_timeline, *movement_sequence, 10);
+  if (!continuity_state.has_value() || continuity_state->transforms.empty() ||
+      !close(continuity_state->transforms.front().transform.translation.x, 10.0f)) {
     return fail("previous-endpoint movement continuity failed");
   }
   math::Transform explicit_start;
@@ -337,28 +337,24 @@ int main() {
     return fail("looping animation final-pose hold failed");
   }
 
-  MovieTimeline legacy_animation_timeline;
-  TimelineEditService legacy_animation_edits(legacy_animation_timeline);
-  const auto legacy_animation_sequence = legacy_animation_edits.createSequence(
-      "Legacy Animation", {TimelineTargetKind::RiggedEntity, {13}},
-      CapturedEntityBaseState{});
-  RigAnimationClip legacy_animation;
-  legacy_animation.legacy_clip_index = 3;
-  if (!legacy_animation_sequence.has_value() ||
-      !legacy_animation_edits
-           .appendClipToLane(*legacy_animation_sequence, 10, legacy_animation)
-           .has_value() ||
-      !legacy_animation_edits.placeSequence(*legacy_animation_sequence, 0)
-           .has_value()) {
-    return fail("legacy animation fallback setup failed");
+  assets::ModelAsset animation_asset;
+  animation_asset.animation_clips = {{10, "First"}, {20, "Second"}};
+  const RigAnimationPlayback stable_animation{.clip_id = 20};
+  const RigAnimationPlayback missing_animation{.clip_id = 999};
+  if (animation::resolveAnimationClipIndex(animation_asset, stable_animation) != 1 ||
+      animation::resolveAnimationClipIndex(animation_asset, missing_animation)
+          .has_value()) {
+    return fail("animation playback did not resolve only stable IDs");
   }
-  const FilmFrameState legacy_animation_frame =
-      evaluateMovieTimeline(legacy_animation_timeline, 1);
-  if (legacy_animation_frame.rig_animations.size() != 1 ||
-      legacy_animation_frame.rig_animations.front().animation.clip_id != 0 ||
-      legacy_animation_frame.rig_animations.front()
-              .animation.legacy_clip_index != 3) {
-    return fail("legacy animation fallback data was not preserved");
+  MovieTimeline bind_pose_timeline;
+  TargetSequence bind_pose_sequence;
+  bind_pose_sequence.id = 1;
+  bind_pose_sequence.target = {TimelineTargetKind::RiggedEntity, {13}};
+  bind_pose_sequence.clips.push_back({1, 10, 20, RigAnimationClip{.clip_id = 20}});
+  bind_pose_timeline.sequences.push_back(std::move(bind_pose_sequence));
+  bind_pose_timeline.instances.push_back({1, 1, 0});
+  if (!evaluateMovieTimeline(bind_pose_timeline, 0).rig_animations.empty()) {
+    return fail("rig animation override was active before its clip");
   }
 
   MovieTimeline property_timeline;

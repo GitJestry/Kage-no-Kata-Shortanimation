@@ -81,7 +81,7 @@ void setTransform(FilmFrameState& parState, scene::EntityId parEntity,
   }
 }
 
-[[nodiscard]] std::optional<FilmPropertyKind> legacyPropertyKind(
+[[nodiscard]] std::optional<FilmPropertyKind> framePropertyKind(
     PropertyKind parKind) {
   switch (parKind) {
     case PropertyKind::CameraFov:
@@ -90,10 +90,6 @@ void setTransform(FilmFrameState& parState, scene::EntityId parEntity,
       return FilmPropertyKind::LightIntensity;
     case PropertyKind::PointLightColor:
       return FilmPropertyKind::LightColor;
-    case PropertyKind::LegacyPointLightEnabled:
-      return FilmPropertyKind::LightEnabled;
-    case PropertyKind::LegacyPointLightRange:
-      return FilmPropertyKind::LightRange;
     case PropertyKind::SunDirection:
     case PropertyKind::SunIntensity:
     case PropertyKind::SunColor:
@@ -117,9 +113,8 @@ void setProperty(FilmFrameState& parState, scene::EntityId parEntity,
 
 [[nodiscard]] RigAnimationPlayback asPlaybackAnimation(
     const RigAnimationClip& parClip) {
-  return {parClip.clip_id, parClip.legacy_clip_index, parClip.source_in,
-          parClip.source_out, parClip.speed, parClip.blend_in_seconds,
-          parClip.blend_out_seconds, parClip.looping};
+  return {parClip.clip_id, parClip.source_in, parClip.source_out, parClip.speed,
+          parClip.looping};
 }
 
 [[nodiscard]] FilmFrame saturatedFrameEnd(FilmFrame parStart,
@@ -177,6 +172,25 @@ namespace {
   };
 }
 
+[[nodiscard]] std::vector<const SequenceClip*> orderedMovementClips(
+    const TargetSequence& parSequence) {
+  std::vector<const SequenceClip*> clips;
+  clips.reserve(parSequence.clips.size());
+  for (const SequenceClip& clip : parSequence.clips) {
+    if (std::holds_alternative<MovementClip>(clip.payload)) {
+      clips.push_back(&clip);
+    }
+  }
+  std::sort(clips.begin(), clips.end(),
+            [](const SequenceClip* parLeft, const SequenceClip* parRight) {
+              if (parLeft->start_frame != parRight->start_frame) {
+                return parLeft->start_frame < parRight->start_frame;
+              }
+              return parLeft->id < parRight->id;
+            });
+  return clips;
+}
+
 }  // namespace
 
 FilmFrame TargetSequence::durationFrames() const {
@@ -208,20 +222,8 @@ std::optional<ResolvedMovementPath> resolveMovementPath(
     return std::nullopt;
   }
 
-  std::vector<const SequenceClip*> movements;
-  movements.reserve(parSequence.clips.size());
-  for (const SequenceClip& clip : parSequence.clips) {
-    if (std::holds_alternative<MovementClip>(clip.payload)) {
-      movements.push_back(&clip);
-    }
-  }
-  std::sort(movements.begin(), movements.end(),
-            [](const SequenceClip* parLeft, const SequenceClip* parRight) {
-              if (parLeft->start_frame != parRight->start_frame) {
-                return parLeft->start_frame < parRight->start_frame;
-              }
-              return parLeft->id < parRight->id;
-            });
+  const std::vector<const SequenceClip*> movements =
+      orderedMovementClips(parSequence);
 
   math::Transform current = captured->transform;
   const SequenceClip* previous = nullptr;
@@ -250,20 +252,6 @@ std::optional<ResolvedMovementPath> resolveMovementPath(
     previous = clip;
   }
   return std::nullopt;
-}
-
-bool requiresInitialFilmCamera(MovieTimelineOrigin parOrigin,
-                               const MovieTimeline& parTimeline) {
-  return parOrigin == MovieTimelineOrigin::NewProject &&
-         parTimeline.sequences.empty() && parTimeline.instances.empty();
-}
-
-std::optional<FilmFrame> initialFilmCameraCreationFrame(
-    MovieTimelineOrigin parOrigin, const MovieTimeline& parTimeline) {
-  if (!requiresInitialFilmCamera(parOrigin, parTimeline)) {
-    return std::nullopt;
-  }
-  return 0;
 }
 
 TargetSequence* MovieTimeline::findSequence(TargetSequenceId parId) {
@@ -295,17 +283,12 @@ SequenceClip* MovieTimeline::findClip(SequenceClipId parId) {
   return nullptr;
 }
 
-const SequenceClip* MovieTimeline::findClip(SequenceClipId parId) const {
-  for (const TargetSequence& sequence : sequences) {
-    const auto found = std::find_if(sequence.clips.begin(), sequence.clips.end(),
-                                    [parId](const SequenceClip& item) {
-                                      return item.id == parId;
-                                    });
-    if (found != sequence.clips.end()) {
-      return &*found;
-    }
-  }
-  return nullptr;
+SequenceInstance* MovieTimeline::findInstance(SequenceInstanceId parId) {
+  const auto found = std::find_if(instances.begin(), instances.end(),
+                                  [parId](const SequenceInstance& item) {
+                                    return item.id == parId;
+                                  });
+  return found == instances.end() ? nullptr : &*found;
 }
 
 bool TimelineValidation::hasErrors() const {
@@ -319,10 +302,14 @@ bool isCameraSequence(const TargetSequence& parSequence) {
   return parSequence.target.kind == TimelineTargetKind::Camera;
 }
 
-bool isValidTimelineTarget(const TimelineTarget& parTarget) {
+namespace {
+
+[[nodiscard]] bool isValidTimelineTarget(const TimelineTarget& parTarget) {
   return parTarget.kind == TimelineTargetKind::Sun ? !parTarget.entity.isValid()
                                                     : parTarget.entity.isValid();
 }
+
+}  // namespace
 
 bool isPayloadCompatibleWithTarget(TimelineTargetKind parTargetKind,
                                    const SequenceClipPayload& parPayload) {
@@ -342,9 +329,7 @@ bool isPayloadCompatibleWithTarget(TimelineTargetKind parTargetKind,
       return kind == PropertyKind::CameraFov;
     case TimelineTargetKind::PointLight:
       return kind == PropertyKind::PointLightIntensity ||
-             kind == PropertyKind::PointLightColor ||
-             kind == PropertyKind::LegacyPointLightEnabled ||
-             kind == PropertyKind::LegacyPointLightRange;
+             kind == PropertyKind::PointLightColor;
     case TimelineTargetKind::Sun:
       return kind == PropertyKind::SunDirection ||
              kind == PropertyKind::SunIntensity || kind == PropertyKind::SunColor;
@@ -352,17 +337,7 @@ bool isPayloadCompatibleWithTarget(TimelineTargetKind parTargetKind,
   return false;
 }
 
-bool isAuthorablePayloadForTarget(TimelineTargetKind parTargetKind,
-                                  const SequenceClipPayload& parPayload) {
-  if (!isPayloadCompatibleWithTarget(parTargetKind, parPayload)) {
-    return false;
-  }
-  if (const auto* property = std::get_if<PropertyClip>(&parPayload)) {
-    return property->kind != PropertyKind::LegacyPointLightEnabled &&
-           property->kind != PropertyKind::LegacyPointLightRange;
-  }
-  return true;
-}
+namespace {
 
 void evaluateTargetSequence(const TargetSequence& parSequence,
                             FilmFrame parLocalFrame, FilmFrameState& parState) {
@@ -394,16 +369,8 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
     parState.sun = {{sun->direction_to_sun, sun->color, sun->intensity}};
   }
 
-  std::vector<const SequenceClip*> movements;
-  for (const SequenceClip& clip : parSequence.clips) {
-    if (std::holds_alternative<MovementClip>(clip.payload)) {
-      movements.push_back(&clip);
-    }
-  }
-  std::sort(movements.begin(), movements.end(), [](const SequenceClip* left,
-                                                    const SequenceClip* right) {
-    return left->start_frame < right->start_frame;
-  });
+  const std::vector<const SequenceClip*> movements =
+      orderedMovementClips(parSequence);
   if (!movements.empty() &&
       std::holds_alternative<CapturedEntityBaseState>(parSequence.captured_base)) {
     math::Transform current =
@@ -437,7 +404,7 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
     setTransform(parState, parSequence.target.entity, current);
   }
 
-  for (int lane = 2; lane < 2 + static_cast<int>(PropertyKind::LegacyPointLightRange) + 1;
+  for (int lane = 2; lane < 2 + static_cast<int>(PropertyKind::SunColor) + 1;
        ++lane) {
     const SequenceClip* selected = nullptr;
     for (const SequenceClip& clip : parSequence.clips) {
@@ -458,7 +425,7 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
                                               clipT(parLocalFrame, selected->start_frame,
                                                     selected->end_frame))
                                 : property.end_value;
-    if (const auto kind = legacyPropertyKind(property.kind); kind.has_value()) {
+    if (const auto kind = framePropertyKind(property.kind); kind.has_value()) {
       setProperty(parState, parSequence.target.entity, *kind, value);
     } else {
       if (!parState.sun.has_value()) {
@@ -529,6 +496,8 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
     }
   }
 }
+
+}  // namespace
 
 std::optional<FilmFrameState> evaluateTargetSequencePreview(
     const MovieTimeline& parTimeline, TargetSequenceId parSequenceId,
@@ -769,11 +738,6 @@ TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
     }
   }
   return validation;
-}
-
-void FilmPlayback::update(float parDeltaSeconds,
-                          const MovieTimeline& parTimeline) {
-  update(parDeltaSeconds, parTimeline.durationFrames());
 }
 
 void FilmPlayback::update(float parDeltaSeconds, FilmFrame parDuration) {
