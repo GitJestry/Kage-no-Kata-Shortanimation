@@ -13,8 +13,7 @@ std::optional<film::TimelineTarget> movieTargetForEntity(
   if (parEntity.camera.has_value()) {
     return film::TimelineTarget{film::TimelineTargetKind::Camera, parEntity.id};
   }
-  if (parEntity.light.has_value() &&
-      parEntity.light->type == scene::LightType::Point) {
+  if (parEntity.light.has_value()) {
     return film::TimelineTarget{film::TimelineTargetKind::PointLight,
                                 parEntity.id};
   }

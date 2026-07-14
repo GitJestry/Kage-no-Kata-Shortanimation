@@ -36,20 +36,12 @@ struct RigComponent final {
 };
 
 struct CameraComponent final {
-  bool active = false;
   float vertical_fov_degrees = 45.0f;
   float near_plane = 0.01f;
   float far_plane = 100.0f;
 };
 
-enum class LightType {
-  Sun,
-  Point,
-  Spot
-};
-
 struct LightComponent final {
-  LightType type = LightType::Point;
   glm::vec3 color{1.0f, 0.86f, 0.56f};
   float intensity = 3.0f;
   float range = 9.0f;

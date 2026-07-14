@@ -313,38 +313,6 @@ std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
   return m_asset_library.size() - 1;
 }
 
-ModelAsset& AssetRegistry::loadAsset(std::size_t parAssetIndex) {
-  if (parAssetIndex >= m_asset_library.size()) {
-    throw std::runtime_error("Asset library index is out of range");
-  }
-
-  AssetLibraryEntry& asset = m_asset_library[parAssetIndex];
-  if (!asset.document.has_value()) {
-    try {
-      GltfAssetLoader loader;
-      asset.load_state = AssetLoadState::CpuLoading;
-      asset.load_started_at = std::chrono::steady_clock::now();
-      asset.document = loader.loadDocument(asset.path);
-      asset.last_cpu_import_ms =
-          std::chrono::duration<float, std::milli>(
-              std::chrono::steady_clock::now() - asset.load_started_at)
-              .count();
-      asset.load_state = AssetLoadState::Ready;
-      asset.load_error.clear();
-      applyAnimationPacks(asset);
-    } catch (const std::exception& error) {
-      asset.last_cpu_import_ms =
-          std::chrono::duration<float, std::milli>(
-              std::chrono::steady_clock::now() - asset.load_started_at)
-              .count();
-      asset.load_state = AssetLoadState::Error;
-      asset.load_error = error.what();
-      throw;
-    }
-  }
-  return *asset.document;
-}
-
 void AssetRegistry::requestLoad(std::size_t parAssetIndex) {
   if (parAssetIndex >= m_asset_library.size()) {
     return;

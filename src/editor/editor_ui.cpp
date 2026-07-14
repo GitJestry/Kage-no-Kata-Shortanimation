@@ -846,7 +846,6 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
     scene::LightComponent light = *entity->light;
     bool changed = false;
     ImGui::TextDisabled("Point light source");
-    light.type = scene::LightType::Point;
     changed |= ImGui::Checkbox("Enabled", &light.enabled);
     changed |= ImGui::Checkbox("Cast shadows", &light.casts_shadows);
     changed |= ImGui::ColorEdit3("Color", &light.color.x);

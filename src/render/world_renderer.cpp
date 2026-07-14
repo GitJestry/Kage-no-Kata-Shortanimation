@@ -905,12 +905,10 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
               glm::vec4(0.55f, 0.68f, 0.82f, 0.30f));
     }
     if (entity.light.has_value()) {
-      if (entity.light->type == scene::LightType::Point) {
-        addLightGizmo(m_line_vertices, m_solid_vertices,
-                      viewportEntityTransform(entity, parView.film_state),
-                      *entity.light,
-                      camera.getRight(), camera.getUp());
-      }
+      addLightGizmo(m_line_vertices, m_solid_vertices,
+                    viewportEntityTransform(entity, parView.film_state),
+                    *entity.light,
+                    camera.getRight(), camera.getUp());
     }
     if (entity.camera.has_value()) {
       addCameraGizmo(m_line_vertices,
@@ -919,7 +917,6 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   }
   if (parGhost.kind == PlacementGhost::Kind::PointLight) {
     scene::LightComponent light;
-    light.type = scene::LightType::Point;
     light.color = parGhost.light_color;
     light.intensity = parGhost.light_intensity;
     addLightGizmo(m_line_vertices, m_solid_vertices, parGhost.transform,
@@ -944,8 +941,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                     selected_entity->transform.transform.translation,
                     axis_length * 0.07f);
     }
-    if (selected_entity->light.has_value() &&
-        selected_entity->light->type == scene::LightType::Point) {
+    if (selected_entity->light.has_value()) {
       const MeshCenterQuery nearest_mesh = findNearestMeshCenter(
           parScene, selected_entity->transform.transform.translation);
       if (nearest_mesh.found) {

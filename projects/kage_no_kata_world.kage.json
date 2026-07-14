@@ -465,8 +465,7 @@
             ],
             "enabled": true,
             "intensity": 3.0,
-            "range": 9.0,
-            "type": "point"
+            "range": 9.0
           },
           "name": "Light Source",
           "transform": {
@@ -551,8 +550,7 @@
             ],
             "enabled": true,
             "intensity": 3.0,
-            "range": 9.0,
-            "type": "point"
+            "range": 9.0
           },
           "name": "Light Source",
           "transform": {
@@ -585,8 +583,7 @@
             ],
             "enabled": true,
             "intensity": 3.0,
-            "range": 9.0,
-            "type": "point"
+            "range": 9.0
           },
           "name": "Light Source",
           "transform": {
@@ -896,7 +893,6 @@
         },
         {
           "camera": {
-            "active": false,
             "far": 729.6380615234375,
             "fov": 74.80000305175781,
             "near": 0.029999999329447746

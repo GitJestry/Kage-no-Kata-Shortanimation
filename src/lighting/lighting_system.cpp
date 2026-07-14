@@ -43,8 +43,7 @@ LightingState LightingSystem::extract(
   thread_local std::vector<Candidate> candidates;
   candidates.clear();
   for (const scene::EntityRecord& entity : parWorld.getEntities()) {
-    if (!entity.alive || !entity.light.has_value() ||
-        entity.light->type != scene::LightType::Point) {
+    if (!entity.alive || !entity.light.has_value()) {
       continue;
     }
     scene::LightComponent source = *entity.light;

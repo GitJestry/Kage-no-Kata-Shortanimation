@@ -40,7 +40,6 @@ using kage::serialization::writeVec3;
 [[nodiscard]] kage::scene::LightComponent readPointLight(
     const json& parJson) {
   kage::scene::LightComponent light;
-  light.type = kage::scene::LightType::Point;
   light.enabled = parJson.value("enabled", true);
   light.color = readVec3(parJson.value("color", json::array()), light.color);
   light.intensity = parJson.value("intensity", light.intensity);
@@ -225,7 +224,6 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     if (entity_json.contains("camera")) {
       const json& camera_json = entity_json["camera"];
       kage::scene::CameraComponent camera;
-      camera.active = camera_json.value("active", false);
       camera.vertical_fov_degrees = camera_json.value("fov", 45.0f);
       camera.near_plane = camera_json.value("near", 0.01f);
       camera.far_plane = camera_json.value("far", 100.0f);
@@ -277,16 +275,13 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     }
     if (entity.camera.has_value()) {
       entity_json["camera"] = {
-          {"active", entity.camera->active},
           {"fov", entity.camera->vertical_fov_degrees},
           {"near", entity.camera->near_plane},
           {"far", entity.camera->far_plane},
       };
     }
-    if (entity.light.has_value() &&
-        entity.light->type == kage::scene::LightType::Point) {
+    if (entity.light.has_value()) {
       entity_json["light"] = {
-          {"type", "point"},
           {"enabled", entity.light->enabled},
           {"color", writeVec3(entity.light->color)},
           {"intensity", entity.light->intensity},

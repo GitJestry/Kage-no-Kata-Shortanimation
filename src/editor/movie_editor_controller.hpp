@@ -11,8 +11,8 @@ class EngineCore;
 
 namespace kage::editor {
 
-// Returns only targets which Movie mode can animate.  Static meshes and
-// unsupported lights deliberately have no Movie selection representation.
+// Returns only targets which Movie mode can animate. Static meshes have no
+// Movie selection representation.
 [[nodiscard]] std::optional<film::TimelineTarget> movieTargetForEntity(
     const scene::EntityRecord& parEntity);
 [[nodiscard]] bool movementTransitionAvailable(

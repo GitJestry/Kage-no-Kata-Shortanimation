@@ -144,9 +144,8 @@ std::filesystem::path getExecutablePath() {
 namespace kage::platform {
 
 RuntimePaths::RuntimePaths(std::filesystem::path parExecutablePath)
-    : m_executable_directory(
-          canonicalOrAbsolute(std::move(parExecutablePath)).parent_path()),
-      m_project_root(resolveProjectRoot(m_executable_directory)),
+    : m_project_root(resolveProjectRoot(
+          canonicalOrAbsolute(std::move(parExecutablePath)).parent_path())),
       m_asset_directory(m_project_root / "assets"),
       m_model_directory(m_asset_directory / "models") {}
 

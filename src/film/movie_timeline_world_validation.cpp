@@ -34,8 +34,7 @@ void addWorldDiagnostic(TimelineValidation& parValidation, bool parForBake,
     case TimelineTargetKind::Camera:
       return parEntity.camera.has_value();
     case TimelineTargetKind::PointLight:
-      return parEntity.light.has_value() &&
-             parEntity.light->type == scene::LightType::Point;
+      return parEntity.light.has_value();
     case TimelineTargetKind::Sun:
       return true;
   }

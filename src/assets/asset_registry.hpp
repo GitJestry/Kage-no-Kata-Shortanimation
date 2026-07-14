@@ -58,7 +58,6 @@ class AssetRegistry final {
   std::size_t registerModelAsset(std::string parLabel,
                                  std::filesystem::path parPath,
                                  ModelAsset parDocument);
-  ModelAsset& loadAsset(std::size_t parAssetIndex);
   void requestLoad(std::size_t parAssetIndex);
   void beginCpuLoad(std::size_t parAssetIndex);
   bool completeCpuLoad(std::size_t parAssetIndex,

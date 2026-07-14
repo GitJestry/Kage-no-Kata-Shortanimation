@@ -34,7 +34,6 @@ createFilmCameraAtomically(
   }
   record->transform.transform = parTransform;
   scene::CameraComponent camera;
-  camera.active = false;
   camera.vertical_fov_degrees = parCamera.vertical_fov_degrees;
   camera.near_plane = parCamera.near_plane;
   camera.far_plane = parCamera.far_plane;

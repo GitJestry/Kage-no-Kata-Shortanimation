@@ -76,7 +76,7 @@ int main() {
   world.setRig(rig, scene::RigComponent{});
   const scene::EntityId camera = world.createEntityWithId("Movie Camera", {102});
   world.findEntity(camera)->transform.transform.translation = {4.0f, 3.0f, 12.0f};
-  world.setCamera(camera, scene::CameraComponent{false, 52.0f, 0.2f, 500.0f});
+  world.setCamera(camera, scene::CameraComponent{52.0f, 0.2f, 500.0f});
   const scene::EntityId light = world.createEntityWithId("Lantern", {103});
   scene::LightComponent light_component;
   light_component.enabled = true;

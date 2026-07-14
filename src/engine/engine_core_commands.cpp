@@ -116,7 +116,6 @@ scene::EntityId EngineCore::createCameraEntityAt(
   }
 
   scene::CameraComponent camera;
-  camera.active = false;
   camera.vertical_fov_degrees =
       m_camera_system.getEditorCamera().vertical_fov_degrees;
   camera.near_plane = m_camera_system.getEditorCamera().near_plane;
@@ -137,7 +136,6 @@ scene::EntityId EngineCore::createPointLightEntityAt(
   }
 
   scene::LightComponent light;
-  light.type = scene::LightType::Point;
   getActiveScene().world.setLight(entity, light);
   selectEntity(entity);
   markProjectDirty();
