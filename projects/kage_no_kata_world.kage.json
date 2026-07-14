@@ -1,55 +1,21 @@
 {
   "render": {
-    "ambient_diffuse": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "ambient_specular": [
-      0.0,
-      0.0,
-      0.0
-    ],
+    "environment": {
+      "asset_id": 18446744073709551615,
+      "intensity": 1.0,
+      "visible": true,
+      "yaw_degrees": 0.0
+    },
     "exposure": 1.0,
     "sky": 4
   },
   "scenes": [
     {
-      "editor_camera": 0,
       "entities": [
-        {
-          "camera": {
-            "active": true,
-            "far": 500.0,
-            "fov": 50.0,
-            "near": 0.029999999329447746
-          },
-          "id": 0,
-          "name": "Editor Camera",
-          "transform": {
-            "position": [
-              16.299213409423828,
-              9.67251968383789,
-              36.22329330444336
-            ],
-            "rotation": [
-              0.9542014598846436,
-              -0.1852862536907196,
-              0.23057320713996887,
-              0.044772565364837646
-            ],
-            "scale": [
-              1.0,
-              1.0,
-              1.0
-            ]
-          }
-        },
         {
           "id": 1,
           "mesh": {
             "asset_id": 7361452353719960219,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "house 1",
@@ -76,7 +42,6 @@
           "id": 3,
           "mesh": {
             "asset_id": 2938495946224025875,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "barrel 1",
@@ -103,7 +68,6 @@
           "id": 4,
           "mesh": {
             "asset_id": 9913886901207363034,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "box 1",
@@ -130,7 +94,6 @@
           "id": 5,
           "mesh": {
             "asset_id": 9913886901207363034,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "box 2",
@@ -157,7 +120,6 @@
           "id": 6,
           "mesh": {
             "asset_id": 9414820161643609261,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "korb 1",
@@ -184,7 +146,6 @@
           "id": 7,
           "mesh": {
             "asset_id": 2938495946224025875,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "barrel 2",
@@ -211,7 +172,6 @@
           "id": 8,
           "mesh": {
             "asset_id": 2938495946224025875,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "barrel 3",
@@ -238,7 +198,6 @@
           "id": 9,
           "mesh": {
             "asset_id": 4216536852233760045,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "banner 2",
@@ -265,7 +224,6 @@
           "id": 10,
           "mesh": {
             "asset_id": 16476955967298097454,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "vase 1",
@@ -292,7 +250,6 @@
           "id": 11,
           "mesh": {
             "asset_id": 14072654600327888785,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "zaun 1",
@@ -319,7 +276,6 @@
           "id": 12,
           "mesh": {
             "asset_id": 6642783376236900589,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "trunk_dirt 1",
@@ -346,7 +302,6 @@
           "id": 13,
           "mesh": {
             "asset_id": 14072654600327888785,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "zaun 2",
@@ -373,7 +328,6 @@
           "id": 14,
           "mesh": {
             "asset_id": 4826960397216529553,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "treetrunk 1",
@@ -400,7 +354,6 @@
           "id": 15,
           "mesh": {
             "asset_id": 3522100918777839163,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "lantern 1",
@@ -427,7 +380,6 @@
           "id": 16,
           "mesh": {
             "asset_id": 17974127686275345534,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "stone_group 1",
@@ -454,7 +406,6 @@
           "id": 17,
           "mesh": {
             "asset_id": 13659651275966119112,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "ground_rock_dirt 1",
@@ -481,7 +432,6 @@
           "id": 21,
           "mesh": {
             "asset_id": 8619211858720671204,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "shrine 4",
@@ -507,6 +457,7 @@
         {
           "id": 22,
           "light": {
+            "casts_shadows": true,
             "color": [
               1.0,
               0.8600000143051147,
@@ -541,7 +492,6 @@
           "id": 23,
           "mesh": {
             "asset_id": 17116566253912930150,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "banner_pole 1",
@@ -568,7 +518,6 @@
           "id": 24,
           "mesh": {
             "asset_id": 1862975590619154340,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "tree_yellow_full 1",
@@ -594,6 +543,7 @@
         {
           "id": 26,
           "light": {
+            "casts_shadows": true,
             "color": [
               1.0,
               0.8600000143051147,
@@ -627,6 +577,7 @@
         {
           "id": 27,
           "light": {
+            "casts_shadows": true,
             "color": [
               1.0,
               0.8600000143051147,
@@ -661,7 +612,6 @@
           "id": 28,
           "mesh": {
             "asset_id": 4229603891991036415,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "grasspatch 1",
@@ -688,7 +638,6 @@
           "id": 29,
           "mesh": {
             "asset_id": 4229603891991036415,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "grasspatch 2",
@@ -715,7 +664,6 @@
           "id": 30,
           "mesh": {
             "asset_id": 4229603891991036415,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "grasspatch 3",
@@ -742,7 +690,6 @@
           "id": 31,
           "mesh": {
             "asset_id": 4229603891991036415,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "grasspatch 4",
@@ -769,7 +716,6 @@
           "id": 32,
           "mesh": {
             "asset_id": 4229603891991036415,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "grasspatch 5",
@@ -796,7 +742,6 @@
           "id": 33,
           "mesh": {
             "asset_id": 4229603891991036415,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "grasspatch 6",
@@ -823,7 +768,6 @@
           "id": 34,
           "mesh": {
             "asset_id": 4229603891991036415,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "grasspatch 7",
@@ -850,7 +794,6 @@
           "id": 35,
           "mesh": {
             "asset_id": 1862975590619154340,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "tree_yellow_full 3",
@@ -877,7 +820,6 @@
           "id": 36,
           "mesh": {
             "asset_id": 12406930762824764527,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "tree_yellow_few 1",
@@ -904,7 +846,6 @@
           "id": 37,
           "mesh": {
             "asset_id": 6983023483631705405,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "Samurai 1",
@@ -931,7 +872,6 @@
           "id": 38,
           "mesh": {
             "asset_id": 13563340816392298620,
-            "opacity": 1.0,
             "visible": true
           },
           "name": "torii_gate 1",
@@ -953,8 +893,178 @@
               1.0
             ]
           }
+        },
+        {
+          "camera": {
+            "active": false,
+            "far": 729.6380615234375,
+            "fov": 74.80000305175781,
+            "near": 0.029999999329447746
+          },
+          "id": 39,
+          "name": "Film Camera",
+          "transform": {
+            "position": [
+              24.462162017822266,
+              10.979732513427734,
+              15.98772144317627
+            ],
+            "rotation": [
+              0.7916157245635986,
+              -0.17245694994926453,
+              0.5727429389953613,
+              0.12477454543113708
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
         }
       ],
+      "film": {
+        "camera_gap_mode": 0,
+        "fps": 30,
+        "instances": [
+          {
+            "id": 1,
+            "sequence_id": 1,
+            "start_frame": 0
+          }
+        ],
+        "name": "Kage no Kata",
+        "next_clip_id": 3,
+        "next_instance_id": 2,
+        "next_sequence_id": 2,
+        "schema_version": 2,
+        "sequences": [
+          {
+            "captured_base": {
+              "camera": {
+                "far": 729.6380615234375,
+                "fov": 74.80000305175781,
+                "near": 0.029999999329447746
+              },
+              "transform": {
+                "position": [
+                  24.462162017822266,
+                  10.979732513427734,
+                  15.98772144317627
+                ],
+                "rotation": [
+                  0.7916157245635986,
+                  -0.17245694994926453,
+                  0.5727429389953613,
+                  0.12477454543113708
+                ],
+                "scale": [
+                  1.0,
+                  1.0,
+                  1.0
+                ]
+              }
+            },
+            "clips": [
+              {
+                "curve": {
+                  "automatic_position_controls": true,
+                  "position_control_1": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "position_control_2": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "timing_control_1": 0.3333333432674408,
+                  "timing_control_2": 0.6666666865348816
+                },
+                "end": {
+                  "position": [
+                    5.9120001792907715,
+                    10.979732513427734,
+                    15.98772144317627
+                  ],
+                  "rotation": [
+                    0.9684165120124817,
+                    -0.21097466349601746,
+                    0.12984344363212585,
+                    0.02828163094818592
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "end_frame": 143,
+                "id": 1,
+                "start_frame": 0,
+                "start_mode": 0,
+                "transition_before": {
+                  "curve": {
+                    "automatic_position_controls": true,
+                    "position_control_1": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "position_control_2": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "timing_control_1": 0.3333333432674408,
+                    "timing_control_2": 0.6666666865348816
+                  },
+                  "enabled": false
+                },
+                "type": "movement"
+              },
+              {
+                "control_1": [
+                  78.91666412353516,
+                  74.80000305175781,
+                  74.80000305175781,
+                  74.80000305175781
+                ],
+                "control_2": [
+                  83.03333282470703,
+                  74.80000305175781,
+                  74.80000305175781,
+                  74.80000305175781
+                ],
+                "end_frame": 132,
+                "end_value": [
+                  87.1500015258789,
+                  74.80000305175781,
+                  74.80000305175781,
+                  74.80000305175781
+                ],
+                "id": 2,
+                "kind": 0,
+                "start_frame": 0,
+                "start_value": [
+                  74.80000305175781,
+                  74.80000305175781,
+                  74.80000305175781,
+                  74.80000305175781
+                ],
+                "type": "property"
+              }
+            ],
+            "id": 1,
+            "name": "Film Camera",
+            "target": {
+              "entity": 39,
+              "kind": 1
+            }
+          }
+        ]
+      },
       "name": "Kage no Kata World",
       "sun": {
         "color": [
@@ -972,5 +1082,5 @@
       }
     }
   ],
-  "version": 2
+  "version": 6
 }

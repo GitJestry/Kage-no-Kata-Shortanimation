@@ -9,30 +9,15 @@
 #pragma clang diagnostic pop
 #endif
 
-#include <algorithm>
 #include <fstream>
 
 namespace kage::editor {
 
-void loadEditorSession(const std::filesystem::path& parPath,
-                       EditorSession& parSession) {
-  std::ifstream input(parPath);
-  if (!input) {
-    return;
-  }
-  try {
-    nlohmann::json document;
-    input >> document;
-    parSession.film_editor_height = std::clamp(
-        document.value("film_editor_height", parSession.film_editor_height),
-        220.0f, 1200.0f);
-  } catch (const nlohmann::json::exception&) {
-  }
-}
+void loadEditorSession(const std::filesystem::path&, EditorSession&) {}
 
 void saveEditorSession(const std::filesystem::path& parPath,
-                       const EditorSession& parSession) {
-  nlohmann::json document;
+                       const EditorSession&) {
+  nlohmann::json document = nlohmann::json::object();
   try {
     std::ifstream input(parPath);
     if (input) {
@@ -42,7 +27,8 @@ void saveEditorSession(const std::filesystem::path& parPath,
     document = nlohmann::json::object();
   }
   document["version"] = 4;
-  document["film_editor_height"] = parSession.film_editor_height;
+  document.erase("film_editor_height");
+  document.erase("target_sequence_pixels_per_frame");
   const std::filesystem::path temporary = parPath.string() + ".ui.tmp";
   {
     std::ofstream output(temporary, std::ios::trunc);

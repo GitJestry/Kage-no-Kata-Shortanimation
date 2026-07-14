@@ -82,6 +82,7 @@ if(BUILD_TESTING)
     tests/film_serializer_check.cpp
     src/film/movie_timeline.cpp
     src/film/movie_timeline_serializer.cpp
+    src/film/timeline_edit_service.cpp
     src/scene/world.cpp
   )
   kage_add_check(lighting_film_state_check
@@ -93,7 +94,44 @@ if(BUILD_TESTING)
   kage_add_check(animation_fallback_check
     tests/animation_fallback_check.cpp
   )
+  kage_add_check(initial_movie_camera_check
+    tests/initial_movie_camera_check.cpp
+    src/engine/film_camera_creation.cpp
+    src/film/movie_timeline.cpp
+    src/film/timeline_edit_service.cpp
+    src/scene/world.cpp
+  )
+  kage_add_check(movie_editor_controller_check
+    tests/movie_editor_controller_check.cpp
+    src/assets/asset_registry.cpp
+    src/assets/gltf_asset_loader.cpp
+    src/editor/movie_editor_controller.cpp
+    src/film/movie_timeline.cpp
+    src/film/movie_timeline_world_validation.cpp
+    src/film/timeline_edit_service.cpp
+    src/scene/world.cpp
+  )
+  kage_add_check(editor_session_check
+    tests/editor_session_check.cpp
+    src/editor/editor_session.cpp
+  )
+  kage_add_check(movie_editor_layout_check
+    tests/movie_editor_layout_check.cpp
+  )
+  kage_add_check(movie_imgui_scope_check
+    tests/movie_imgui_scope_check.cpp
+  )
+  kage_add_check(movie_viewport_check
+    tests/movie_viewport_check.cpp
+    src/camera/camera.cpp
+    src/film/movie_timeline.cpp
+    src/film/timeline_edit_service.cpp
+    src/scene/world.cpp
+  )
   target_link_libraries(film_serializer_check PRIVATE framework tinygltf)
+  target_link_libraries(movie_editor_controller_check PRIVATE tinygltf)
+  target_link_libraries(editor_session_check PRIVATE framework tinygltf)
+  target_link_libraries(movie_imgui_scope_check PRIVATE imgui_glfw)
   target_compile_definitions(film_serializer_check PRIVATE
     KAGE_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME film_sequence COMMAND film_sequence_check)
@@ -101,6 +139,12 @@ if(BUILD_TESTING)
   add_test(NAME film_serializer COMMAND film_serializer_check)
   add_test(NAME lighting_film_state COMMAND lighting_film_state_check)
   add_test(NAME animation_fallback COMMAND animation_fallback_check)
+  add_test(NAME initial_movie_camera COMMAND initial_movie_camera_check)
+  add_test(NAME movie_editor_controller COMMAND movie_editor_controller_check)
+  add_test(NAME editor_session COMMAND editor_session_check)
+  add_test(NAME movie_editor_layout COMMAND movie_editor_layout_check)
+  add_test(NAME movie_imgui_scope COMMAND movie_imgui_scope_check)
+  add_test(NAME movie_viewport COMMAND movie_viewport_check)
 endif()
 
 if(MSVC)

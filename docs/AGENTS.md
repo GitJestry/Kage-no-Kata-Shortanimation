@@ -1,19 +1,18 @@
 # Repository execution instructions
 
-For Movie Editor work, read:
+Before modifying the repository, read:
 
-- docs/DEVELOPER_CONTRACT.md
 - docs/PROJECT_REQUIREMENTS.md
-- docs/MOVIE_EDITOR_PLAN.md
+- docs/DEVELOPER_CONTRACT.md
+- docs/MOVIE_EDITOR_ARCHITECTURE.md
 
-Implement exactly one requested milestone.
-Do not add dependencies, unrelated refactors, or extra feature scope.
-Dont rely on legacy code, better delete than trying to adapt a not working base.
-Movie evaluation must never mutate World state.
-All timeline mutations must use TimelineEditService.
-Run relevant tests before finishing.
+For cleanup work, also read:
 
-Report only:
-- changed files;
-- tests run;
-- remaining risks.
+- docs/DEEP_CLEAN_PLAN.md
+
+Historical implementation plans are not authoritative.
+
+Prefer deletion and simplification over new abstractions.
+Do not preserve unused APIs solely for possible future use.
+Do not change observable submitted behavior without approval.
+Every cleanup task must have a net negative line count.

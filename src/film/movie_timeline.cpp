@@ -58,16 +58,6 @@ template <typename Value>
   return result;
 }
 
-[[nodiscard]] int laneFor(const SequenceClipPayload& parPayload) {
-  if (std::holds_alternative<MovementClip>(parPayload)) {
-    return 0;
-  }
-  if (std::holds_alternative<RigAnimationClip>(parPayload)) {
-    return 1;
-  }
-  return 2 + static_cast<int>(std::get<PropertyClip>(parPayload).kind);
-}
-
 [[nodiscard]] bool overlaps(FilmFrame parStart, FilmFrame parEnd,
                             FilmFrame parOtherStart, FilmFrame parOtherEnd) {
   return parStart < parOtherEnd && parEnd > parOtherStart;
@@ -159,6 +149,36 @@ void addDiagnostic(TimelineValidation& parValidation,
 
 namespace kage::film {
 
+int laneFor(const SequenceClipPayload& parPayload) {
+  if (std::holds_alternative<MovementClip>(parPayload)) {
+    return 0;
+  }
+  if (std::holds_alternative<RigAnimationClip>(parPayload)) {
+    return 1;
+  }
+  return 2 + static_cast<int>(std::get<PropertyClip>(parPayload).kind);
+}
+
+namespace {
+
+[[nodiscard]] MovementPathSegment resolveMovementSegment(
+    const glm::vec3& parStart, const glm::vec3& parEnd,
+    const MovementCurve& parCurve) {
+  const glm::vec3 delta = parEnd - parStart;
+  return {
+      parStart,
+      parCurve.automatic_position_controls
+          ? parStart + delta / 3.0f
+          : parCurve.position_control_1,
+      parCurve.automatic_position_controls
+          ? parEnd - delta / 3.0f
+          : parCurve.position_control_2,
+      parEnd,
+  };
+}
+
+}  // namespace
+
 FilmFrame TargetSequence::durationFrames() const {
   FilmFrame duration = 0;
   for (const SequenceClip& clip : clips) {
@@ -178,6 +198,72 @@ FilmFrame MovieTimeline::durationFrames() const {
     }
   }
   return duration;
+}
+
+std::optional<ResolvedMovementPath> resolveMovementPath(
+    const TargetSequence& parSequence, SequenceClipId parClipId) {
+  const auto* captured =
+      std::get_if<CapturedEntityBaseState>(&parSequence.captured_base);
+  if (captured == nullptr || parClipId == 0) {
+    return std::nullopt;
+  }
+
+  std::vector<const SequenceClip*> movements;
+  movements.reserve(parSequence.clips.size());
+  for (const SequenceClip& clip : parSequence.clips) {
+    if (std::holds_alternative<MovementClip>(clip.payload)) {
+      movements.push_back(&clip);
+    }
+  }
+  std::sort(movements.begin(), movements.end(),
+            [](const SequenceClip* parLeft, const SequenceClip* parRight) {
+              if (parLeft->start_frame != parRight->start_frame) {
+                return parLeft->start_frame < parRight->start_frame;
+              }
+              return parLeft->id < parRight->id;
+            });
+
+  math::Transform current = captured->transform;
+  const SequenceClip* previous = nullptr;
+  for (const SequenceClip* clip : movements) {
+    const MovementClip& movement = std::get<MovementClip>(clip->payload);
+    const math::Transform start =
+        movement.start_mode == MovementStartMode::ExplicitPosition &&
+                movement.explicit_start.has_value()
+            ? *movement.explicit_start
+            : current;
+    if (clip->id == parClipId) {
+      ResolvedMovementPath result;
+      result.movement = resolveMovementSegment(
+          start.translation, movement.end.translation, movement.curve);
+      if (previous != nullptr &&
+          previous->end_frame < clip->start_frame &&
+          movement.start_mode == MovementStartMode::ExplicitPosition &&
+          movement.transition_before.enabled) {
+        result.transition_before = resolveMovementSegment(
+            current.translation, start.translation,
+            movement.transition_before.curve);
+      }
+      return result;
+    }
+    current = movement.end;
+    previous = clip;
+  }
+  return std::nullopt;
+}
+
+bool requiresInitialFilmCamera(MovieTimelineOrigin parOrigin,
+                               const MovieTimeline& parTimeline) {
+  return parOrigin == MovieTimelineOrigin::NewProject &&
+         parTimeline.sequences.empty() && parTimeline.instances.empty();
+}
+
+std::optional<FilmFrame> initialFilmCameraCreationFrame(
+    MovieTimelineOrigin parOrigin, const MovieTimeline& parTimeline) {
+  if (!requiresInitialFilmCamera(parOrigin, parTimeline)) {
+    return std::nullopt;
+  }
+  return 0;
 }
 
 TargetSequence* MovieTimeline::findSequence(TargetSequenceId parId) {
@@ -226,13 +312,6 @@ bool TimelineValidation::hasErrors() const {
   return std::any_of(diagnostics.begin(), diagnostics.end(),
                      [](const TimelineDiagnostic& item) {
                        return item.severity == TimelineDiagnostic::Severity::Error;
-                     });
-}
-
-bool TimelineValidation::hasWarnings() const {
-  return std::any_of(diagnostics.begin(), diagnostics.end(),
-                     [](const TimelineDiagnostic& item) {
-                       return item.severity == TimelineDiagnostic::Severity::Warning;
                      });
 }
 
@@ -451,6 +530,21 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
   }
 }
 
+std::optional<FilmFrameState> evaluateTargetSequencePreview(
+    const MovieTimeline& parTimeline, TargetSequenceId parSequenceId,
+    FilmFrame parFrame) {
+  const TargetSequence* sequence = parTimeline.findSequence(parSequenceId);
+  if (sequence == nullptr) {
+    return std::nullopt;
+  }
+  FilmFrameState state;
+  evaluateTargetSequence(*sequence,
+                         std::clamp(parFrame, FilmFrame{0},
+                                    sequence->durationFrames()),
+                         state);
+  return state;
+}
+
 FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
                                      FilmFrame parFrame) {
   FilmFrameState state;
@@ -631,7 +725,7 @@ TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
     for (std::size_t right = left + 1; right < parTimeline.instances.size(); ++right) {
       const SequenceInstance& second = parTimeline.instances[right];
       const TargetSequence* second_sequence = parTimeline.findSequence(second.sequence_id);
-      if (second_sequence == nullptr || !sameTarget(first_sequence->target, second_sequence->target) ||
+      if (second_sequence == nullptr ||
           !overlaps(first.start_frame,
                     saturatedFrameEnd(first.start_frame,
                                       first_sequence->durationFrames()),
@@ -642,6 +736,10 @@ TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
       }
       const bool camera_overlap = isCameraSequence(*first_sequence) &&
                                   isCameraSequence(*second_sequence);
+      if (!camera_overlap &&
+          !sameTarget(first_sequence->target, second_sequence->target)) {
+        continue;
+      }
       addDiagnostic(validation,
                     camera_overlap && !parForBake ? TimelineDiagnostic::Severity::Warning
                                                    : TimelineDiagnostic::Severity::Error,
@@ -675,7 +773,11 @@ TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
 
 void FilmPlayback::update(float parDeltaSeconds,
                           const MovieTimeline& parTimeline) {
-  const FilmFrame duration = parTimeline.durationFrames();
+  update(parDeltaSeconds, parTimeline.durationFrames());
+}
+
+void FilmPlayback::update(float parDeltaSeconds, FilmFrame parDuration) {
+  const FilmFrame duration = parDuration;
   if (!playing) {
     return;
   }

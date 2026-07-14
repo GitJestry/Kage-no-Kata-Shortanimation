@@ -36,8 +36,9 @@ and Loading/Error/Ready is shown inline. Invalid assets use the fallback sky.
 ## Movie
 
 Movie has no hierarchy, World Inspector, placement, deletion, or world gizmos.
-The editor camera remains available for navigation and selection. Shot Preview
-is explicitly enabled in FilmEditor and is non-interactive.
+Animation Targets, Movie Inspector, and the resizable Movie Timeline replace
+the World Edit panels. The editor camera remains available for non-camera
+sequence preview; camera sequences use their evaluated camera while previewing.
 
 The bottom strip contains only the bottom-right Diagnostics button. Runtime
 Diagnostics contains timing, draw/triangle, culling, texture-memory, and

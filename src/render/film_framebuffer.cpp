@@ -11,7 +11,7 @@ constexpr char VERTEX_SHADER[] = R"(#version 410 core
 out vec2 texCoord;
 void main() {
   vec2 position = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
-  texCoord = position * 0.5;
+  texCoord = position;
   gl_Position = vec4(position * 2.0 - 1.0, 0.0, 1.0);
 }
 )";
@@ -130,6 +130,7 @@ void FilmFramebuffer::present() {
   m_tone_map_shader.use();
   m_tone_map_shader.setInt("u_hdr_color", 0);
   glActiveTexture(GL_TEXTURE0);
+  glBindSampler(0, 0);
   glBindTexture(GL_TEXTURE_2D, m_color);
   glBindVertexArray(m_vertex_array);
   glDrawArrays(GL_TRIANGLES, 0, 3);

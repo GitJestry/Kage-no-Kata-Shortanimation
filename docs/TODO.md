@@ -6,7 +6,7 @@
 - [x] Static and skinned mesh rendering.
 - [x] Samurai rig import with skins, joints, weights, and inverse bind matrices.
 - [x] Authored Samurai clips: `ReadyIdle` and `ArmAction`.
-- [x] Typed FilmTimeline movement, rig, camera, cut, and light clips.
+- [x] Typed MovieTimeline movement, rig, camera, light, and sun clips.
 - [x] Model import into `assets/models/`.
 - [x] Compatible animation import into `assets/animations/`.
 - [x] Scene/entity editor with placement, transform gizmos, delete confirmation,
@@ -16,8 +16,8 @@
 ## Delivery
 
 - [x] Add a stabilized sun shadow and two bounded point-light shadows.
-- [x] Add the 30 fps FilmEditor, camera cuts, isolated clip preview, and
-  deterministic PNG/MP4 final render.
+- [x] Add the 30 fps Movie Editor, reusable target sequences, Movie preview,
+  Bake validation, and deterministic PNG/MP4 final render.
 - [x] Add transform, rig-animation, and typed property scheduling.
 - [x] Repair full-fidelity materials, panorama import, viewport coordinates,
   point-light shadows, and sun-shadow preview.

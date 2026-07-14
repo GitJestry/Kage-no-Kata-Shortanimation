@@ -1,5 +1,7 @@
 #include "film/film_exporter.hpp"
 
+#include "film/film_output_format.hpp"
+
 #include <framework/gl/framebuffer.hpp>
 #include <framework/gl/texture.hpp>
 
@@ -7,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -104,18 +107,31 @@ bool FinalRenderJob::start(const MovieTimeline& parTimeline,
   }
 
   m_impl = std::make_unique<Impl>();
-  m_impl->frame_directory = std::move(parFrameDirectory);
-  m_impl->movie_path = std::move(parMoviePath);
-  m_impl->ffmpeg = std::move(parFfmpeg);
-  m_impl->end_frame = parTimeline.durationFrames();
-  m_impl->next_frame = 0;
-  m_impl->color.allocate2D(GL_RGBA8, 3840, 2160, 1);
-  m_impl->depth.allocate2D(GL_DEPTH_COMPONENT24, 3840, 2160, 1);
-  m_impl->framebuffer.attach(GL_COLOR_ATTACHMENT0, m_impl->color);
-  m_impl->framebuffer.attach(GL_DEPTH_ATTACHMENT, m_impl->depth);
-  m_impl->framebuffer.checkStatus();
-  m_impl->state = FinalRenderState::Rendering;
-  return true;
+  try {
+    m_impl->frame_directory = std::move(parFrameDirectory);
+    m_impl->movie_path = std::move(parMoviePath);
+    m_impl->ffmpeg = std::move(parFfmpeg);
+    m_impl->end_frame = parTimeline.durationFrames();
+    m_impl->next_frame = 0;
+    m_impl->color.allocate2D(GL_RGBA8, FILM_OUTPUT_WIDTH,
+                             FILM_OUTPUT_HEIGHT, 1);
+    m_impl->depth.allocate2D(GL_DEPTH_COMPONENT32F, FILM_OUTPUT_WIDTH,
+                             FILM_OUTPUT_HEIGHT, 1);
+    m_impl->framebuffer.attach(GL_COLOR_ATTACHMENT0, m_impl->color);
+    m_impl->framebuffer.attach(GL_DEPTH_ATTACHMENT, m_impl->depth);
+    m_impl->framebuffer.checkStatus();
+    m_impl->state = FinalRenderState::Rendering;
+    return true;
+  } catch (const std::exception& exception) {
+    m_impl->fail("Could not initialize final render: " +
+                 std::string(exception.what()));
+    parError = m_impl->error;
+    return false;
+  } catch (...) {
+    m_impl->fail("Could not initialize final render: unknown GPU error");
+    parError = m_impl->error;
+    return false;
+  }
 }
 
 void FinalRenderJob::advance(const MovieTimeline& parTimeline,
@@ -124,48 +140,57 @@ void FinalRenderJob::advance(const MovieTimeline& parTimeline,
     return;
   }
   const int frame = m_impl->next_frame;
-  m_impl->framebuffer.bind();
-  glViewport(0, 0, 3840, 2160);
-  parRender(frame, 3840, 2160, m_impl->framebuffer.handle);
-  std::ostringstream filename;
-  filename << "frame_" << std::setw(6) << std::setfill('0') << frame
-           << ".png";
-  if (!m_impl->framebuffer.writeToFile(m_impl->frame_directory /
-                                       filename.str())) {
-    m_impl->fail("Could not write final frame " + std::to_string(frame));
-    return;
-  }
-  Framebuffer::bindDefault();
-  ++m_impl->next_frame;
-  if (m_impl->next_frame < m_impl->end_frame) {
-    return;
-  }
+  try {
+    m_impl->framebuffer.bind();
+    glViewport(0, 0, FILM_OUTPUT_WIDTH, FILM_OUTPUT_HEIGHT);
+    parRender(frame, FILM_OUTPUT_WIDTH, FILM_OUTPUT_HEIGHT,
+              m_impl->framebuffer.handle);
+    std::ostringstream filename;
+    filename << "frame_" << std::setw(6) << std::setfill('0') << frame
+             << ".png";
+    if (!m_impl->framebuffer.writeToFile(m_impl->frame_directory /
+                                         filename.str())) {
+      m_impl->fail("Could not write final frame " + std::to_string(frame));
+      return;
+    }
+    Framebuffer::bindDefault();
+    ++m_impl->next_frame;
+    if (m_impl->next_frame < m_impl->end_frame) {
+      return;
+    }
 
-  std::ofstream manifest(m_impl->frame_directory / "manifest.json");
-  manifest << "{\n"
-           << "  \"name\": \"" << parTimeline.name << "\",\n"
-           << "  \"fps\": 30,\n"
-           << "  \"width\": 3840,\n"
-           << "  \"height\": 2160,\n"
-           << "  \"start_frame\": 0,\n"
-           << "  \"end_frame\": " << m_impl->end_frame << "\n"
-           << "}\n";
-  if (!manifest) {
-    m_impl->fail("Could not write final render manifest");
-    return;
+    std::ofstream manifest(m_impl->frame_directory / "manifest.json");
+    manifest << "{\n"
+             << "  \"name\": \"" << parTimeline.name << "\",\n"
+             << "  \"fps\": 30,\n"
+             << "  \"width\": " << FILM_OUTPUT_WIDTH << ",\n"
+             << "  \"height\": " << FILM_OUTPUT_HEIGHT << ",\n"
+             << "  \"start_frame\": 0,\n"
+             << "  \"end_frame\": " << m_impl->end_frame << "\n"
+             << "}\n";
+    if (!manifest) {
+      m_impl->fail("Could not write final render manifest");
+      return;
+    }
+    const std::filesystem::path pattern =
+        m_impl->frame_directory / "frame_%06d.png";
+    const std::string command =
+        quoteArgument(m_impl->ffmpeg) +
+        " -y -framerate 30 -start_number 0 -i " + quoteArgument(pattern) +
+        " -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p"
+        " -movflags +faststart " + quoteArgument(m_impl->movie_path);
+    if (std::system(command.c_str()) != 0) {
+      m_impl->fail("ffmpeg could not encode the final MPEG4 movie");
+      return;
+    }
+    m_impl->state = FinalRenderState::Complete;
+  } catch (const std::exception& exception) {
+    m_impl->fail("Bake failed at frame " + std::to_string(frame) + ": " +
+                 exception.what());
+  } catch (...) {
+    m_impl->fail("Bake failed at frame " + std::to_string(frame) +
+                 ": unknown render error");
   }
-  const std::filesystem::path pattern =
-      m_impl->frame_directory / "frame_%06d.png";
-  const std::string command =
-      quoteArgument(m_impl->ffmpeg) +
-      " -y -framerate 30 -start_number 0 -i " + quoteArgument(pattern) +
-      " -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p"
-      " -movflags +faststart " + quoteArgument(m_impl->movie_path);
-  if (std::system(command.c_str()) != 0) {
-    m_impl->fail("ffmpeg could not encode the final MPEG4 movie");
-    return;
-  }
-  m_impl->state = FinalRenderState::Complete;
 }
 
 void FinalRenderJob::cancel() {

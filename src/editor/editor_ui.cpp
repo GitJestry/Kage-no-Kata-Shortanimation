@@ -1,7 +1,8 @@
 #include "editor/editor_ui.hpp"
 
 #include "editor/lighting_panel.hpp"
-#include "editor/timeline_panel.hpp"
+#include "editor/movie_editor_controller.hpp"
+#include "editor/movie_editor_panel.hpp"
 #include "editor/ui_layout.hpp"
 
 #include <imgui.h>
@@ -141,6 +142,10 @@ void EditorUi::draw(engine::EngineCore& parEngine,
                     unsigned int parFrameCount) {
   applyStyle();
   beginPanelTracking();
+  m_movie_layout_computed = false;
+  if (parSession.workspace == Workspace::Movie) {
+    computeMovieEditorLayout(parSession);
+  }
   drawTopBar(parEngine, parSession, parViewportSize);
   const bool world_edit = parSession.workspace == Workspace::WorldEdit;
   if (world_edit && m_panel_visible) {
@@ -151,7 +156,7 @@ void EditorUi::draw(engine::EngineCore& parEngine,
     drawHiddenPanelButton();
   }
 
-  if (m_diagnostics_visible) {
+  if (world_edit && m_diagnostics_visible) {
     drawRuntimeDiagnostics(parEngine, parViewportSize, parDeltaSeconds,
                            parFrameCount);
   }
@@ -162,18 +167,31 @@ void EditorUi::draw(engine::EngineCore& parEngine,
     drawHiddenInspectorButton();
   }
   if (parSession.workspace == Workspace::Movie) {
-    if (std::optional<UiPanelRect> timeline_rect =
-            drawTimelinePanel(parEngine, parSession, parViewportSize,
-                              m_animation_import_browser,
-                              m_animation_import_label_buffer,
-                              m_animation_import_error)) {
-      m_panel_rects.push_back(*timeline_rect);
-    }
+    std::vector<UiPanelRect> movie_rects =
+        drawMovieEditorPanel(parEngine, parSession, parSession.movie_layout);
+    m_panel_rects.insert(m_panel_rects.end(), movie_rects.begin(),
+                         movie_rects.end());
   }
 
-  drawStatusStrip(parEngine, parPlacementController, parGizmoController,
-                  parViewportSize);
+  if (world_edit) {
+    drawStatusStrip(parEngine, parPlacementController, parGizmoController,
+                    parViewportSize);
+  }
   drawImportDialogs(parEngine, parPlacementController);
+}
+
+void EditorUi::computeMovieEditorLayout(EditorSession& parSession) {
+  if (m_movie_layout_computed) {
+    return;
+  }
+  const UiWorkArea area = getUiWorkArea();
+  parSession.movie_layout = kage::editor::computeMovieEditorLayout(
+      glm::vec2(area.position.x, area.position.y),
+      glm::vec2(area.size.x, area.size.y), parSession.film_editor_height);
+  parSession.film_editor_height =
+      parSession.movie_layout.timeline.max.y -
+      parSession.movie_layout.timeline.min.y;
+  m_movie_layout_computed = true;
 }
 
 void EditorUi::drawTopBar(engine::EngineCore& parEngine,
@@ -200,9 +218,10 @@ void EditorUi::drawTopBar(engine::EngineCore& parEngine,
     }
     if (ImGui::Button(label, ImVec2(87.0f, 24.0f)) && !active) {
       parSession.workspace = workspace;
-      parSession.shot_preview = false;
-      parEngine.getFilmPlayback().playing = false;
-      parEngine.getFilmPlayback().previewing = false;
+      resetMoviePreview(parEngine, parSession);
+      if (workspace == Workspace::Movie) {
+        computeMovieEditorLayout(parSession);
+      }
     }
     if (active) {
       ImGui::PopStyleColor();
@@ -215,8 +234,15 @@ void EditorUi::drawTopBar(engine::EngineCore& parEngine,
   ImGui::End();
 
   constexpr float WIDTH = 276.0f;
-  const float mode_x = std::max(area.position.x + area.size.x - WIDTH - 12.0f,
-                                area.position.x + 12.0f);
+  float mode_left = area.position.x;
+  float mode_right = area.position.x + area.size.x;
+  if (parSession.workspace == Workspace::Movie) {
+    const MovieEditorLayout& movie_layout = parSession.movie_layout;
+    mode_left = movie_layout.viewport.min.x;
+    mode_right = movie_layout.viewport.max.x;
+  }
+  const float mode_x =
+      std::max(mode_right - WIDTH - 12.0f, mode_left + 12.0f);
   const float workspace_right =
       area.position.x + (area.size.x + WORKSPACE_WIDTH) * 0.5f;
   const float mode_y = mode_x < workspace_right + 12.0f
@@ -727,7 +753,7 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
   refreshEntityNameBuffer(*entity);
   ImGui::Text("ID %u  |  %s", entity->id.value, getEntityTypeLabel(*entity));
   ImGui::SetNextItemWidth(-1.0f);
-  if (ImGui::InputText("##EntityName", m_entity_name_buffer.data(),
+  if (ImGui::InputText("Name", m_entity_name_buffer.data(),
                        m_entity_name_buffer.size())) {
     parEngine.setEntityName(entity->id, m_entity_name_buffer.data());
   }
@@ -847,17 +873,6 @@ void EditorUi::drawImportDialogs(engine::EngineCore& parEngine,
       m_selected_asset_index = *imported_index;
       parPlacementController.beginStaticAsset(parEngine, *imported_index);
       m_model_import_error.clear();
-    }
-  }
-
-  if (const std::optional<std::filesystem::path> path =
-          m_animation_import_browser.draw()) {
-    if (parEngine.importAnimationForEntity(
-            parEngine.getSelectedEntity(), *path,
-            m_animation_import_label_buffer.data(),
-            m_animation_import_error)) {
-      m_animation_import_error.clear();
-      m_animation_import_label_buffer.fill('\0');
     }
   }
 

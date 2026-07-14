@@ -51,16 +51,6 @@ template <typename Mutation>
   return {};
 }
 
-[[nodiscard]] int laneFor(const SequenceClipPayload& parPayload) {
-  if (std::holds_alternative<MovementClip>(parPayload)) {
-    return 0;
-  }
-  if (std::holds_alternative<RigAnimationClip>(parPayload)) {
-    return 1;
-  }
-  return 2 + static_cast<int>(std::get<PropertyClip>(parPayload).kind);
-}
-
 [[nodiscard]] SequenceInstance* findInstance(MovieTimeline& parTimeline,
                                               SequenceInstanceId parId) {
   const auto found = std::find_if(parTimeline.instances.begin(),
@@ -74,6 +64,39 @@ template <typename Mutation>
 [[nodiscard]] bool fitsWithinFilm(FilmFrame parStart, FilmFrame parDuration) {
   return parStart >= 0 && parDuration > 0 && parStart <= MAX_FILM_FRAMES &&
          parDuration <= MAX_FILM_FRAMES - parStart;
+}
+
+[[nodiscard]] bool rangesOverlap(FilmFrame parStart, FilmFrame parEnd,
+                                 FilmFrame parOtherStart,
+                                 FilmFrame parOtherEnd) {
+  return parStart < parOtherEnd && parEnd > parOtherStart;
+}
+
+[[nodiscard]] bool canPlaceInstanceAt(const MovieTimeline& parTimeline,
+                                      const TargetSequence& parSequence,
+                                      FilmFrame parStartFrame) {
+  const FilmFrame duration = parSequence.durationFrames();
+  if (!fitsWithinFilm(parStartFrame, duration)) {
+    return false;
+  }
+  if (parSequence.target.kind == TimelineTargetKind::Camera) {
+    return true;
+  }
+
+  const FilmFrame end_frame = parStartFrame + duration;
+  for (const SequenceInstance& instance : parTimeline.instances) {
+    const TargetSequence* other = parTimeline.findSequence(instance.sequence_id);
+    if (other == nullptr || other->target != parSequence.target) {
+      continue;
+    }
+    const FilmFrame other_duration = other->durationFrames();
+    if (other_duration > 0 &&
+        rangesOverlap(parStartFrame, end_frame, instance.start_frame,
+                      instance.start_frame + other_duration)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 [[nodiscard]] std::uint64_t highestSequenceId(const MovieTimeline& parTimeline) {
@@ -168,6 +191,8 @@ std::expected<TargetSequenceId, std::string> TimelineEditService::duplicateSeque
       return std::expected<TargetSequenceId, std::string>{
           std::unexpected("Sequence was not found")};
     }
+    // Snapshot first so ID allocation and insertion cannot affect the source
+    // sequence.  Clips are value types, making this a deep copy of authored data.
     TargetSequence duplicate = *source;
     const auto sequence_id = allocateSequenceId(timeline);
     if (!sequence_id.has_value()) {
@@ -191,6 +216,24 @@ std::expected<TargetSequenceId, std::string> TimelineEditService::duplicateSeque
   });
 }
 
+std::expected<void, std::string> TimelineEditService::renameSequence(
+    TargetSequenceId parSequenceId, std::string parName) {
+  return commitVoid(timeline_, [parSequenceId, name = std::move(parName)](
+                                   MovieTimeline& timeline) mutable {
+    if (name.empty()) {
+      return std::expected<void, std::string>{
+          std::unexpected("Sequence name cannot be empty")};
+    }
+    TargetSequence* sequence = timeline.findSequence(parSequenceId);
+    if (sequence == nullptr) {
+      return std::expected<void, std::string>{
+          std::unexpected("Sequence was not found")};
+    }
+    sequence->name = std::move(name);
+    return std::expected<void, std::string>{};
+  });
+}
+
 std::expected<void, std::string> TimelineEditService::deleteSequence(
     TargetSequenceId parSequenceId) {
   return commitVoid(timeline_, [parSequenceId](MovieTimeline& timeline) {
@@ -208,15 +251,15 @@ std::expected<void, std::string> TimelineEditService::deleteSequence(
   });
 }
 
-std::expected<void, std::string> TimelineEditService::recaptureBaseState(
-    TargetSequenceId parSequenceId, CapturedTargetBaseState parCapturedBase) {
-  return commitVoid(timeline_, [parSequenceId, base = std::move(parCapturedBase)](
-                                   MovieTimeline& timeline) mutable {
-    TargetSequence* sequence = timeline.findSequence(parSequenceId);
-    if (sequence == nullptr) {
-      return std::expected<void, std::string>{std::unexpected("Sequence was not found")};
+std::expected<void, std::string> TimelineEditService::setCameraGapMode(
+    CameraGapMode parMode) {
+  return commitVoid(timeline_, [parMode](MovieTimeline& timeline) {
+    if (parMode != CameraGapMode::HoldLastCameraState &&
+        parMode != CameraGapMode::Black) {
+      return std::expected<void, std::string>{
+          std::unexpected("Camera gap mode is invalid")};
     }
-    sequence->captured_base = std::move(base);
+    timeline.camera_gap_mode = parMode;
     return std::expected<void, std::string>{};
   });
 }
@@ -262,58 +305,67 @@ std::expected<SequenceClipId, std::string> TimelineEditService::appendClipToLane
   });
 }
 
-std::expected<SequenceClipId, std::string> TimelineEditService::rippleInsertClip(
-    TargetSequenceId parSequenceId, FilmFrame parStartFrame, FilmFrame parDuration,
-    SequenceClipPayload parPayload) {
-  return commit<SequenceClipId>(timeline_,
-                                [parSequenceId, parStartFrame, parDuration,
-                                 payload = std::move(parPayload)](
-                                    MovieTimeline& timeline) mutable {
-    if (parStartFrame < 0 || parDuration <= 0) {
-      return std::expected<SequenceClipId, std::string>{
-          std::unexpected("Clip range must be positive and non-negative")};
-    }
-    TargetSequence* sequence = timeline.findSequence(parSequenceId);
-    if (sequence == nullptr) {
-      return std::expected<SequenceClipId, std::string>{
-          std::unexpected("Sequence was not found")};
-    }
-    if (!isAuthorablePayloadForTarget(sequence->target.kind, payload)) {
-      return std::expected<SequenceClipId, std::string>{
-          std::unexpected("Clip is not authorable on this target type")};
-    }
-    if (!fitsWithinFilm(parStartFrame, parDuration)) {
-      return std::expected<SequenceClipId, std::string>{
-          std::unexpected("Clip exceeds the film frame limit")};
-    }
-    const int lane = laneFor(payload);
-    for (const SequenceClip& clip : sequence->clips) {
-      if (laneFor(clip.payload) == lane && clip.start_frame < parStartFrame &&
-          clip.end_frame > parStartFrame) {
-        return std::expected<SequenceClipId, std::string>{
-            std::unexpected("Cannot ripple into the middle of a clip")};
-      }
-      if (laneFor(clip.payload) == lane && clip.start_frame >= parStartFrame &&
-          static_cast<std::int64_t>(clip.end_frame) +
-                  static_cast<std::int64_t>(parDuration) >
-              MAX_FILM_FRAMES) {
-        return std::expected<SequenceClipId, std::string>{
-            std::unexpected("Ripple insertion exceeds the film frame limit")};
+std::expected<SequenceClipId, std::string> TimelineEditService::duplicateClip(
+    SequenceClipId parClipId) {
+  return commit<SequenceClipId>(timeline_, [parClipId](MovieTimeline& timeline) {
+    TargetSequence* sequence = nullptr;
+    SequenceClip* source = nullptr;
+    for (TargetSequence& candidate_sequence : timeline.sequences) {
+      const auto found = std::find_if(
+          candidate_sequence.clips.begin(), candidate_sequence.clips.end(),
+          [parClipId](const SequenceClip& candidate) {
+            return candidate.id == parClipId;
+          });
+      if (found != candidate_sequence.clips.end()) {
+        sequence = &candidate_sequence;
+        source = &*found;
+        break;
       }
     }
-    for (SequenceClip& clip : sequence->clips) {
-      if (laneFor(clip.payload) == lane && clip.start_frame >= parStartFrame) {
-        clip.start_frame += parDuration;
-        clip.end_frame += parDuration;
+    if (sequence == nullptr || source == nullptr) {
+      return std::expected<SequenceClipId, std::string>{
+          std::unexpected("Clip was not found")};
+    }
+
+    const SequenceClip source_snapshot = *source;
+    const FilmFrame duration =
+        source_snapshot.end_frame - source_snapshot.start_frame;
+    if (duration <= 0 || source_snapshot.start_frame < 0 ||
+        source_snapshot.end_frame > MAX_FILM_FRAMES) {
+      return std::expected<SequenceClipId, std::string>{
+          std::unexpected("Source clip has an invalid frame range")};
+    }
+
+    const int lane = laneFor(source_snapshot.payload);
+    const FilmFrame last_start = MAX_FILM_FRAMES - duration;
+    FilmFrame start_frame = -1;
+    for (FilmFrame candidate_start = source_snapshot.end_frame;
+         candidate_start <= last_start; ++candidate_start) {
+      const FilmFrame candidate_end = candidate_start + duration;
+      const bool overlaps_existing = std::any_of(
+          sequence->clips.begin(), sequence->clips.end(),
+          [lane, candidate_start, candidate_end](const SequenceClip& candidate) {
+            return laneFor(candidate.payload) == lane &&
+                   rangesOverlap(candidate_start, candidate_end,
+                                 candidate.start_frame, candidate.end_frame);
+          });
+      if (!overlaps_existing) {
+        start_frame = candidate_start;
+        break;
       }
     }
+    if (start_frame < 0) {
+      return std::expected<SequenceClipId, std::string>{
+          std::unexpected("No valid frame remains for clip duplicate")};
+    }
+
     const auto id = allocateClipId(timeline);
     if (!id.has_value()) {
       return std::expected<SequenceClipId, std::string>{
           std::unexpected("No clip IDs remain")};
     }
-    sequence->clips.push_back({*id, parStartFrame, parStartFrame + parDuration,
-                               std::move(payload)});
+    sequence->clips.push_back({*id, start_frame, start_frame + duration,
+                               source_snapshot.payload});
     return std::expected<SequenceClipId, std::string>{*id};
   });
 }
@@ -347,6 +399,32 @@ std::expected<void, std::string> TimelineEditService::deleteClip(
       if (sequence.clips.size() != previous_size) {
         return std::expected<void, std::string>{};
       }
+    }
+    return std::expected<void, std::string>{std::unexpected("Clip was not found")};
+  });
+}
+
+std::expected<void, std::string> TimelineEditService::setClipPayload(
+    SequenceClipId parClipId, SequenceClipPayload parPayload) {
+  return commitVoid(timeline_, [parClipId, payload = std::move(parPayload)](
+                                   MovieTimeline& timeline) mutable {
+    for (TargetSequence& sequence : timeline.sequences) {
+      SequenceClip* clip = nullptr;
+      for (SequenceClip& candidate : sequence.clips) {
+        if (candidate.id == parClipId) {
+          clip = &candidate;
+          break;
+        }
+      }
+      if (clip == nullptr) {
+        continue;
+      }
+      if (!isAuthorablePayloadForTarget(sequence.target.kind, payload)) {
+        return std::expected<void, std::string>{
+            std::unexpected("Clip is not authorable on this target type")};
+      }
+      clip->payload = std::move(payload);
+      return std::expected<void, std::string>{};
     }
     return std::expected<void, std::string>{std::unexpected("Clip was not found")};
   });
@@ -412,25 +490,45 @@ std::expected<SequenceInstanceId, std::string> TimelineEditService::placeSequenc
 }
 
 std::expected<SequenceInstanceId, std::string> TimelineEditService::duplicateInstance(
-    SequenceInstanceId parInstanceId, FilmFrame parStartFrame) {
+    SequenceInstanceId parInstanceId) {
   return commit<SequenceInstanceId>(timeline_, [=](MovieTimeline& timeline) {
     const SequenceInstance* source = findInstance(timeline, parInstanceId);
     if (source == nullptr) {
       return std::expected<SequenceInstanceId, std::string>{
           std::unexpected("Instance was not found")};
     }
-    const TargetSequence* sequence = timeline.findSequence(source->sequence_id);
-    if (sequence == nullptr ||
-        !fitsWithinFilm(parStartFrame, sequence->durationFrames())) {
+    // An instance duplicate deliberately reuses the same target sequence; only
+    // the placement ID and start frame are new.
+    const TargetSequenceId source_sequence_id = source->sequence_id;
+    const TargetSequence* sequence = timeline.findSequence(source_sequence_id);
+    if (sequence == nullptr || sequence->durationFrames() <= 0) {
       return std::expected<SequenceInstanceId, std::string>{
-          std::unexpected("Instance exceeds the film frame limit")};
+          std::unexpected("Only non-empty sequences can be duplicated")};
+    }
+    const FilmFrame duration = sequence->durationFrames();
+    if (!fitsWithinFilm(source->start_frame, duration)) {
+      return std::expected<SequenceInstanceId, std::string>{
+          std::unexpected("Source instance has an invalid frame range")};
+    }
+    const FilmFrame first_frame = source->start_frame + duration;
+    const FilmFrame last_frame = MAX_FILM_FRAMES - duration;
+    FilmFrame start_frame = -1;
+    for (FilmFrame candidate = first_frame; candidate <= last_frame; ++candidate) {
+      if (canPlaceInstanceAt(timeline, *sequence, candidate)) {
+        start_frame = candidate;
+        break;
+      }
+    }
+    if (start_frame < 0) {
+      return std::expected<SequenceInstanceId, std::string>{
+          std::unexpected("No valid frame remains for instance duplicate")};
     }
     const auto id = allocateInstanceId(timeline);
     if (!id.has_value()) {
       return std::expected<SequenceInstanceId, std::string>{
           std::unexpected("No instance IDs remain")};
     }
-    timeline.instances.push_back({*id, source->sequence_id, parStartFrame});
+    timeline.instances.push_back({*id, source_sequence_id, start_frame});
     return std::expected<SequenceInstanceId, std::string>{*id};
   });
 }
@@ -465,14 +563,6 @@ std::expected<void, std::string> TimelineEditService::deleteInstance(
     }
     return std::expected<void, std::string>{};
   });
-}
-
-TimelineValidation TimelineEditService::validateAuthoring() const {
-  return validateMovieTimeline(timeline_);
-}
-
-TimelineValidation TimelineEditService::validateForBake() const {
-  return validateMovieTimeline(timeline_, true);
 }
 
 }  // namespace kage::film

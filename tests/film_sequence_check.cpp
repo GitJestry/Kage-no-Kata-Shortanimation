@@ -11,6 +11,11 @@ bool close(float parLeft, float parRight) {
   return std::abs(parLeft - parRight) < 0.001f;
 }
 
+bool close(const glm::vec3& parLeft, const glm::vec3& parRight) {
+  return close(parLeft.x, parRight.x) && close(parLeft.y, parRight.y) &&
+         close(parLeft.z, parRight.z);
+}
+
 int fail(const char* parMessage) {
   std::cerr << parMessage << '\n';
   return 1;
@@ -30,6 +35,13 @@ int main() {
   if (empty_playback.playing || empty_playback.previewing ||
       empty_playback.playhead_frame != 0.0) {
     return fail("zero-duration playback did not stop cleanly");
+  }
+  FilmPlayback bounded_playback;
+  bounded_playback.playing = true;
+  bounded_playback.previewing = true;
+  bounded_playback.update(2.0f, 90);
+  if (!bounded_playback.playing || bounded_playback.playhead_frame != 60.0) {
+    return fail("playback did not honor its supplied duration");
   }
   FilmPlayback stopped_playback;
   if (!requiresFilmFrameState(true, true, -1.0, stopped_playback) ||
@@ -60,8 +72,10 @@ int main() {
     return fail("independent movement and FOV lanes were not accepted");
   }
   const auto first = edits.placeSequence(*sequence, 5);
-  const auto second = edits.duplicateInstance(*first, 20);
-  if (!first.has_value() || !second.has_value() || timeline.durationFrames() != 30) {
+  const auto second = edits.duplicateInstance(*first);
+  if (!first.has_value() || !second.has_value() ||
+      timeline.instances.back().start_frame != 15 ||
+      timeline.durationFrames() != 25) {
     return fail("sequence reuse did not derive movie duration");
   }
 
@@ -71,20 +85,53 @@ int main() {
       !close(middle.camera_output.camera->vertical_fov_degrees, 60.0f)) {
     return fail("local sequence evaluation failed");
   }
-  const FilmFrameState held = evaluateMovieTimeline(timeline, 15);
+  const std::optional<FilmFrameState> camera_preview =
+      evaluateTargetSequencePreview(timeline, *sequence, 5);
+  if (!camera_preview.has_value() ||
+      !camera_preview->camera_output.camera.has_value() ||
+      !close(camera_preview->camera_output.camera->transform.translation.x,
+             15.0f) ||
+      !close(camera_preview->camera_output.camera->vertical_fov_degrees,
+             60.0f) ||
+      evaluateTargetSequencePreview(timeline, 9999, 0).has_value()) {
+    return fail("camera sequence preview did not evaluate the selected sequence");
+  }
+  CapturedEntityBaseState actor_base;
+  actor_base.transform.translation.x = 2.0f;
+  const auto actor_sequence = edits.createSequence(
+      "Actor", {TimelineTargetKind::RiggedEntity, {2}}, actor_base);
+  MovementClip actor_movement;
+  actor_movement.end.translation.x = 12.0f;
+  const auto actor_clip = actor_sequence.has_value()
+                              ? edits.appendClipToLane(*actor_sequence, 10,
+                                                       actor_movement)
+                              : std::expected<SequenceClipId, std::string>{
+                                    std::unexpected("setup failed")};
+  const std::optional<FilmFrameState> actor_preview =
+      actor_sequence.has_value()
+          ? evaluateTargetSequencePreview(timeline, *actor_sequence, 5)
+          : std::nullopt;
+  if (!actor_clip.has_value() || !actor_preview.has_value() ||
+      actor_preview->transforms.size() != 1 ||
+      !close(actor_preview->transforms.front().transform.translation.x, 7.0f) ||
+      actor_preview->camera_output.kind != FilmOutputKind::Black) {
+    return fail("non-camera sequence preview did not evaluate in local time");
+  }
+  const FilmFrameState reset = evaluateMovieTimeline(timeline, 15);
+  if (reset.transforms.empty() ||
+      !close(reset.transforms[0].transform.translation.x, 10.0f)) {
+    return fail("instance local time did not reset");
+  }
+  const FilmFrameState held = evaluateMovieTimeline(timeline, 25);
   if (!held.camera_output.camera.has_value() ||
       !close(held.camera_output.camera->transform.translation.x, 20.0f)) {
     return fail("half-open end or camera hold failed");
   }
-  const FilmFrameState reset = evaluateMovieTimeline(timeline, 20);
-  if (reset.transforms.empty() || !close(reset.transforms[0].transform.translation.x, 10.0f)) {
-    return fail("instance local time did not reset");
-  }
   timeline.camera_gap_mode = CameraGapMode::Black;
-  if (evaluateMovieTimeline(timeline, 15).camera_output.kind != FilmOutputKind::Black) {
+  if (evaluateMovieTimeline(timeline, 25).camera_output.kind != FilmOutputKind::Black) {
     return fail("black camera gaps were not respected");
   }
-  if (evaluateMovieTimeline(timeline, 30).camera_output.kind != FilmOutputKind::Black) {
+  if (evaluateMovieTimeline(timeline, 25).camera_output.kind != FilmOutputKind::Black) {
     return fail("exclusive instance end was not respected");
   }
   if (timeline.sequences[0].captured_base.index() != 0 ||
@@ -140,6 +187,97 @@ int main() {
                  .transform.translation.x,
              55.0f)) {
     return fail("movement transition sampling failed");
+  }
+  const TargetSequence* resolved_sequence =
+      movement_timeline.findSequence(*movement_sequence);
+  const std::optional<ResolvedMovementPath> first_path =
+      resolveMovementPath(*resolved_sequence, *first_movement_id);
+  const std::optional<ResolvedMovementPath> second_path =
+      resolveMovementPath(*resolved_sequence, *second_movement_id);
+  if (!first_path.has_value() || first_path->transition_before.has_value() ||
+      !close(first_path->movement.start, glm::vec3(0.0f)) ||
+      !close(first_path->movement.control_1,
+             glm::vec3(10.0f / 3.0f, 0.0f, 0.0f)) ||
+      !close(first_path->movement.end, glm::vec3(10.0f, 0.0f, 0.0f)) ||
+      !second_path.has_value() || !second_path->transition_before.has_value() ||
+      !close(second_path->movement.start, glm::vec3(100.0f, 0.0f, 0.0f)) ||
+      !close(second_path->movement.end, glm::vec3(110.0f, 0.0f, 0.0f)) ||
+      !close(second_path->transition_before->start,
+             glm::vec3(10.0f, 0.0f, 0.0f)) ||
+      !close(second_path->transition_before->control_1,
+             glm::vec3(40.0f, 0.0f, 0.0f)) ||
+      !close(second_path->transition_before->control_2,
+             glm::vec3(70.0f, 0.0f, 0.0f)) ||
+      !close(second_path->transition_before->end,
+             glm::vec3(100.0f, 0.0f, 0.0f)) ||
+      resolveMovementPath(*resolved_sequence, 999999).has_value()) {
+    return fail("movement path resolution did not match authored geometry");
+  }
+
+  MovementClip manual_movement = std::get<MovementClip>(
+      movement_timeline.findClip(*second_movement_id)->payload);
+  manual_movement.curve.automatic_position_controls = false;
+  manual_movement.curve.position_control_1 = {101.0f, 2.0f, 3.0f};
+  manual_movement.curve.position_control_2 = {109.0f, 5.0f, 6.0f};
+  if (!movement_edits
+           .setClipPayload(*second_movement_id, manual_movement)
+           .has_value()) {
+    return fail("manual movement path setup failed");
+  }
+  const std::optional<ResolvedMovementPath> manual_path = resolveMovementPath(
+      *movement_timeline.findSequence(*movement_sequence), *second_movement_id);
+  if (!manual_path.has_value() ||
+      !close(manual_path->movement.control_1,
+             manual_movement.curve.position_control_1) ||
+      !close(manual_path->movement.control_2,
+             manual_movement.curve.position_control_2)) {
+    return fail("manual movement controls were not preserved in the path");
+  }
+
+  TargetSequence adjacent_sequence =
+      *movement_timeline.findSequence(*movement_sequence);
+  for (SequenceClip& clip : adjacent_sequence.clips) {
+    if (clip.id == *second_movement_id) {
+      clip.start_frame = 10;
+      clip.end_frame = 20;
+    }
+  }
+  const std::optional<ResolvedMovementPath> adjacent_path =
+      resolveMovementPath(adjacent_sequence, *second_movement_id);
+  if (!adjacent_path.has_value() || adjacent_path->transition_before.has_value()) {
+    return fail("movement path exposed a transition without an in-between gap");
+  }
+
+  TargetSequence disabled_transition_sequence =
+      *movement_timeline.findSequence(*movement_sequence);
+  TargetSequence inherited_start_sequence = disabled_transition_sequence;
+  TargetSequence no_predecessor_sequence = disabled_transition_sequence;
+  for (SequenceClip& clip : disabled_transition_sequence.clips) {
+    if (clip.id == *second_movement_id) {
+      std::get<MovementClip>(clip.payload).transition_before.enabled = false;
+    }
+  }
+  for (SequenceClip& clip : inherited_start_sequence.clips) {
+    if (clip.id == *second_movement_id) {
+      MovementClip& movement = std::get<MovementClip>(clip.payload);
+      movement.start_mode = MovementStartMode::PreviousEndpoint;
+      movement.explicit_start.reset();
+    }
+  }
+  std::erase_if(no_predecessor_sequence.clips,
+                [first_id = *first_movement_id](const SequenceClip& clip) {
+                  return clip.id == first_id;
+                });
+  const auto hasTransition = [second_id = *second_movement_id](
+                                 const TargetSequence& sequence) {
+    const std::optional<ResolvedMovementPath> path =
+        resolveMovementPath(sequence, second_id);
+    return path.has_value() && path->transition_before.has_value();
+  };
+  if (hasTransition(disabled_transition_sequence) ||
+      hasTransition(inherited_start_sequence) ||
+      hasTransition(no_predecessor_sequence)) {
+    return fail("movement path exposed an ineligible transition");
   }
 
   MovieTimeline animation_timeline;
@@ -263,5 +401,6 @@ int main() {
       !close(evaluateMovieTimeline(sun_timeline, 10).sun->intensity, 3.0f)) {
     return fail("sun property hold failed");
   }
+
   return 0;
 }

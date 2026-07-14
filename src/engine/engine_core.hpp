@@ -17,6 +17,7 @@
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -29,6 +30,12 @@ class ProjectSerializer;
 
 class EngineCore final {
  public:
+  struct CreateFilmCameraResult final {
+    scene::EntityId entity;
+    film::TargetSequenceId sequence_id = 0;
+    film::SequenceInstanceId instance_id = 0;
+  };
+
   struct CameraRay final {
     glm::vec3 origin{0.0f};
     glm::vec3 direction{0.0f, 0.0f, -1.0f};
@@ -64,6 +71,8 @@ class EngineCore final {
   bool loadLocalSession();
   void saveLocalSession();
   [[nodiscard]] bool exportFilmSequence(std::string& parError);
+  [[nodiscard]] film::TimelineValidation validateMovieTimeline(
+      bool parForBake = false) const;
   void advanceFilmExport();
   void cancelFilmExport();
   [[nodiscard]] const film::FinalRenderJob& getFinalRenderJob() const;
@@ -86,6 +95,8 @@ class EngineCore final {
                                        const glm::vec3& parPosition);
   scene::EntityId createPointLightEntityAt(std::string parName,
                                            const glm::vec3& parPosition);
+  [[nodiscard]] std::expected<CreateFilmCameraResult, std::string>
+  createFilmCameraFromView(film::FilmFrame parStartFrame);
   bool deleteEntity(scene::EntityId parEntity);
   void selectEntity(scene::EntityId parEntity);
   void clearSelection();
@@ -119,13 +130,17 @@ class EngineCore final {
   void setGizmoAxisSpace(render::GizmoAxisSpace parAxisSpace);
   void setViewportMode(render::ViewportMode parMode);
 
-  void update(float parDeltaSeconds, bool parMovieWorkspace);
+  void update(float parDeltaSeconds, bool parMovieWorkspace,
+              film::FilmFrame parPlaybackDuration = -1);
   void render(const render::ViewportRect& parViewport,
               bool parMovieWorkspace = false,
               bool parShotPreview = false, double parFilmFrame = -1.0,
               bool parShowOverlays = true,
               unsigned int parDestinationFramebuffer = 0,
-              int parMsaaSamples = 1);
+              int parMsaaSamples = 1,
+              film::TargetSequenceId parPreviewSequenceId = 0,
+              scene::EntityId parMovieSelectionEntity = {},
+              std::span<const film::ResolvedMovementPath> parMovementPaths = {});
   [[nodiscard]] const render::PerformanceSnapshot& getPerformanceSnapshot()
       const;
 
@@ -163,9 +178,13 @@ class EngineCore final {
   [[nodiscard]] render::ViewportMode getViewportMode() const;
   [[nodiscard]] film::MovieTimeline& getMovieTimeline();
   [[nodiscard]] film::FilmPlayback& getFilmPlayback();
+  void clearFilmPreviewState();
   [[nodiscard]] math::Bounds3 getEntityWorldBounds(
       scene::EntityId parEntity) const;
   [[nodiscard]] std::optional<scene::EntityId> pickEntity(
+      const glm::vec2& parCursorPixel,
+      const glm::vec2& parViewportSize);
+  [[nodiscard]] std::optional<scene::EntityId> pickMovieEntity(
       const glm::vec2& parCursorPixel,
       const glm::vec2& parViewportSize);
   [[nodiscard]] bool isCursorOverEntityCore(
@@ -191,9 +210,6 @@ class EngineCore final {
       const film::FilmFrameState* parFilmState = nullptr) const;
   void createDefaultSceneEntities(scene::SceneManager::SceneRecord& parScene);
   void rebuildAssetInstanceCounts();
-  [[nodiscard]] std::optional<camera::Camera> evaluateFilmCamera(
-      const film::FilmFrameState& parFrame) const;
-
   friend class ProjectSerializer;
 
   platform::RuntimePaths m_runtime_paths;
@@ -213,6 +229,10 @@ class EngineCore final {
   render::PerformanceSnapshot m_performance_snapshot;
   film::FilmPlayback m_film_playback;
   film::FilmFrameState m_film_frame_state;
+  film::FilmFrameState m_viewport_film_frame_state;
+  std::optional<camera::Camera> m_viewport_camera;
+  bool m_viewport_consumes_film_state = false;
+  bool m_viewport_black_output = false;
   std::vector<animation::EvaluatedSkinPalette> m_film_skin_palettes;
   film::FinalRenderJob m_final_render_job;
   std::array<float, 120> m_cpu_frame_samples{};

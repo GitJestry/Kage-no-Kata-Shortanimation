@@ -1,5 +1,7 @@
 #include "engine/engine_core.hpp"
 
+#include "engine/film_camera_creation.hpp"
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -140,6 +142,25 @@ scene::EntityId EngineCore::createPointLightEntityAt(
   selectEntity(entity);
   markProjectDirty();
   return entity;
+}
+
+std::expected<EngineCore::CreateFilmCameraResult, std::string>
+EngineCore::createFilmCameraFromView(film::FilmFrame parStartFrame) {
+  const camera::Camera& editor_camera = m_camera_system.getEditorCamera();
+  math::Transform transform;
+  transform.translation = editor_camera.position;
+  transform.rotation = editor_camera.orientation;
+  const film::CapturedCameraState camera{
+      editor_camera.vertical_fov_degrees, editor_camera.near_plane,
+      editor_camera.far_plane};
+  const auto created = detail::createFilmCameraAtomically(
+      getActiveScene(), transform, camera, parStartFrame);
+  if (!created.has_value()) {
+    return std::unexpected(created.error());
+  }
+  markProjectDirty();
+  return CreateFilmCameraResult{created->entity, created->sequence_id,
+                                created->instance_id};
 }
 
 bool EngineCore::deleteEntity(scene::EntityId parEntity) {

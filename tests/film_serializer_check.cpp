@@ -1,4 +1,5 @@
 #include "film/movie_timeline_serializer.hpp"
+#include "film/timeline_edit_service.hpp"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -220,6 +221,25 @@ int main() {
     return fail("zero-duration movie did not round trip");
   }
 
+  MovieTimeline orphan_source;
+  TargetSequence orphan_sequence;
+  orphan_sequence.id = (TargetSequenceId{1} << 40U) + 5;
+  orphan_sequence.name = "Missing actor";
+  orphan_sequence.target = {TimelineTargetKind::RiggedEntity, {404}};
+  orphan_sequence.captured_base = CapturedEntityBaseState{};
+  orphan_source.sequences.push_back(orphan_sequence);
+  orphan_source.next_sequence_id = orphan_sequence.id + 1;
+  MovieTimeline orphan_round_trip;
+  bool orphan_migrated = true;
+  if (!decodeMovieTimeline(encodeMovieTimeline(orphan_source), world, {},
+                           orphan_round_trip, orphan_migrated, error) ||
+      orphan_migrated || orphan_round_trip.sequences.size() != 1 ||
+      orphan_round_trip.sequences.front().id != orphan_sequence.id ||
+      orphan_round_trip.sequences.front().target.entity.value != 404 ||
+      !orphan_round_trip.sequences.front().clips.empty()) {
+    return fail("empty orphan sequence did not survive save and reload");
+  }
+
   const auto find_camera_sequence = [](const MovieTimeline& value,
                                        const std::string& name)
       -> const TargetSequence* {
@@ -329,6 +349,204 @@ int main() {
   if (migrated_cut_count != 2 || multiple_remainder == nullptr ||
       !has_movement_range(*multiple_remainder, 4, 8)) {
     return fail("one camera track was not preserved across multiple cuts");
+  }
+
+  MovieTimeline control_source;
+  TargetSequence control_sequence;
+  control_sequence.id = 900;
+  control_sequence.name = "Custom curve controls";
+  control_sequence.target = {TimelineTargetKind::RiggedEntity, {8}};
+  control_sequence.captured_base = CapturedEntityBaseState{};
+  MovementClip custom_movement;
+  custom_movement.curve.automatic_position_controls = false;
+  custom_movement.curve.position_control_1 = {1.0f, 2.0f, 3.0f};
+  custom_movement.curve.position_control_2 = {4.0f, 5.0f, 6.0f};
+  custom_movement.curve.timing_control_1 = 0.2f;
+  custom_movement.curve.timing_control_2 = 0.8f;
+  control_sequence.clips.push_back({901, 0, 10, custom_movement});
+  control_source.sequences.push_back(control_sequence);
+  control_source.next_sequence_id = 901;
+  control_source.next_clip_id = 902;
+  MovieTimeline control_round_trip;
+  bool controls_migrated = true;
+  if (!decodeMovieTimeline(encodeMovieTimeline(control_source), world, {},
+                           control_round_trip, controls_migrated, error) ||
+      controls_migrated || control_round_trip.sequences.size() != 1 ||
+      control_round_trip.sequences.front().clips.size() != 1) {
+    return fail("custom movement controls did not round trip");
+  }
+  const auto* loaded_movement = std::get_if<MovementClip>(
+      &control_round_trip.sequences.front().clips[0].payload);
+  if (loaded_movement == nullptr ||
+      loaded_movement->curve.automatic_position_controls ||
+      !close(loaded_movement->curve.position_control_1,
+             custom_movement.curve.position_control_1) ||
+      !close(loaded_movement->curve.position_control_2,
+             custom_movement.curve.position_control_2) ||
+      !close(loaded_movement->curve.timing_control_1, 0.2f) ||
+      !close(loaded_movement->curve.timing_control_2, 0.8f)) {
+    return fail("custom curve values changed during round trip");
+  }
+
+  // Acceptance workflow persistence check: author a reusable Samurai sequence
+  // and a camera sequence, place both, then prove save/reload preserves the
+  // authoring data and that evaluation still leaves World Edit untouched.
+  scene::World acceptance_world;
+  const scene::EntityId samurai =
+      acceptance_world.createEntityWithId("Samurai", {101});
+  acceptance_world.findEntity(samurai)->transform.transform.translation =
+      {-8.0f, 0.0f, 3.0f};
+  acceptance_world.setRig(samurai, scene::RigComponent{});
+  const scene::EntityId acceptance_camera =
+      acceptance_world.createEntityWithId("Movie Camera", {102});
+  acceptance_world.findEntity(acceptance_camera)->transform.transform.translation =
+      {4.0f, 3.0f, 12.0f};
+  acceptance_world.setCamera(
+      acceptance_camera, scene::CameraComponent{false, 52.0f, 0.2f, 500.0f});
+  const math::Transform samurai_world_before =
+      acceptance_world.findEntity(samurai)->transform.transform;
+  const math::Transform camera_world_before =
+      acceptance_world.findEntity(acceptance_camera)->transform.transform;
+
+  MovieTimeline acceptance_timeline;
+  TimelineEditService acceptance_edits(acceptance_timeline);
+  const TimelineTarget samurai_target{TimelineTargetKind::RiggedEntity, samurai};
+  const TimelineTarget camera_target{TimelineTargetKind::Camera, acceptance_camera};
+  const auto samurai_sequence = acceptance_edits.createSequence(
+      "Samurai shrine approach", samurai_target,
+      CapturedEntityBaseState{samurai_world_before, std::nullopt, std::nullopt});
+  const auto camera_sequence = acceptance_edits.createSequence(
+      "Shrine camera", camera_target,
+      CapturedEntityBaseState{camera_world_before,
+                              CapturedCameraState{52.0f, 0.2f, 500.0f},
+                              std::nullopt});
+  MovementClip samurai_movement;
+  samurai_movement.end.translation = {2.0f, 0.0f, -4.0f};
+  samurai_movement.curve.automatic_position_controls = false;
+  samurai_movement.curve.position_control_1 = {-7.0f, 0.0f, -1.0f};
+  samurai_movement.curve.position_control_2 = {-1.0f, 0.0f, -5.0f};
+  samurai_movement.curve.timing_control_1 = 0.18f;
+  samurai_movement.curve.timing_control_2 = 0.84f;
+  RigAnimationClip arm_action;
+  arm_action.clip_id = 7001;
+  arm_action.legacy_clip_index = 3;
+  arm_action.source_in = 0.0f;
+  arm_action.source_out = 0.8f;  // 0.2 seconds removed from a one-second action.
+  arm_action.speed = 0.5f;
+  arm_action.looping = false;
+  MovementClip camera_movement;
+  camera_movement.end.translation = {1.0f, 5.0f, 7.0f};
+  camera_movement.curve.automatic_position_controls = false;
+  camera_movement.curve.position_control_1 = {5.0f, 8.0f, 10.0f};
+  camera_movement.curve.position_control_2 = {-2.0f, 4.0f, 8.0f};
+  camera_movement.curve.timing_control_1 = 0.25f;
+  camera_movement.curve.timing_control_2 = 0.75f;
+  const auto samurai_move_id = samurai_sequence.has_value()
+                                   ? acceptance_edits.appendClipToLane(
+                                         *samurai_sequence, 60, samurai_movement)
+                                   : std::expected<SequenceClipId, std::string>(
+                                         std::unexpected("setup failed"));
+  const auto arm_action_id = samurai_sequence.has_value()
+                                 ? acceptance_edits.appendClipToLane(
+                                       *samurai_sequence, 60, arm_action)
+                                 : std::expected<SequenceClipId, std::string>(
+                                       std::unexpected("setup failed"));
+  const auto camera_move_id = camera_sequence.has_value()
+                                  ? acceptance_edits.appendClipToLane(
+                                        *camera_sequence, 90, camera_movement)
+                                  : std::expected<SequenceClipId, std::string>(
+                                        std::unexpected("setup failed"));
+  const auto samurai_instance = samurai_sequence.has_value()
+                                    ? acceptance_edits.placeSequence(
+                                          *samurai_sequence, 0)
+                                    : std::expected<SequenceInstanceId, std::string>(
+                                          std::unexpected("setup failed"));
+  const auto camera_instance = camera_sequence.has_value()
+                                   ? acceptance_edits.placeSequence(
+                                         *camera_sequence, 0)
+                                   : std::expected<SequenceInstanceId, std::string>(
+                                         std::unexpected("setup failed"));
+  if (!samurai_sequence.has_value() || !camera_sequence.has_value() ||
+      !samurai_move_id.has_value() || !arm_action_id.has_value() ||
+      !camera_move_id.has_value() || !samurai_instance.has_value() ||
+      !camera_instance.has_value()) {
+    return fail("acceptance workflow authoring failed");
+  }
+  const FilmFrameState acceptance_preview =
+      evaluateMovieTimeline(acceptance_timeline, 30);
+  const TransformOverride* acceptance_transform =
+      transformFor(acceptance_preview, samurai);
+  if (acceptance_transform == nullptr ||
+      acceptance_preview.rig_animations.size() != 1 ||
+      acceptance_preview.rig_animations.front().animation.clip_id != 7001 ||
+      !close(acceptance_preview.rig_animations.front().local_time_seconds, 0.5f) ||
+      !acceptance_preview.camera_output.camera.has_value() ||
+      acceptance_preview.camera_output.camera->source_entity != acceptance_camera) {
+    return fail("acceptance workflow preview did not evaluate authored data");
+  }
+
+  MovieTimeline acceptance_reload;
+  bool acceptance_migrated = true;
+  if (!decodeMovieTimeline(encodeMovieTimeline(acceptance_timeline),
+                           acceptance_world, {}, acceptance_reload,
+                           acceptance_migrated, error) ||
+      acceptance_migrated) {
+    return fail("acceptance workflow save and reload failed");
+  }
+  const TargetSequence* loaded_samurai =
+      acceptance_reload.findSequence(*samurai_sequence);
+  const TargetSequence* loaded_camera =
+      acceptance_reload.findSequence(*camera_sequence);
+  const SequenceClip* loaded_samurai_movement =
+      acceptance_reload.findClip(*samurai_move_id);
+  const SequenceClip* loaded_arm_action = acceptance_reload.findClip(*arm_action_id);
+  const SequenceClip* loaded_camera_movement =
+      acceptance_reload.findClip(*camera_move_id);
+  const auto* loaded_arm = loaded_arm_action == nullptr
+                               ? nullptr
+                               : std::get_if<RigAnimationClip>(
+                                     &loaded_arm_action->payload);
+  const auto* loaded_camera_curve = loaded_camera_movement == nullptr
+                                        ? nullptr
+                                        : std::get_if<MovementClip>(
+                                              &loaded_camera_movement->payload);
+  if (loaded_samurai == nullptr || loaded_camera == nullptr ||
+      loaded_samurai->target != samurai_target ||
+      loaded_camera->target != camera_target ||
+      loaded_samurai_movement == nullptr || loaded_arm == nullptr ||
+      loaded_camera_curve == nullptr || loaded_arm->clip_id != arm_action.clip_id ||
+      loaded_arm->legacy_clip_index != arm_action.legacy_clip_index ||
+      !close(loaded_arm->source_out, 0.8f) || !close(loaded_arm->speed, 0.5f) ||
+      loaded_arm->looping || loaded_samurai_movement->start_frame != 0 ||
+      loaded_samurai_movement->end_frame != 60 ||
+      loaded_camera_movement->end_frame != 90 ||
+      loaded_camera_curve->curve.automatic_position_controls ||
+      !close(loaded_camera_curve->curve.position_control_1,
+             camera_movement.curve.position_control_1) ||
+      !close(loaded_camera_curve->curve.position_control_2,
+             camera_movement.curve.position_control_2) ||
+      !close(loaded_camera_curve->curve.timing_control_1, 0.25f) ||
+      !close(loaded_camera_curve->curve.timing_control_2, 0.75f) ||
+      acceptance_reload.instances.size() != 2 ||
+      acceptance_reload.instances[0].id != *samurai_instance ||
+      acceptance_reload.instances[1].id != *camera_instance) {
+    return fail("acceptance workflow reload changed IDs, timing, trim, or curves");
+  }
+  const FilmFrameState acceptance_reloaded_preview =
+      evaluateMovieTimeline(acceptance_reload, 30);
+  const TransformOverride* reloaded_transform =
+      transformFor(acceptance_reloaded_preview, samurai);
+  if (reloaded_transform == nullptr ||
+      !close(reloaded_transform->transform.translation,
+             acceptance_transform->transform.translation) ||
+      !acceptance_reloaded_preview.camera_output.camera.has_value() ||
+      acceptance_reloaded_preview.camera_output.camera->source_entity !=
+          acceptance_camera ||
+      !close(acceptance_world.findEntity(samurai)->transform.transform.translation,
+             samurai_world_before.translation) ||
+      !close(acceptance_world.findEntity(acceptance_camera)->transform.transform.translation,
+             camera_world_before.translation)) {
+    return fail("acceptance workflow reload or preview mutated World Edit state");
   }
 
   return 0;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/editor_session.hpp"
 #include "engine/engine_core.hpp"
 
 #include <glm/glm.hpp>
@@ -15,6 +16,10 @@ class SelectionController final {
   void selectFromOutliner(engine::EngineCore& parEngine,
                           scene::EntityId parEntity,
                           bool parFrameEntity);
+  bool selectMovieTarget(engine::EngineCore& parEngine,
+                         EditorSession& parSession,
+                         const glm::vec2& parCursorPixel,
+                         const glm::vec2& parViewportSize);
 
  private:
   float m_elapsed_seconds = 0.0f;

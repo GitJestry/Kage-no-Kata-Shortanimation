@@ -86,6 +86,9 @@ struct EditorRenderSettings final {
 struct ViewportView final {
   const camera::Camera* camera = nullptr;
   const film::FilmFrameState* film_state = nullptr;
+  std::span<const film::ResolvedMovementPath> movement_paths;
+  scene::EntityId selected_entity;
+  bool use_world_selection = true;
   bool black_film_output = false;
   GLuint destination_framebuffer = 0;
   bool use_film_framebuffer = false;
@@ -142,7 +145,8 @@ class WorldRenderer final {
       const MeshResourceCache& parMeshResources,
       const camera::Camera& parCamera,
       const glm::vec2& parCursorPixel,
-      const glm::vec2& parViewportSize);
+      const glm::vec2& parViewportSize,
+      const film::FilmFrameState* parFilmState = nullptr);
 
  private:
   MeshRenderer m_mesh_renderer;

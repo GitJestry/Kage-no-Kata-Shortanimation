@@ -1,6 +1,8 @@
 #include "editor/world_editor.hpp"
 
 #include "assets/asset_path.hpp"
+#include "editor/movie_editor_controller.hpp"
+#include "editor/movie_editor_panel.hpp"
 #include "editor/ui_layout.hpp"
 
 #include <algorithm>
@@ -10,6 +12,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace kage::editor {
 
@@ -76,15 +79,54 @@ void WorldEditor::update(float parDeltaSeconds,
 
   applyCameraMovement(parInput);
   handlePointerInput(parInput);
-  m_engine.update(parDeltaSeconds, m_session.workspace == Workspace::Movie);
+  const bool movie_workspace = m_session.workspace == Workspace::Movie;
+  film::FilmPlayback& playback = m_engine.getFilmPlayback();
+  if (movie_workspace) {
+    updateMoviePreviewContext(m_session, m_engine.getMovieTimeline(), playback);
+  }
+  const film::FilmFrame playback_duration =
+      movie_workspace
+          ? moviePreviewDuration(m_session, m_engine.getMovieTimeline())
+          : -1;
+  const bool playback_was_playing = playback.playing;
+  m_engine.update(parDeltaSeconds, movie_workspace, playback_duration);
+  if (movie_workspace && playback_was_playing) {
+    synchronizeMovieAuthoringCursor(m_session, playback);
+  }
 }
 
 void WorldEditor::render(const glm::vec2& parViewportSize) {
   static_cast<void>(parViewportSize);
+  scene::EntityId movie_selection_entity;
+  std::vector<film::ResolvedMovementPath> movement_paths;
+  if (m_session.movie_selection.target.has_value() &&
+      m_session.movie_selection.target->kind !=
+          film::TimelineTargetKind::Sun) {
+    movie_selection_entity = m_session.movie_selection.target->entity;
+  }
+  if (m_session.workspace == Workspace::Movie) {
+    if (m_session.shown_movement_paths_sequence_id != 0 &&
+        m_session.shown_movement_paths_sequence_id ==
+            m_session.movie_selection.sequence_id) {
+      movement_paths = sequenceMovementPaths(
+          m_engine.getMovieTimeline(),
+          m_session.shown_movement_paths_sequence_id);
+    } else {
+      std::optional<film::ResolvedMovementPath> selected_path =
+          selectedMovementPath(m_engine.getMovieTimeline(),
+                               m_session.movie_selection);
+      if (selected_path.has_value()) {
+        movement_paths.push_back(std::move(*selected_path));
+      }
+    }
+  }
   m_engine.render(m_viewport,
                   m_session.workspace == Workspace::Movie,
                   m_session.shot_preview, -1.0,
-                  !m_session.shot_preview, 0);
+                  true, 0, 1,
+                  m_session.shot_preview_sequence_id,
+                  movie_selection_entity,
+                  movement_paths);
   m_engine.advanceFilmExport();
 }
 
@@ -239,6 +281,12 @@ void WorldEditor::handlePointerInput(
     return;
   }
 
+  if (!world_edit) {
+    static_cast<void>(m_selection_controller.selectMovieTarget(
+        m_engine, m_session, viewport_cursor, viewport_size));
+    return;
+  }
+
   const bool selected = m_selection_controller.handleViewportLeftPress(
       m_engine, viewport_cursor, viewport_size);
   if (!selected) {
@@ -248,18 +296,27 @@ void WorldEditor::handlePointerInput(
 
 void WorldEditor::updateViewportRect(
     const input::EditorInputSnapshot& parInput) {
-  const float bottom_ui = UI_STATUS_HEIGHT +
-      (m_session.workspace == Workspace::Movie
-           ? m_session.film_editor_height
-           : 0.0f);
-  const int reserved_bottom = std::max(
-      0, static_cast<int>(std::lround(
-             bottom_ui * parInput.ui_to_framebuffer_scale.y)));
+  const bool movie_workspace = m_session.workspace == Workspace::Movie;
   const int width = std::max(static_cast<int>(parInput.framebuffer_size.x), 1);
   const int full_height =
       std::max(static_cast<int>(parInput.framebuffer_size.y), 1);
-  m_viewport = {{0, 0},
-                {width, std::max(full_height - reserved_bottom, 1)},
+  if (movie_workspace) {
+    // EditorUi owns MovieEditorLayout. Its fitted film rectangle keeps Movie
+    // camera projection, input, and Bake at the same 16:9 aspect ratio.
+    const UiPanelRect& viewport = m_session.movie_layout.film_preview;
+    const glm::ivec2 origin = glm::ivec2(glm::round(
+        viewport.min * parInput.ui_to_framebuffer_scale));
+    const glm::ivec2 size = glm::max(
+        glm::ivec2(glm::round((viewport.max - viewport.min) *
+                              parInput.ui_to_framebuffer_scale)),
+        glm::ivec2(1));
+    m_viewport = {origin, size, full_height};
+    return;
+  }
+  const int reserved_bottom = std::max(
+      0, static_cast<int>(std::lround(UI_STATUS_HEIGHT *
+                                      parInput.ui_to_framebuffer_scale.y)));
+  m_viewport = {{0, 0}, {width, std::max(full_height - reserved_bottom, 1)},
                 full_height};
 }
 

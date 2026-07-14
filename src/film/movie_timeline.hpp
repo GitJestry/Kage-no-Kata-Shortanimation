@@ -115,6 +115,8 @@ struct PropertyClip final {
 using SequenceClipPayload =
     std::variant<MovementClip, RigAnimationClip, PropertyClip>;
 
+[[nodiscard]] int laneFor(const SequenceClipPayload& parPayload);
+
 struct SequenceClip final {
   SequenceClipId id = 0;
   FilmFrame start_frame = 0;
@@ -156,6 +158,33 @@ struct MovieTimeline final {
   [[nodiscard]] const SequenceClip* findClip(SequenceClipId parId) const;
 };
 
+struct MovementPathSegment final {
+  glm::vec3 start{0.0f};
+  glm::vec3 control_1{0.0f};
+  glm::vec3 control_2{0.0f};
+  glm::vec3 end{0.0f};
+};
+
+struct ResolvedMovementPath final {
+  MovementPathSegment movement;
+  std::optional<MovementPathSegment> transition_before;
+};
+
+// Resolves the spatial path exactly as sequence evaluation derives movement
+// starts. Timing controls affect traversal but do not change this geometry.
+[[nodiscard]] std::optional<ResolvedMovementPath> resolveMovementPath(
+    const TargetSequence& parSequence, SequenceClipId parClipId);
+
+enum class MovieTimelineOrigin { NewProject, LoadedProject };
+
+[[nodiscard]] bool requiresInitialFilmCamera(
+    MovieTimelineOrigin parOrigin, const MovieTimeline& parTimeline);
+
+// A default project creates its first film camera from the editor view at
+// frame zero.  Loaded projects and projects with any film data do not.
+[[nodiscard]] std::optional<FilmFrame> initialFilmCameraCreationFrame(
+    MovieTimelineOrigin parOrigin, const MovieTimeline& parTimeline);
+
 struct FilmPlayback final {
   double playhead_frame = 0.0;
   bool playing = false;
@@ -163,6 +192,7 @@ struct FilmPlayback final {
   bool looping = true;
 
   void update(float parDeltaSeconds, const MovieTimeline& parTimeline);
+  void update(float parDeltaSeconds, FilmFrame parDuration);
 };
 
 // Preview and export both consume the immutable movie state even while normal
@@ -186,7 +216,6 @@ struct TimelineValidation final {
   std::vector<TimelineDiagnostic> diagnostics;
 
   [[nodiscard]] bool hasErrors() const;
-  [[nodiscard]] bool hasWarnings() const;
 };
 
 // The evaluator is pure: it reads only captured sequence data and never reads
@@ -195,6 +224,9 @@ struct TimelineValidation final {
 void evaluateTargetSequence(const TargetSequence& parSequence,
                             FilmFrame parLocalFrame,
                             FilmFrameState& parState);
+[[nodiscard]] std::optional<FilmFrameState> evaluateTargetSequencePreview(
+    const MovieTimeline& parTimeline, TargetSequenceId parSequenceId,
+    FilmFrame parFrame);
 [[nodiscard]] FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
                                                     FilmFrame parFrame);
 [[nodiscard]] TimelineValidation validateMovieTimeline(

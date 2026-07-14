@@ -12,12 +12,6 @@ namespace {
 constexpr unsigned int WINDOW_WIDTH = 1280;
 constexpr unsigned int WINDOW_HEIGHT = 720;
 
-[[nodiscard]] bool isCursorInside(const glm::vec2& parCursor,
-                                  const glm::vec2& parSize) {
-  return parCursor.x >= 0.0f && parCursor.y >= 0.0f &&
-         parCursor.x < parSize.x && parCursor.y < parSize.y;
-}
-
 }  // namespace
 
 namespace kage::app {
@@ -98,7 +92,6 @@ input::EditorInputSnapshot MainApp::collectInputSnapshot() {
   const bool escape_down = isKeyPressed(Key::ESC);
   const bool delete_down =
       isKeyPressed(Key::DELETE) || isKeyPressed(Key::BACKSPACE);
-  const bool tab_down = isKeyPressed(Key::TAB);
   const bool z_down = isKeyPressed(Key::Z);
 
   const ImGuiIO& io = ImGui::GetIO();
@@ -112,11 +105,6 @@ input::EditorInputSnapshot MainApp::collectInputSnapshot() {
   snapshot.right_mouse_down = right_down;
   snapshot.middle_mouse_down = middle_down;
   snapshot.left_mouse_pressed = left_down && !m_last_left_mouse_down;
-  snapshot.right_mouse_pressed = right_down && !m_last_right_mouse_down;
-  snapshot.middle_mouse_pressed = middle_down && !m_last_middle_mouse_down;
-  snapshot.left_mouse_released = !left_down && m_last_left_mouse_down;
-  snapshot.right_mouse_released = !right_down && m_last_right_mouse_down;
-  snapshot.middle_mouse_released = !middle_down && m_last_middle_mouse_down;
   snapshot.key_w_down = isKeyPressed(Key::W);
   snapshot.key_a_down = isKeyPressed(Key::A);
   snapshot.key_s_down = isKeyPressed(Key::S);
@@ -126,23 +114,18 @@ input::EditorInputSnapshot MainApp::collectInputSnapshot() {
       isKeyPressed(Key::LEFT_SHIFT) || isKeyPressed(Key::RIGHT_SHIFT);
   snapshot.key_escape_pressed = escape_down && !m_last_escape_down;
   snapshot.key_delete_pressed = delete_down && !m_last_delete_down;
-  snapshot.key_tab_pressed = tab_down && !m_last_tab_down;
   snapshot.key_z_pressed = z_down && !m_last_z_down;
   snapshot.wants_capture_mouse = io.WantCaptureMouse;
   snapshot.wants_capture_keyboard = io.WantCaptureKeyboard;
   snapshot.ui_item_active = ImGui::IsAnyItemActive();
   snapshot.ui_popup_open =
       ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
-  snapshot.viewport_hovered = isCursorInside(ui_cursor, ui_size);
   snapshot.scroll_y = std::exchange(m_scroll_y, 0.0f);
 
   m_last_ui_cursor = ui_cursor;
   m_last_left_mouse_down = left_down;
-  m_last_right_mouse_down = right_down;
-  m_last_middle_mouse_down = middle_down;
   m_last_escape_down = escape_down;
   m_last_delete_down = delete_down;
-  m_last_tab_down = tab_down;
   m_last_z_down = z_down;
   return snapshot;
 }

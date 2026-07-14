@@ -1,7 +1,7 @@
 # Architecture
 
 KageEngine has one shared world and two workflows: World Edit constructs it;
-Movie evaluates a `FilmTimeline` without changing authored world values.
+Movie evaluates a `MovieTimeline` without changing authored world values.
 
 ```mermaid
 flowchart TD
@@ -9,7 +9,7 @@ flowchart TD
   Engine --> World["World + stable entity IDs"]
   Engine --> Assets["AssetRegistry + AssetStreamer"]
   Assets --> GPU["One full-fidelity GpuMesh per asset"]
-  Engine --> Timeline["FilmTimeline"] --> Frame["Immutable FilmFrameState"]
+  Engine --> Timeline["MovieTimeline: sequences + instances"] --> Frame["Immutable FilmFrameState"]
   Frame --> Animation["Evaluated skin palettes"]
   Frame --> Lighting["LightingSystem"]
   Engine --> View["Camera + authoritative ViewportRect"]
@@ -24,8 +24,9 @@ flowchart TD
   mesh instances.
 - Local session data owns the editor camera, fly speed, selection, grid, and
   playhead. Workspace, Shot Preview, and shading reset on launch.
-- `FilmTimeline` owns camera cuts and typed clips. Evaluation returns transform,
-  rig, camera, and light overrides without mutating `World`.
+- `MovieTimeline` owns target-specific sequences and their reusable instances.
+  Evaluation returns transform, rig, camera, light, and sun overrides without
+  mutating `World`.
 - `AssetRegistry` owns model metadata. `AssetStreamer` owns CPU loading work.
   All OpenGL creation remains on the main thread.
 - `MeshResourceCache` owns one vertex/index allocation and source-resolution
@@ -52,8 +53,10 @@ depth and is omitted from film output.
 
 ## Persistence
 
-- World schema v5 stores stable animation clip IDs, source ranges, movement
-  timing, and the environment asset ID while loading v1-v4.
+- World schema v6 stores Movie film schema v2: stable sequence, instance, and
+  clip IDs; captured bases; movement curves; typed properties; instances; and
+  animation trim, speed, loop, and legacy fallback indexes. Legacy film data is
+  loader-only and migrates after World entities are available.
 - Asset catalog schema v2 stores models, animation packs, and catalogued HDR/LDR
   panoramas.
 - Local session schema v4 accepts only finite, normalized, range-checked camera
@@ -61,4 +64,5 @@ depth and is omitted from film output.
 
 `FinalRenderJob` renders one UI-free 3840×2160 frame per application frame,
 uses 4× MSAA before HDR resolve, retains the PNG sequence, and invokes ffmpeg
-only after every frame and camera cut has validated.
+only after Bake validation confirms usable camera output, no overlap/orphan or
+incompatible target, valid ranges, and resolvable placed animation assets.

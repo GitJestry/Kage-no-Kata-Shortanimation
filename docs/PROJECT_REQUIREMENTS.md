@@ -63,8 +63,9 @@ Current samurai asset evidence:
 ## Cinematic and Shadow Evidence
 
 - World Edit and Movie share one scene without Movie mutating base transforms.
-- FilmTimeline provides camera cuts, stable animation clips, typed property
-  lanes, cubic movement timing, shot preview, and deterministic 2160p30 output.
+- MovieTimeline provides reusable target sequences and instances, stable
+  animation clips, typed property lanes, cubic movement timing, preview, Bake
+  validation, and deterministic 2160p30 output.
 - At most two point lights render six depth faces each; selection is
   deterministic and additional point lights remain illuminated.
 - Alpha-masked, double-sided, and off-camera casters participate in shadows.

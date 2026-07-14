@@ -1,5 +1,7 @@
 #include "render/world_renderer.hpp"
 
+#include "render/viewport_picking.hpp"
+
 #include "camera/screen_metrics.hpp"
 
 #include <glad/gl.h>
@@ -24,6 +26,11 @@ constexpr glm::vec3 SELECTED_CONTACT_COLOR{1.0f, 1.0f, 1.0f};
 constexpr glm::vec3 FLOOR_INTERSECTION_COLOR{1.0f, 0.18f, 0.12f};
 constexpr glm::vec3 ROTATION_COLOR{1.0f, 0.18f, 0.14f};
 constexpr glm::vec3 CAMERA_GIZMO_COLOR{0.40f, 0.74f, 1.0f};
+constexpr glm::vec3 MOVEMENT_PATH_COLOR{0.18f, 0.58f, 1.0f};
+constexpr glm::vec3 MOVEMENT_TRANSITION_COLOR{0.62f, 0.34f, 0.86f};
+constexpr glm::vec4 MOVEMENT_POINT_FILL{0.18f, 0.58f, 1.0f, 1.0f};
+constexpr glm::vec4 MOVEMENT_TRANSITION_POINT_FILL{0.62f, 0.34f, 0.86f,
+                                                    1.0f};
 constexpr glm::vec4 AXIS_X_FILL{0.18f, 0.82f, 0.28f, 0.92f};
 constexpr glm::vec4 AXIS_Y_FILL{1.0f, 0.86f, 0.22f, 0.92f};
 constexpr glm::vec4 AXIS_Z_FILL{0.22f, 0.48f, 1.0f, 0.92f};
@@ -189,6 +196,56 @@ void addSolidSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
                 parCenter + points[face[1]], parCenter + points[face[2]],
                 parColor);
   }
+}
+
+[[nodiscard]] glm::vec3 cubicBezierPoint(
+    const kage::film::MovementPathSegment& parSegment, float parT) {
+  const float inverse = 1.0f - parT;
+  return inverse * inverse * inverse * parSegment.start +
+         3.0f * inverse * inverse * parT * parSegment.control_1 +
+         3.0f * inverse * parT * parT * parSegment.control_2 +
+         parT * parT * parT * parSegment.end;
+}
+
+void addMovementPathSegment(
+    std::vector<kage::render::LineVertex>& parVertices,
+    const kage::film::MovementPathSegment& parSegment,
+    const glm::vec3& parColor) {
+  constexpr int SEGMENT_COUNT = 32;
+  glm::vec3 previous = parSegment.start;
+  for (int segment = 1; segment <= SEGMENT_COUNT; ++segment) {
+    const float t =
+        static_cast<float>(segment) / static_cast<float>(SEGMENT_COUNT);
+    const glm::vec3 current = cubicBezierPoint(parSegment, t);
+    addLine(parVertices, previous, current, parColor);
+    previous = current;
+  }
+}
+
+void addMovementPathOverlay(
+    std::vector<kage::render::LineVertex>& parLines,
+    std::vector<kage::render::SolidGizmoVertex>& parSolid,
+    const kage::film::ResolvedMovementPath& parPath,
+    const kage::camera::Camera& parCamera,
+    const glm::vec2& parViewportSize) {
+  const auto markerRadius = [&](const glm::vec3& parPosition) {
+    return std::clamp(kage::camera::getWorldLengthForPixels(
+                          parCamera, parPosition, parViewportSize, 10.0f),
+                      0.04f, 1.5f);
+  };
+
+  if (parPath.transition_before.has_value()) {
+    addMovementPathSegment(parLines, *parPath.transition_before,
+                           MOVEMENT_TRANSITION_COLOR);
+    addSolidSphere(parSolid, parPath.transition_before->start,
+                   markerRadius(parPath.transition_before->start),
+                   MOVEMENT_TRANSITION_POINT_FILL);
+  }
+  addMovementPathSegment(parLines, parPath.movement, MOVEMENT_PATH_COLOR);
+  addSolidSphere(parSolid, parPath.movement.start,
+                 markerRadius(parPath.movement.start), MOVEMENT_POINT_FILL);
+  addSolidSphere(parSolid, parPath.movement.end,
+                 markerRadius(parPath.movement.end), MOVEMENT_POINT_FILL);
 }
 
 void addCircle(std::vector<kage::render::LineVertex>& parVertices,
@@ -637,19 +694,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   visible_meshes.reserve(parScene.world.getEntities().size());
 
   const auto display_transform_for = [&](const scene::EntityRecord& entity) {
-    math::Transform transform = entity.transform.transform;
-    if (parView.film_state != nullptr) {
-      const auto evaluated = std::find_if(
-          parView.film_state->transforms.begin(),
-          parView.film_state->transforms.end(),
-          [&](const film::TransformOverride& item) {
-            return item.entity == entity.id;
-          });
-      if (evaluated != parView.film_state->transforms.end()) {
-        transform = evaluated->transform;
-      }
-    }
-    return transform;
+    return viewportEntityTransform(entity, parView.film_state);
   };
 
   for (const scene::EntityRecord& entity : parScene.world.getEntities()) {
@@ -772,25 +817,17 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   }
 
   const scene::EntityRecord* selected_entity =
-      parScene.world.findEntity(parScene.selected_entity);
+      parScene.world.findEntity(parView.use_world_selection
+                                    ? parScene.selected_entity
+                                    : parView.selected_entity);
   if (parSettings.viewport.show_overlays && selected_entity != nullptr &&
       selected_entity->static_mesh.has_value() &&
       selected_entity->static_mesh->visible) {
     const GpuMesh* mesh =
         find_mesh(selected_entity->static_mesh->mesh_handle);
     if (mesh != nullptr) {
-      math::Transform selected_transform = selected_entity->transform.transform;
-      if (parView.film_state != nullptr) {
-        const auto evaluated = std::find_if(
-            parView.film_state->transforms.begin(),
-            parView.film_state->transforms.end(),
-            [&](const film::TransformOverride& item) {
-              return item.entity == selected_entity->id;
-            });
-        if (evaluated != parView.film_state->transforms.end()) {
-          selected_transform = evaluated->transform;
-        }
-      }
+      const math::Transform selected_transform =
+          viewportEntityTransform(*selected_entity, parView.film_state);
       const math::Bounds3 selected_bounds =
           getEntityWorldBounds(*selected_entity, selected_transform);
       const float outline_thickness =
@@ -817,6 +854,24 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   m_glow_vertices.reserve(256);
   addSunOverlay(m_line_vertices, m_solid_vertices, m_glow_vertices, camera,
                 parViewportSize, parLighting.sun);
+  for (const kage::film::ResolvedMovementPath& movement_path :
+       parView.movement_paths) {
+    addMovementPathOverlay(m_line_vertices, m_solid_vertices,
+                           movement_path, camera, parViewportSize);
+  }
+  if (selected_entity != nullptr &&
+      !parSettings.viewport.show_world_edit_gizmos &&
+      !selected_entity->static_mesh.has_value()) {
+    const math::Transform selected_transform =
+        viewportEntityTransform(*selected_entity, parView.film_state);
+    const float marker_radius = std::clamp(
+        camera::getWorldLengthForPixels(camera,
+                                        selected_transform.translation,
+                                        parViewportSize, 18.0f),
+        0.05f, 2.0f);
+    addOriginCore(m_line_vertices, selected_transform.translation,
+                  marker_radius);
+  }
   if (parSettings.viewport.floor_grid_visible) {
     addFloorGrid(m_grid_line_vertices, camera.position,
                  parSettings.viewport.floor_grid_radius);
@@ -858,12 +913,14 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     if (entity.light.has_value()) {
       if (entity.light->type == scene::LightType::Point) {
         addLightGizmo(m_line_vertices, m_solid_vertices,
-                      entity.transform.transform, *entity.light,
+                      viewportEntityTransform(entity, parView.film_state),
+                      *entity.light,
                       camera.getRight(), camera.getUp());
       }
     }
     if (entity.camera.has_value()) {
-      addCameraGizmo(m_line_vertices, entity.transform.transform);
+      addCameraGizmo(m_line_vertices,
+                     viewportEntityTransform(entity, parView.film_state));
     }
   }
   if (parGhost.kind == PlacementGhost::Kind::PointLight) {
@@ -947,7 +1004,8 @@ std::optional<scene::EntityId> WorldRenderer::pickEntity(
     const scene::SceneManager::SceneRecord& parScene,
     const MeshResourceCache& parMeshResources,
     const camera::Camera& parCamera,
-    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize,
+    const film::FilmFrameState* parFilmState) {
   if (m_pick_framebuffer == 0) {
     glGenFramebuffers(1, &m_pick_framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, m_pick_framebuffer);
@@ -1010,7 +1068,8 @@ std::optional<scene::EntityId> WorldRenderer::pickEntity(
       skin_matrices = entity.rig->primitive_skin_matrices;
     }
     m_mesh_renderer.drawPicking(
-        *mesh, pick_view_projection, entity.transform.transform.toMatrix(),
+        *mesh, pick_view_projection,
+        viewportEntityTransform(entity, parFilmState).toMatrix(),
         skin_matrices, entity.id.value);
   }
 

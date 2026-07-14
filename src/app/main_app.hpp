@@ -36,11 +36,8 @@ class MainApp final : public App {
   editor::WorldEditor m_editor;
   glm::vec2 m_last_ui_cursor{0.0f};
   bool m_last_left_mouse_down = false;
-  bool m_last_right_mouse_down = false;
-  bool m_last_middle_mouse_down = false;
   bool m_last_escape_down = false;
   bool m_last_delete_down = false;
-  bool m_last_tab_down = false;
   bool m_last_z_down = false;
   float m_scroll_y = 0.0f;
   std::string m_imgui_ini_path;
