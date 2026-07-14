@@ -80,8 +80,6 @@ class EngineCore final {
   void markLocalSessionDirty();
   [[nodiscard]] bool isProjectDirty() const;
   [[nodiscard]] const platform::RuntimePaths& getRuntimePaths() const;
-  [[nodiscard]] std::filesystem::path getProjectSavePath() const;
-  [[nodiscard]] std::filesystem::path getLocalSessionSavePath() const;
 
   std::size_t createScene(std::string parName);
   std::size_t createLocalScene(std::string parName);
@@ -147,10 +145,8 @@ class EngineCore final {
   [[nodiscard]] scene::World& getWorld();
   [[nodiscard]] const scene::World& getWorld() const;
   [[nodiscard]] camera::CameraSystem& getCameraSystem();
-  [[nodiscard]] const camera::CameraSystem& getCameraSystem() const;
   [[nodiscard]] const lighting::LightingState& getLightingState() const;
   [[nodiscard]] assets::AssetRegistry& getAssetRegistry();
-  [[nodiscard]] const assets::AssetRegistry& getAssetRegistry() const;
   [[nodiscard]] std::span<const assets::AssetRegistry::AssetLibraryEntry>
   getAssetLibrary() const;
   [[nodiscard]] std::span<const assets::EnvironmentAsset>
@@ -161,7 +157,6 @@ class EngineCore final {
       assets::AssetRegistry::StaticMeshHandle parHandle) const;
   [[nodiscard]] const assets::AssetRegistry::AssetLibraryEntry*
   getAssetLibraryEntry(std::size_t parAssetIndex) const;
-  [[nodiscard]] const render::PlacementGhost& getPlacementGhost() const;
   [[nodiscard]] scene::EntityId getSelectedEntity() const;
   [[nodiscard]] const scene::SunLightSettings& getSunLightSettings() const;
   [[nodiscard]] std::size_t getActiveSceneIndex() const;
@@ -194,9 +189,6 @@ class EngineCore final {
       const glm::vec2& parCursorPixel,
       const glm::vec2& parViewportSize) const;
   [[nodiscard]] glm::vec3 getPointInFrontOfCamera(float parDistance) const;
-  [[nodiscard]] glm::vec3 getCameraRayDirection(
-      const glm::vec2& parCursorPixel,
-      const glm::vec2& parViewportSize) const;
 
  private:
   void attachLoadedAssetToInstances(std::size_t parAssetIndex);

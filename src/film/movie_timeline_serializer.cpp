@@ -1,31 +1,18 @@
 #include "film/movie_timeline_serializer.hpp"
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-literal-operator"
-#endif
-#include <json.hpp>
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
+#include "serialization/transform_json.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 namespace {
 
 using json = nlohmann::json;
 using namespace kage;
 using namespace kage::film;
-
-[[nodiscard]] glm::vec3 readVec3(const json& parJson,
-                                 const glm::vec3& parFallback = {}) {
-  if (!parJson.is_array() || parJson.size() != 3) {
-    return parFallback;
-  }
-  return {parJson[0].get<float>(), parJson[1].get<float>(),
-          parJson[2].get<float>()};
-}
+using kage::serialization::readTransform;
+using kage::serialization::readVec3;
+using kage::serialization::writeTransform;
+using kage::serialization::writeVec3;
 
 [[nodiscard]] glm::vec4 readVec4(const json& parJson,
                                  const glm::vec4& parFallback = {}) {
@@ -36,47 +23,8 @@ using namespace kage::film;
           parJson[2].get<float>(), parJson[3].get<float>()};
 }
 
-[[nodiscard]] glm::quat readQuat(const json& parJson,
-                                 const glm::quat& parFallback = {}) {
-  if (!parJson.is_array() || parJson.size() != 4) {
-    return parFallback;
-  }
-  const glm::quat value(parJson[0].get<float>(), parJson[1].get<float>(),
-                        parJson[2].get<float>(), parJson[3].get<float>());
-  const float length = glm::length(value);
-  return std::isfinite(length) && length > 0.00001f ? glm::normalize(value)
-                                                    : parFallback;
-}
-
-[[nodiscard]] math::Transform readTransform(const json& parJson) {
-  math::Transform value;
-  if (!parJson.is_object()) {
-    return value;
-  }
-  value.translation =
-      readVec3(parJson.value("position", json::array()), value.translation);
-  value.rotation =
-      readQuat(parJson.value("rotation", json::array()), value.rotation);
-  value.scale = readVec3(parJson.value("scale", json::array()), value.scale);
-  return value;
-}
-
-[[nodiscard]] json writeVec3(const glm::vec3& parValue) {
-  return json::array({parValue.x, parValue.y, parValue.z});
-}
-
 [[nodiscard]] json writeVec4(const glm::vec4& parValue) {
   return json::array({parValue.x, parValue.y, parValue.z, parValue.w});
-}
-
-[[nodiscard]] json writeQuat(const glm::quat& parValue) {
-  return json::array({parValue.w, parValue.x, parValue.y, parValue.z});
-}
-
-[[nodiscard]] json writeTransform(const math::Transform& parValue) {
-  return {{"position", writeVec3(parValue.translation)},
-          {"rotation", writeQuat(parValue.rotation)},
-          {"scale", writeVec3(parValue.scale)}};
 }
 
 [[nodiscard]] TimelineTargetKind readTargetKind(const json& parJson) {

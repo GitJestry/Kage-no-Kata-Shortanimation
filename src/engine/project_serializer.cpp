@@ -3,17 +3,7 @@
 #include "engine/engine_core.hpp"
 #include "camera/session_camera.hpp"
 #include "film/movie_timeline_serializer.hpp"
-
-#include <glm/gtc/quaternion.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-literal-operator"
-#endif
-#include <json.hpp>
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
+#include "serialization/transform_json.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -29,14 +19,10 @@
 namespace {
 
 using json = nlohmann::json;
-
-[[nodiscard]] json toJson(const glm::vec3& parValue) {
-  return json::array({parValue.x, parValue.y, parValue.z});
-}
-
-[[nodiscard]] json toJson(const glm::quat& parValue) {
-  return json::array({parValue.w, parValue.x, parValue.y, parValue.z});
-}
+using kage::serialization::readTransform;
+using kage::serialization::readVec3;
+using kage::serialization::writeTransform;
+using kage::serialization::writeVec3;
 
 [[nodiscard]] kage::assets::AssetId readAssetId(const json& parJson) {
   kage::assets::AssetId id;
@@ -44,59 +30,11 @@ using json = nlohmann::json;
   return id;
 }
 
-[[nodiscard]] glm::vec3 readVec3(const json& parJson,
-                                 const glm::vec3& parFallback) {
-  if (!parJson.is_array() || parJson.size() != 3) {
-    return parFallback;
-  }
-
-  return glm::vec3(parJson[0].get<float>(), parJson[1].get<float>(),
-                   parJson[2].get<float>());
-}
-
 [[nodiscard]] glm::vec3 normalizedOrFallback(const glm::vec3& parValue,
                                              const glm::vec3& parFallback) {
   const float length = glm::length(parValue);
   return std::isfinite(length) && length > 0.0001f ? parValue / length
                                                    : parFallback;
-}
-
-[[nodiscard]] glm::quat readQuat(const json& parJson,
-                                 const glm::quat& parFallback) {
-  if (!parJson.is_array() || parJson.size() != 4) {
-    return parFallback;
-  }
-
-  const glm::quat value(parJson[0].get<float>(), parJson[1].get<float>(),
-                        parJson[2].get<float>(), parJson[3].get<float>());
-  const float length = glm::length(value);
-  if (!std::isfinite(length) || length <= 0.00001f) {
-    return parFallback;
-  }
-  return glm::normalize(value);
-}
-
-[[nodiscard]] kage::math::Transform readTransform(const json& parJson) {
-  kage::math::Transform transform;
-  if (!parJson.is_object()) {
-    return transform;
-  }
-
-  transform.translation =
-      readVec3(parJson.value("position", json::array()), transform.translation);
-  transform.rotation =
-      readQuat(parJson.value("rotation", json::array()), transform.rotation);
-  transform.scale =
-      readVec3(parJson.value("scale", json::array()), transform.scale);
-  return transform;
-}
-
-[[nodiscard]] json toJson(const kage::math::Transform& parTransform) {
-  return {
-      {"position", toJson(parTransform.translation)},
-      {"rotation", toJson(parTransform.rotation)},
-      {"scale", toJson(parTransform.scale)},
-  };
 }
 
 [[nodiscard]] kage::scene::LightComponent readPointLight(
@@ -115,8 +53,8 @@ using json = nlohmann::json;
     const kage::scene::SunLightSettings& parSunLight) {
   return {
       {"enabled", parSunLight.enabled},
-      {"direction_to_sun", toJson(parSunLight.direction_to_sun)},
-      {"color", toJson(parSunLight.color)},
+      {"direction_to_sun", writeVec3(parSunLight.direction_to_sun)},
+      {"color", writeVec3(parSunLight.color)},
       {"intensity", parSunLight.intensity},
   };
 }
@@ -328,7 +266,7 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     json entity_json;
     entity_json["id"] = entity.id.value;
     entity_json["name"] = entity.name.name;
-    entity_json["transform"] = toJson(entity.transform.transform);
+    entity_json["transform"] = writeTransform(entity.transform.transform);
     if (entity.static_mesh.has_value()) {
       entity_json["mesh"] = {{"visible", entity.static_mesh->visible}};
       const auto* asset = parAssetRegistry.getAssetLibraryEntry(
@@ -350,7 +288,7 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
       entity_json["light"] = {
           {"type", "point"},
           {"enabled", entity.light->enabled},
-          {"color", toJson(entity.light->color)},
+          {"color", writeVec3(entity.light->color)},
           {"intensity", entity.light->intensity},
           {"range", entity.light->range},
           {"casts_shadows", entity.light->casts_shadows},
@@ -637,7 +575,7 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
   editor_transform.translation = editor_camera.position;
   editor_transform.rotation = editor_camera.orientation;
   document["editor_camera"] = {
-      {"transform", toJson(editor_transform)},
+      {"transform", writeTransform(editor_transform)},
       {"fov", editor_camera.vertical_fov_degrees},
       {"near", editor_camera.near_plane},
       {"far", editor_camera.far_plane},

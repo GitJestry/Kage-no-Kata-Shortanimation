@@ -43,7 +43,6 @@ class GizmoController final {
   void end();
 
   [[nodiscard]] bool isActive() const;
-  [[nodiscard]] Operation getOperation() const;
   [[nodiscard]] std::optional<render::GizmoGuide> getActiveGuide(
       const engine::EngineCore& parEngine) const;
 

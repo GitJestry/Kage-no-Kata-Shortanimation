@@ -1,10 +1,10 @@
 #include "animation/animation_system.hpp"
+#include "check_helpers.hpp"
 #include "film/movie_timeline.hpp"
 #include "film/timeline_edit_service.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <iostream>
 #include <limits>
 #include <string_view>
@@ -13,10 +13,8 @@ namespace {
 
 using namespace kage;
 using namespace kage::film;
-
-[[nodiscard]] bool close(float parLeft, float parRight) {
-  return std::abs(parLeft - parRight) < 0.001f;
-}
+using kage::test::close;
+using kage::test::fail;
 
 [[nodiscard]] bool close(const glm::vec3& parLeft, const glm::vec3& parRight) {
   return glm::length(parLeft - parRight) < 0.001f;
@@ -42,11 +40,6 @@ using namespace kage::film;
     base.point_light = CapturedPointLightState{};
   }
   return base;
-}
-
-int fail(std::string_view parMessage) {
-  std::cerr << parMessage << '\n';
-  return 1;
 }
 
 [[nodiscard]] bool testFrameRangesAndEvaluation() {

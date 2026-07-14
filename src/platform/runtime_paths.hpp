@@ -10,7 +10,6 @@ class RuntimePaths final {
 
   [[nodiscard]] static RuntimePaths fromExecutable();
 
-  [[nodiscard]] const std::filesystem::path& getExecutableDirectory() const;
   [[nodiscard]] const std::filesystem::path& getProjectRoot() const;
   [[nodiscard]] const std::filesystem::path& getAssetDirectory() const;
   [[nodiscard]] const std::filesystem::path& getModelDirectory() const;
@@ -19,13 +18,7 @@ class RuntimePaths final {
       const std::filesystem::path& parRelativePath) const;
   [[nodiscard]] std::filesystem::path getAssetPath(
       const std::filesystem::path& parRelativePath) const;
-  [[nodiscard]] std::filesystem::path getModelPath(
-      const std::filesystem::path& parRelativePath) const;
-  [[nodiscard]] std::filesystem::path getAnimationPath(
-      const std::filesystem::path& parRelativePath) const;
   [[nodiscard]] std::filesystem::path getTexturePath(
-      const std::filesystem::path& parRelativePath) const;
-  [[nodiscard]] std::filesystem::path getAudioPath(
       const std::filesystem::path& parRelativePath) const;
   [[nodiscard]] std::filesystem::path getProjectAssetCatalogPath() const;
   [[nodiscard]] std::filesystem::path getProjectWorldPath() const;

@@ -73,8 +73,6 @@ class AssetRegistry final {
   void releaseInstance(std::size_t parAssetIndex);
   void setInstanceState(std::size_t parAssetIndex, std::size_t parCount,
                         std::size_t parNextInstanceNumber);
-  void resetInstanceCounts();
-  void rebuildInstanceCountsFromAssets(std::span<const std::size_t> parAssets);
 
   [[nodiscard]] std::span<const AssetLibraryEntry> getAssetLibrary() const;
   [[nodiscard]] const AssetLibraryEntry* getAssetLibraryEntry(
@@ -100,6 +98,5 @@ class AssetRegistry final {
 
 [[nodiscard]] AssetId makeStableAssetId(std::string_view parNamespace,
                                         const std::filesystem::path& parPath);
-[[nodiscard]] const char* getAssetLoadStateLabel(AssetLoadState parState);
 
 }  // namespace kage::assets

@@ -79,11 +79,6 @@ void FlyCameraController::syncFromCamera(const Camera& parCamera) {
   m_angles_initialized = true;
 }
 
-void FlyCameraController::resetRoll(Camera& parCamera) {
-  syncFromCamera(parCamera);
-  applyAngles(parCamera);
-}
-
 void FlyCameraController::adjustSpeed(float parScrollAmount) {
   m_move_speed *= std::pow(SPEED_STEP, parScrollAmount);
   m_move_speed = std::clamp(m_move_speed, MIN_SPEED, MAX_SPEED);

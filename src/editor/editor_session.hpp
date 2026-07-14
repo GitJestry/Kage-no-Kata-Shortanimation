@@ -3,7 +3,6 @@
 #include "editor/movie_editor_layout.hpp"
 #include "film/movie_timeline.hpp"
 
-#include <filesystem>
 #include <optional>
 
 namespace kage::editor {
@@ -40,10 +39,5 @@ struct EditorSession final {
   film::FilmFrame authoring_cursor_frame = 0;
   float film_editor_height = 260.0f;
 };
-
-void loadEditorSession(const std::filesystem::path& parPath,
-                       EditorSession& parSession);
-void saveEditorSession(const std::filesystem::path& parPath,
-                       const EditorSession& parSession);
 
 }  // namespace kage::editor

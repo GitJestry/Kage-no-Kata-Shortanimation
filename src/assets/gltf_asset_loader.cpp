@@ -1443,9 +1443,4 @@ GltfDocument GltfAssetLoader::loadDocument(
   return output;
 }
 
-StaticModel GltfAssetLoader::loadStaticModel(
-    const std::filesystem::path& parPath) const {
-  return loadDocument(parPath).static_model;
-}
-
 }  // namespace kage::assets

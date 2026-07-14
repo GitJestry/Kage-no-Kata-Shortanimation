@@ -1,5 +1,6 @@
 #include "render/world_renderer.hpp"
 
+#include "math/cubic_bezier.hpp"
 #include "render/viewport_picking.hpp"
 
 #include "camera/screen_metrics.hpp"
@@ -198,15 +199,6 @@ void addSolidSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
   }
 }
 
-[[nodiscard]] glm::vec3 cubicBezierPoint(
-    const kage::film::MovementPathSegment& parSegment, float parT) {
-  const float inverse = 1.0f - parT;
-  return inverse * inverse * inverse * parSegment.start +
-         3.0f * inverse * inverse * parT * parSegment.control_1 +
-         3.0f * inverse * parT * parT * parSegment.control_2 +
-         parT * parT * parT * parSegment.end;
-}
-
 void addMovementPathSegment(
     std::vector<kage::render::LineVertex>& parVertices,
     const kage::film::MovementPathSegment& parSegment,
@@ -216,7 +208,9 @@ void addMovementPathSegment(
   for (int segment = 1; segment <= SEGMENT_COUNT; ++segment) {
     const float t =
         static_cast<float>(segment) / static_cast<float>(SEGMENT_COUNT);
-    const glm::vec3 current = cubicBezierPoint(parSegment, t);
+    const glm::vec3 current = kage::math::cubicBezier(
+        parSegment.start, parSegment.control_1, parSegment.control_2,
+        parSegment.end, t);
     addLine(parVertices, previous, current, parColor);
     previous = current;
   }

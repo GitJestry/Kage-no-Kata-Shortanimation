@@ -155,10 +155,6 @@ RuntimePaths RuntimePaths::fromExecutable() {
   return RuntimePaths(getExecutablePath());
 }
 
-const std::filesystem::path& RuntimePaths::getExecutableDirectory() const {
-  return m_executable_directory;
-}
-
 const std::filesystem::path& RuntimePaths::getProjectRoot() const {
   return m_project_root;
 }
@@ -185,24 +181,9 @@ std::filesystem::path RuntimePaths::getAssetPath(
   return m_asset_directory / parRelativePath;
 }
 
-std::filesystem::path RuntimePaths::getModelPath(
-    const std::filesystem::path& parRelativePath) const {
-  return m_model_directory / parRelativePath;
-}
-
-std::filesystem::path RuntimePaths::getAnimationPath(
-    const std::filesystem::path& parRelativePath) const {
-  return m_animation_directory / parRelativePath;
-}
-
 std::filesystem::path RuntimePaths::getTexturePath(
     const std::filesystem::path& parRelativePath) const {
   return getAssetPath(std::filesystem::path("textures") / parRelativePath);
-}
-
-std::filesystem::path RuntimePaths::getAudioPath(
-    const std::filesystem::path& parRelativePath) const {
-  return getAssetPath(std::filesystem::path("audio") / parRelativePath);
 }
 
 std::filesystem::path RuntimePaths::getProjectAssetCatalogPath() const {

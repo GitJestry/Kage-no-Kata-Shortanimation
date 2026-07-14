@@ -323,14 +323,6 @@ const platform::RuntimePaths& EngineCore::getRuntimePaths() const {
   return m_runtime_paths;
 }
 
-std::filesystem::path EngineCore::getProjectSavePath() const {
-  return m_runtime_paths.getProjectWorldPath();
-}
-
-std::filesystem::path EngineCore::getLocalSessionSavePath() const {
-  return m_runtime_paths.getLocalSessionPath();
-}
-
 bool EngineCore::exportFilmSequence(std::string& parError) {
   const film::TimelineValidation validation = validateMovieTimeline(true);
   if (validation.hasErrors()) {
@@ -550,19 +542,11 @@ camera::CameraSystem& EngineCore::getCameraSystem() {
   return m_camera_system;
 }
 
-const camera::CameraSystem& EngineCore::getCameraSystem() const {
-  return m_camera_system;
-}
-
 const lighting::LightingState& EngineCore::getLightingState() const {
   return m_lighting_state;
 }
 
 assets::AssetRegistry& EngineCore::getAssetRegistry() {
-  return m_asset_registry;
-}
-
-const assets::AssetRegistry& EngineCore::getAssetRegistry() const {
   return m_asset_registry;
 }
 
@@ -588,10 +572,6 @@ const assets::StaticModel* EngineCore::getStaticMeshSource(
 const assets::AssetRegistry::AssetLibraryEntry*
 EngineCore::getAssetLibraryEntry(std::size_t parAssetIndex) const {
   return m_asset_registry.getAssetLibraryEntry(parAssetIndex);
-}
-
-const render::PlacementGhost& EngineCore::getPlacementGhost() const {
-  return m_placement_ghost;
 }
 
 scene::EntityId EngineCore::getSelectedEntity() const {
@@ -802,11 +782,6 @@ glm::vec3 EngineCore::getPlacementPointOnFloor(
 glm::vec3 EngineCore::getPointInFrontOfCamera(float parDistance) const {
   const camera::Camera& camera = m_camera_system.getEditorCamera();
   return camera.position + camera.getForward() * std::max(parDistance, 0.1f);
-}
-
-glm::vec3 EngineCore::getCameraRayDirection(
-    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
-  return makeCameraRay(parCursorPixel, parViewportSize).direction;
 }
 
 scene::SceneManager::SceneRecord& EngineCore::getActiveScene() {

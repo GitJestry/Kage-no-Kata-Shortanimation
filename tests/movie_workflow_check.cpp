@@ -1,4 +1,5 @@
 #include "assets/asset_registry.hpp"
+#include "check_helpers.hpp"
 #include "editor/movie_editor_controller.hpp"
 #include "engine/film_camera_creation.hpp"
 #include "engine/film_viewport.hpp"
@@ -8,7 +9,6 @@
 #include "render/viewport_picking.hpp"
 
 #include <array>
-#include <cmath>
 #include <iostream>
 #include <string_view>
 
@@ -16,10 +16,8 @@ namespace {
 
 using namespace kage;
 using namespace kage::film;
-
-[[nodiscard]] bool close(float parLeft, float parRight) {
-  return std::abs(parLeft - parRight) < 0.001f;
-}
+using kage::test::close;
+using kage::test::fail;
 
 [[nodiscard]] scene::EntityRecord entity(std::uint32_t parId) {
   scene::EntityRecord result;
@@ -71,11 +69,6 @@ using namespace kage::film;
                    {TimelineTargetKind::RiggedEntity, entity},
                    CapturedEntityBaseState{}, RigAnimationClip{.clip_id = 9001}) &&
          validateMovieTimelineWithWorld(timeline, world, true, &assets).hasErrors();
-}
-
-int fail(std::string_view parMessage) {
-  std::cerr << parMessage << '\n';
-  return 1;
 }
 
 [[nodiscard]] bool testTargetClassification() {

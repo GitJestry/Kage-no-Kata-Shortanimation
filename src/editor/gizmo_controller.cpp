@@ -226,10 +226,6 @@ bool GizmoController::isActive() const {
   return m_operation != Operation::None;
 }
 
-GizmoController::Operation GizmoController::getOperation() const {
-  return m_operation;
-}
-
 std::optional<render::GizmoGuide> GizmoController::getActiveGuide(
     const engine::EngineCore& parEngine) const {
   if (m_operation != Operation::MoveAxis &&

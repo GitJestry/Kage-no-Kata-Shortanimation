@@ -268,24 +268,6 @@ AssetId makeStableAssetId(std::string_view parNamespace,
   return AssetId{static_cast<std::size_t>(hash)};
 }
 
-const char* getAssetLoadStateLabel(AssetLoadState parState) {
-  switch (parState) {
-    case AssetLoadState::MetadataReady:
-      return "Metadata";
-    case AssetLoadState::Queued:
-      return "Queued";
-    case AssetLoadState::CpuLoading:
-      return "CPU";
-    case AssetLoadState::GpuUploading:
-      return "GPU";
-    case AssetLoadState::Ready:
-      return "Ready";
-    case AssetLoadState::Error:
-      return "Error";
-  }
-  return "Unknown";
-}
-
 std::size_t AssetRegistry::registerStaticAsset(
     std::string parLabel, std::filesystem::path parPath) {
   return registerStaticAsset(std::move(parLabel), std::move(parPath), {});
@@ -538,26 +520,6 @@ void AssetRegistry::setInstanceState(std::size_t parAssetIndex,
   AssetLibraryEntry& asset = m_asset_library[parAssetIndex];
   asset.instance_count = parCount;
   asset.next_instance_number = parNextInstanceNumber;
-}
-
-void AssetRegistry::resetInstanceCounts() {
-  for (AssetLibraryEntry& asset : m_asset_library) {
-    asset.instance_count = 0;
-    asset.next_instance_number = 0;
-  }
-}
-
-void AssetRegistry::rebuildInstanceCountsFromAssets(
-    std::span<const std::size_t> parAssets) {
-  resetInstanceCounts();
-  for (std::size_t asset_index : parAssets) {
-    if (asset_index >= m_asset_library.size()) {
-      continue;
-    }
-    AssetLibraryEntry& asset = m_asset_library[asset_index];
-    ++asset.instance_count;
-    ++asset.next_instance_number;
-  }
 }
 
 std::span<const AssetRegistry::AssetLibraryEntry>

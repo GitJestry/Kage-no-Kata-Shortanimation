@@ -1,21 +1,18 @@
+#include "check_helpers.hpp"
 #include "film/movie_timeline_serializer.hpp"
 #include "film/timeline_edit_service.hpp"
 #include "lighting/lighting_system.hpp"
 #include "scene/world.hpp"
 
 #include <algorithm>
-#include <cmath>
-#include <iostream>
 #include <string>
 
 namespace {
 
 using namespace kage;
 using namespace kage::film;
-
-[[nodiscard]] bool close(float parLeft, float parRight) {
-  return std::abs(parLeft - parRight) < 0.001f;
-}
+using kage::test::close;
+using kage::test::fail;
 
 [[nodiscard]] bool close(const glm::vec3& parLeft, const glm::vec3& parRight) {
   return glm::length(parLeft - parRight) < 0.002f;
@@ -68,11 +65,6 @@ using namespace kage::film;
                parAfter.camera_output.camera->transform.translation) &&
          close(parBefore.camera_output.camera->vertical_fov_degrees,
                parAfter.camera_output.camera->vertical_fov_degrees);
-}
-
-int fail(const char* parMessage) {
-  std::cerr << parMessage << '\n';
-  return 1;
 }
 
 }  // namespace

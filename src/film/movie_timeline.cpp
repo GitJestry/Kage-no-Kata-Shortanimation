@@ -1,5 +1,7 @@
 #include "film/movie_timeline.hpp"
 
+#include "math/cubic_bezier.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -9,17 +11,7 @@ namespace {
 
 using namespace kage;
 using namespace kage::film;
-
-template <typename Value>
-[[nodiscard]] Value cubicBezier(const Value& parStart, const Value& parControl1,
-                                const Value& parControl2, const Value& parEnd,
-                                float parT) {
-  const float inverse = 1.0f - parT;
-  return inverse * inverse * inverse * parStart +
-         3.0f * inverse * inverse * parT * parControl1 +
-         3.0f * inverse * parT * parT * parControl2 +
-         parT * parT * parT * parEnd;
-}
+using kage::math::cubicBezier;
 
 [[nodiscard]] float clipT(FilmFrame parFrame, FilmFrame parStart,
                           FilmFrame parEnd) {

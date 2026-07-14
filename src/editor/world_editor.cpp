@@ -23,7 +23,6 @@ WorldEditor::WorldEditor(engine::EngineCore& parEngine)
     m_engine.createDefaultProject();
   }
   m_engine.loadLocalSession();
-  loadEditorSession(m_engine.getLocalSessionSavePath(), m_session);
   m_gizmo_controller.setAxisSpace(
       m_engine.getGizmoAxisSpace() == render::GizmoAxisSpace::World
           ? GizmoController::AxisSpace::World
@@ -32,7 +31,6 @@ WorldEditor::WorldEditor(engine::EngineCore& parEngine)
 
 WorldEditor::~WorldEditor() {
   m_engine.saveLocalSession();
-  saveEditorSession(m_engine.getLocalSessionSavePath(), m_session);
 }
 
 void WorldEditor::update(float parDeltaSeconds,
