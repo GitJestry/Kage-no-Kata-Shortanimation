@@ -28,8 +28,6 @@ struct MovieEditorSelection final {
 
 struct EditorSession final {
   Workspace workspace = Workspace::WorldEdit;
-  bool shot_preview = false;
-  film::TargetSequenceId shot_preview_sequence_id = 0;
   film::TargetSequenceId shown_movement_paths_sequence_id = 0;
   MovieEditorSelection movie_selection;
   MovieEditorLayout movie_layout;

@@ -74,7 +74,7 @@ bool SelectionController::selectMovieTarget(
 
   const std::optional<film::TimelineTarget> target = movieTargetForEntity(*entity);
   if (target.has_value()) {
-    resetMoviePreview(parEngine, parSession);
+    parEngine.clearFilmPreviewState();
     ::kage::editor::selectMovieTarget(
         parSession, parEngine.getMovieTimeline(), *target);
   }

@@ -31,8 +31,10 @@ class WorldEditor final {
 
  private:
   void registerDefaultAssets();
-  void applyCameraMovement(const input::EditorInputSnapshot& parInput);
-  void handlePointerInput(const input::EditorInputSnapshot& parInput);
+  void applyCameraMovement(const input::EditorInputSnapshot& parInput,
+                           bool parCameraSequencePreview);
+  void handlePointerInput(const input::EditorInputSnapshot& parInput,
+                          bool parCameraSequencePreview);
   void publishGizmoGuide();
   void updateViewportRect(const input::EditorInputSnapshot& parInput);
 

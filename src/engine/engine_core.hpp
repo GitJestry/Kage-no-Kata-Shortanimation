@@ -129,7 +129,7 @@ class EngineCore final {
               film::FilmFrame parPlaybackDuration = -1);
   void render(const render::ViewportRect& parViewport,
               bool parMovieWorkspace = false,
-              bool parShotPreview = false, double parFilmFrame = -1.0,
+              double parFilmFrame = -1.0,
               bool parShowOverlays = true,
               unsigned int parDestinationFramebuffer = 0,
               int parMsaaSamples = 1,

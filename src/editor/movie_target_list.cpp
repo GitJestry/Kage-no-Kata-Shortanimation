@@ -47,7 +47,7 @@ void drawTargetSelectable(EditorSession& parSession,
   pushMovieWidgetId(MovieWidgetIdKind::TimelineTarget, target_identity);
   if (ImGui::Selectable(parLabel, selected,
                         ImGuiSelectableFlags_AllowDoubleClick)) {
-    resetMoviePreview(parEngine, parSession);
+    parEngine.clearFilmPreviewState();
     selectMovieTarget(parSession, parEngine.getMovieTimeline(), parTarget);
     if (parTarget.kind != film::TimelineTargetKind::Sun &&
         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
@@ -71,7 +71,7 @@ void drawMovieTargetList(engine::EngineCore& parEngine, EditorSession& parSessio
         clampMovieAuthoringCursor(parSession.authoring_cursor_frame);
     const auto result = parEngine.createFilmCameraFromView(start);
     if (result.has_value()) {
-      resetMoviePreview(parEngine, parSession);
+      parEngine.clearFilmPreviewState();
       selectCreatedFilmCamera(parSession, result->entity, result->sequence_id,
                               result->instance_id);
       parError.clear();

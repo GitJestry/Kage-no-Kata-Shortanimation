@@ -5,10 +5,6 @@
 
 #include <optional>
 
-namespace kage::engine {
-class EngineCore;
-}
-
 namespace kage::editor {
 
 // Maps a live entity to one of the entity-backed Movie targets:
@@ -28,16 +24,6 @@ void setMovieAuthoringCursor(EditorSession& parSession,
                              film::FilmFrame parDuration,
                              film::FilmFrame parCursorFrame);
 
-// This is the single reset for Movie-only preview state.  It deliberately
-// preserves selection and the authoring cursor while returning the viewport to
-// normal editor-camera rendering.
-void resetMoviePreview(EditorSession& parSession,
-                       film::FilmPlayback& parPlayback);
-// UI actions use this overload so the Engine's evaluated frame, viewport
-// camera, and skin-palette caches are reset with the session state.
-void resetMoviePreview(engine::EngineCore& parEngine,
-                       EditorSession& parSession);
-
 // Target list and Movie-viewport selection choose the existing sequence for
 // the target, so they always open a usable Target Sequence Timeline when one
 // exists.  A target without sequences still opens the target context, where a
@@ -54,12 +40,9 @@ void selectCreatedFilmCamera(EditorSession& parSession,
                              film::TargetSequenceId parSequenceId,
                              film::SequenceInstanceId parInstanceId);
 void deselectMovieTarget(EditorSession& parSession);
-void deselectMovieTarget(engine::EngineCore& parEngine,
-                         EditorSession& parSession);
 
-void updateMoviePreviewContext(EditorSession& parSession,
-                               const film::MovieTimeline& parTimeline,
-                               film::FilmPlayback& parPlayback);
+[[nodiscard]] const film::TargetSequence* selectedMovieTargetSequence(
+    const EditorSession& parSession, const film::MovieTimeline& parTimeline);
 [[nodiscard]] film::FilmFrame moviePreviewDuration(
     const EditorSession& parSession, const film::MovieTimeline& parTimeline);
 [[nodiscard]] bool toggleMoviePlayback(

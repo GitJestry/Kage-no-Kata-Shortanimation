@@ -60,18 +60,10 @@ void setMovieAuthoringCursor(EditorSession& parSession,
       std::clamp(parSession.authoring_cursor_frame, film::FilmFrame{0},
                  parDuration - 1));
   if (parDuration <= 0) {
-    resetMoviePreview(parSession, parPlayback);
+    parPlayback.stop();
     return;
   }
   parPlayback.previewing = true;
-}
-
-void resetMoviePreview(EditorSession& parSession,
-                       film::FilmPlayback& parPlayback) {
-  parPlayback.playing = false;
-  parPlayback.previewing = false;
-  parSession.shot_preview = false;
-  parSession.shot_preview_sequence_id = 0;
 }
 
 namespace {
@@ -133,29 +125,17 @@ void deselectMovieTarget(EditorSession& parSession) {
   parSession.movie_selection.clear();
 }
 
-void updateMoviePreviewContext(EditorSession& parSession,
-                               const film::MovieTimeline& parTimeline,
-                               film::FilmPlayback& parPlayback) {
-  if (!parPlayback.previewing) {
-    parSession.shot_preview = false;
-    parSession.shot_preview_sequence_id = 0;
-    return;
-  }
+const film::TargetSequence* selectedMovieTargetSequence(
+    const EditorSession& parSession, const film::MovieTimeline& parTimeline) {
   if (!parSession.movie_selection.target.has_value()) {
-    parSession.shot_preview = false;
-    parSession.shot_preview_sequence_id = 0;
-    return;
+    return nullptr;
   }
   const film::TargetSequence* sequence =
       parTimeline.findSequence(parSession.movie_selection.sequence_id);
-  if (sequence == nullptr ||
-      sequence->target != *parSession.movie_selection.target ||
-      sequence->durationFrames() <= 0) {
-    resetMoviePreview(parSession, parPlayback);
-    return;
-  }
-  parSession.shot_preview_sequence_id = sequence->id;
-  parSession.shot_preview = film::isCameraSequence(*sequence);
+  return sequence != nullptr &&
+                 sequence->target == *parSession.movie_selection.target
+             ? sequence
+             : nullptr;
 }
 
 film::FilmFrame moviePreviewDuration(const EditorSession& parSession,
@@ -163,13 +143,9 @@ film::FilmFrame moviePreviewDuration(const EditorSession& parSession,
   if (!parSession.movie_selection.target.has_value()) {
     return parTimeline.durationFrames();
   }
-  const film::TargetSequence* sequence = parTimeline.findSequence(
-      parSession.movie_selection.sequence_id);
-  if (sequence != nullptr &&
-      sequence->target == *parSession.movie_selection.target) {
-    return sequence->durationFrames();
-  }
-  return 0;
+  const film::TargetSequence* sequence =
+      selectedMovieTargetSequence(parSession, parTimeline);
+  return sequence != nullptr ? sequence->durationFrames() : 0;
 }
 
 bool toggleMoviePlayback(EditorSession& parSession,
@@ -183,7 +159,7 @@ bool toggleMoviePlayback(EditorSession& parSession,
       moviePreviewDuration(parSession, parTimeline);
   if (duration <= 0) {
     parPlayback.playhead_frame = 0.0;
-    resetMoviePreview(parSession, parPlayback);
+    parPlayback.stop();
     return false;
   }
   if (!std::isfinite(parPlayback.playhead_frame) ||
@@ -193,7 +169,6 @@ bool toggleMoviePlayback(EditorSession& parSession,
   }
   parPlayback.playing = true;
   parPlayback.previewing = true;
-  updateMoviePreviewContext(parSession, parTimeline, parPlayback);
   return true;
 }
 

@@ -670,7 +670,8 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
   film::MovieTimeline& timeline = parEngine.getMovieTimeline();
   ImGui::Text("%s", movieTargetLabel(parEngine, target).c_str());
   if (ImGui::Button("Deselect", ImVec2(-1.0f, 0.0f))) {
-    deselectMovieTarget(parEngine, parSession);
+    parEngine.clearFilmPreviewState();
+    deselectMovieTarget(parSession);
     return;
   }
 
@@ -684,7 +685,7 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
     const bool selected = parSession.movie_selection.sequence_id == sequence.id;
     pushMovieWidgetId(MovieWidgetIdKind::TargetSequence, sequence.id);
     if (ImGui::Selectable(sequence.name.c_str(), selected)) {
-      resetMoviePreview(parEngine, parSession);
+      parEngine.clearFilmPreviewState();
       selectMovieSequence(parSession, sequence);
     }
     ImGui::PopID();
@@ -699,7 +700,7 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
           movieTargetLabel(parEngine, target) + " Sequence", target, *current_base);
       if (created.has_value()) {
         parEngine.markProjectDirty();
-        resetMoviePreview(parEngine, parSession);
+        parEngine.clearFilmPreviewState();
         const film::TargetSequence* sequence = timeline.findSequence(*created);
         if (sequence != nullptr) {
           selectMovieSequence(parSession, *sequence);
@@ -723,7 +724,7 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
       const auto duplicate = edits.duplicateSequence(selected_sequence->id);
       if (duplicate.has_value()) {
         parEngine.markProjectDirty();
-        resetMoviePreview(parEngine, parSession);
+        parEngine.clearFilmPreviewState();
         const film::TargetSequence* duplicated = timeline.findSequence(*duplicate);
         if (duplicated != nullptr) {
           selectMovieSequence(parSession, *duplicated);
@@ -764,7 +765,7 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
       const auto result = edits.deleteSequence(sequence_id);
       if (result.has_value()) {
         parEngine.markProjectDirty();
-        resetMoviePreview(parEngine, parSession);
+        parEngine.clearFilmPreviewState();
         parSession.movie_selection.sequence_id = 0;
         parSession.movie_selection.clip_id = 0;
         parSession.movie_selection.instance_id = 0;

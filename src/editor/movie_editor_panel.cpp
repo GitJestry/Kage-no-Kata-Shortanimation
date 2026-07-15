@@ -96,11 +96,10 @@ void drawTimelineWindow(engine::EngineCore& parEngine,
 
   film::MovieTimeline& timeline = parEngine.getMovieTimeline();
   film::FilmPlayback& playback = parEngine.getFilmPlayback();
-  updateMoviePreviewContext(parSession, timeline, playback);
   const film::FilmFrame movie_duration = timeline.durationFrames();
   const film::FilmFrame duration = moviePreviewDuration(parSession, timeline);
   if (duration <= 0) {
-    resetMoviePreview(parEngine, parSession);
+    parEngine.clearFilmPreviewState();
     playback.playhead_frame = 0.0;
   }
   {
@@ -111,7 +110,7 @@ void drawTimelineWindow(engine::EngineCore& parEngine,
   }
   ImGui::SameLine();
   if (ImGui::Button("Stop")) {
-    resetMoviePreview(parEngine, parSession);
+    parEngine.clearFilmPreviewState();
   }
 
   const film::TargetSequence* selected_sequence =

@@ -176,17 +176,17 @@ struct FilmPlayback final {
   bool previewing = false;
   bool looping = true;
 
+  void stop();
   void update(float parDeltaSeconds, FilmFrame parDuration);
 };
 
 // Preview and export both consume the immutable movie state even while normal
 // playback is stopped.  This keeps camera preview independent from playback.
-[[nodiscard]] inline bool requiresFilmFrameState(bool parMovieWorkspace,
-                                                 bool parShotPreview,
-                                                 double parFilmFrame,
-                                                 const FilmPlayback& parPlayback) {
+[[nodiscard]] inline bool requiresFilmFrameState(
+    bool parMovieWorkspace, double parFilmFrame,
+    const FilmPlayback& parPlayback) {
   return parMovieWorkspace &&
-         (parFilmFrame >= 0.0 || parShotPreview || parPlayback.previewing);
+         (parFilmFrame >= 0.0 || parPlayback.previewing);
 }
 
 struct TimelineDiagnostic final {

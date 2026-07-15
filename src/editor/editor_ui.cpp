@@ -218,7 +218,7 @@ void EditorUi::drawTopBar(engine::EngineCore& parEngine,
     }
     if (ImGui::Button(label, ImVec2(87.0f, 24.0f)) && !active) {
       parSession.workspace = workspace;
-      resetMoviePreview(parEngine, parSession);
+      parEngine.clearFilmPreviewState();
       if (workspace == Workspace::Movie) {
         computeMovieEditorLayout(parSession);
       }

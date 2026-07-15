@@ -358,7 +358,7 @@ void EngineCore::advanceFilmExport() {
       [&](int frame, int width, int height,
           unsigned int destination_framebuffer) {
         render(render::ViewportRect{{0, 0}, {width, height}, height},
-               true, true, frame, false, destination_framebuffer, 4);
+               true, frame, false, destination_framebuffer, 4);
       });
 }
 
@@ -387,8 +387,7 @@ void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace,
             : getActiveScene().movie_timeline.durationFrames();
     m_film_playback.update(parDeltaSeconds, duration);
   } else {
-    m_film_playback.playing = false;
-    m_film_playback.previewing = false;
+    m_film_playback.stop();
   }
   const float fly_speed = m_camera_system.getFlyMoveSpeed();
   if (std::abs(fly_speed - m_last_session_fly_speed) > 0.0001f) {
@@ -409,8 +408,8 @@ void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace,
 }
 
 void EngineCore::render(const render::ViewportRect& parViewport,
-                        bool parMovieWorkspace, bool parShotPreview,
-                        double parFilmFrame, bool parShowOverlays,
+                        bool parMovieWorkspace, double parFilmFrame,
+                        bool parShowOverlays,
                         unsigned int parDestinationFramebuffer,
                         int parMsaaSamples,
                         film::TargetSequenceId parPreviewSequenceId,
@@ -422,7 +421,7 @@ void EngineCore::render(const render::ViewportRect& parViewport,
       parFilmFrame >= 0.0 ? parFilmFrame : m_film_playback.playhead_frame;
   const film::FilmFrameState* film_state = nullptr;
   const bool consume_film_state = film::requiresFilmFrameState(
-      parMovieWorkspace, parShotPreview, parFilmFrame, m_film_playback);
+      parMovieWorkspace, parFilmFrame, m_film_playback);
   if (consume_film_state) {
     const auto frame = static_cast<film::FilmFrame>(std::clamp(
         std::floor(film_frame), 0.0,
@@ -632,8 +631,7 @@ film::FilmPlayback& EngineCore::getFilmPlayback() {
 }
 
 void EngineCore::clearFilmPreviewState() {
-  m_film_playback.playing = false;
-  m_film_playback.previewing = false;
+  m_film_playback.stop();
   m_film_frame_state = {};
   m_viewport_film_frame_state = {};
   m_viewport_camera.reset();

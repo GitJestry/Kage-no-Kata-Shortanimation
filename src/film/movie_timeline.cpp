@@ -732,26 +732,29 @@ TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
   return validation;
 }
 
+void FilmPlayback::stop() {
+  playing = false;
+  previewing = false;
+}
+
 void FilmPlayback::update(float parDeltaSeconds, FilmFrame parDuration) {
-  const FilmFrame duration = parDuration;
-  if (!playing) {
+  if (parDuration <= 0) {
+    playhead_frame = 0.0;
+    stop();
     return;
   }
-  if (duration <= 0) {
-    playhead_frame = 0.0;
-    playing = false;
-    previewing = false;
+  if (!playing) {
     return;
   }
   playhead_frame += static_cast<double>(std::max(parDeltaSeconds, 0.0f)) *
                     static_cast<double>(FILM_FPS);
-  if (playhead_frame < static_cast<double>(duration)) {
+  if (playhead_frame < static_cast<double>(parDuration)) {
     return;
   }
   if (looping) {
-    playhead_frame = std::fmod(playhead_frame, static_cast<double>(duration));
+    playhead_frame = std::fmod(playhead_frame, static_cast<double>(parDuration));
   } else {
-    playhead_frame = static_cast<double>(duration - 1);
+    playhead_frame = static_cast<double>(parDuration - 1);
     playing = false;
   }
 }

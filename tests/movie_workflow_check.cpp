@@ -146,9 +146,11 @@ using kage::test::fail;
   }
 
   FilmPlayback playback;
+  const bool initially_stopped =
+      !playback.playing && !playback.previewing && playback.playhead_frame == 0.0;
   editor::setMovieAuthoringCursor(session, playback, 30, 30);
-  if (session.authoring_cursor_frame != 30 || playback.playhead_frame != 29.0 ||
-      playback.playing || !playback.previewing) {
+  if (!initially_stopped || session.authoring_cursor_frame != 30 ||
+      playback.playhead_frame != 29.0 || playback.playing || !playback.previewing) {
     return false;
   }
   editor::setMovieAuthoringCursor(session, playback, 0, MAX_FILM_FRAMES + 1);
@@ -159,14 +161,17 @@ using kage::test::fail;
 
   editor::selectMovieSequence(session, camera_sequence);
   playback.previewing = true;
-  editor::updateMoviePreviewContext(session, timeline, playback);
-  if (!session.shot_preview || session.shot_preview_sequence_id != camera_sequence.id ||
+  const TargetSequence* selected =
+      editor::selectedMovieTargetSequence(session, timeline);
+  if (selected == nullptr || selected->id != camera_sequence.id ||
+      !isCameraSequence(*selected) ||
       editor::moviePreviewDuration(session, timeline) != 90) {
     return false;
   }
   editor::selectMovieSequence(session, rig_sequence);
-  editor::updateMoviePreviewContext(session, timeline, playback);
-  if (session.shot_preview || session.shot_preview_sequence_id != rig_sequence.id ||
+  selected = editor::selectedMovieTargetSequence(session, timeline);
+  if (selected == nullptr || selected->id != rig_sequence.id ||
+      isCameraSequence(*selected) ||
       editor::moviePreviewDuration(session, timeline) != 30) {
     return false;
   }
@@ -182,20 +187,46 @@ using kage::test::fail;
       session.authoring_cursor_frame != 15) {
     return false;
   }
+  if (editor::toggleMoviePlayback(session, timeline, playback) ||
+      playback.playing || !playback.previewing ||
+      !editor::toggleMoviePlayback(session, timeline, playback) ||
+      !playback.playing) {
+    return false;
+  }
   editor::deselectMovieTarget(session);
-  editor::updateMoviePreviewContext(session, timeline, playback);
-  if (session.shot_preview || session.shot_preview_sequence_id != 0 ||
+  if (editor::selectedMovieTargetSequence(session, timeline) != nullptr ||
       editor::moviePreviewDuration(session, timeline) != 30) {
     return false;
   }
+  editor::selectMovieSequence(session, rig_sequence);
   playback.playhead_frame = 23.0;
   playback.playing = true;
   playback.previewing = true;
-  session.shot_preview = true;
-  session.shot_preview_sequence_id = rig_sequence.id;
-  editor::resetMoviePreview(session, playback);
+  playback.looping = false;
+  playback.stop();
   if (playback.playing || playback.previewing || playback.playhead_frame != 23.0 ||
-      session.shot_preview || session.shot_preview_sequence_id != 0) {
+      playback.looping || session.authoring_cursor_frame != 15 ||
+      session.movie_selection.sequence_id != rig_sequence.id) {
+    return false;
+  }
+  FilmPlayback ending{29.0, true, true, false};
+  ending.update(1.0f / static_cast<float>(FILM_FPS), 30);
+  const bool stopped_at_end =
+      !ending.playing && ending.previewing && ending.playhead_frame == 29.0;
+  ending.playing = true;
+  ending.looping = true;
+  ending.update(2.0f / static_cast<float>(FILM_FPS), 30);
+  if (!stopped_at_end || !ending.playing ||
+      !close(static_cast<float>(ending.playhead_frame), 1.0f)) {
+    return false;
+  }
+  session.movie_selection.sequence_id = camera_sequence.id;
+  playback.playhead_frame = 7.0;
+  playback.previewing = true;
+  const FilmFrame invalid_duration = editor::moviePreviewDuration(session, timeline);
+  playback.update(0.0f, invalid_duration);
+  if (invalid_duration != 0 || playback.playing || playback.previewing ||
+      playback.playhead_frame != 0.0) {
     return false;
   }
 
@@ -263,8 +294,10 @@ using kage::test::fail;
   playback.previewing = true;
   const FilmFrameState preview = evaluateMovieTimeline(timeline, 10);
   const FilmFrameState exported = evaluateMovieTimeline(timeline, 10);
-  if (!requiresFilmFrameState(true, false, -1.0, playback) ||
-      !requiresFilmFrameState(true, false, 10.0, FilmPlayback{}) ||
+  if (!requiresFilmFrameState(true, -1.0, playback) ||
+      requiresFilmFrameState(true, -1.0, FilmPlayback{}) ||
+      requiresFilmFrameState(false, 10.0, FilmPlayback{}) ||
+      !requiresFilmFrameState(true, 10.0, FilmPlayback{}) ||
       !preview.camera_output.camera || !exported.camera_output.camera ||
       preview.camera_output.camera->source_entity != second_camera ||
       exported.camera_output.camera->source_entity != second_camera ||

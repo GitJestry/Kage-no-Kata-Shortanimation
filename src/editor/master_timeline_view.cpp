@@ -190,7 +190,7 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
       const bool double_clicked =
           left_clicked && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
       if (double_clicked) {
-        resetMoviePreview(parEngine, parSession);
+        parEngine.clearFilmPreviewState();
         const film::SequenceInstance* selected_instance =
             timeline.findInstance(instance.id);
         const film::TargetSequence* selected_sequence =
@@ -202,7 +202,7 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
           parSession.movie_selection.instance_id = instance.id;
         }
       } else if (left_clicked) {
-        resetMoviePreview(parEngine, parSession);
+        parEngine.clearFilmPreviewState();
         selectMovieInstance(parSession, instance.id);
       }
       if (ImGui::IsItemActivated() && !double_clicked) {
