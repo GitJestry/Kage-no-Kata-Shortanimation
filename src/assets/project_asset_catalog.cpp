@@ -10,6 +10,7 @@
 #endif
 
 #include <fstream>
+#include <stdexcept>
 #include <system_error>
 #include <utility>
 
@@ -47,11 +48,17 @@ ProjectAssetCatalog loadProjectAssetCatalog(
   ProjectAssetCatalog catalog;
   std::ifstream input(parCatalogPath);
   if (!input) {
+    if (std::filesystem::exists(parCatalogPath)) {
+      throw std::runtime_error("Could not read Asset Catalog");
+    }
     return catalog;
   }
 
   json document;
   input >> document;
+  if (!document.is_object() || document.value("version", 0) != 2) {
+    throw std::runtime_error("Unsupported Asset Catalog schema version; expected 2");
+  }
   const std::filesystem::path project_root =
       projectRootFromCatalogPath(parCatalogPath);
   for (const json& asset_json : document.value("assets", json::array())) {
@@ -59,13 +66,7 @@ ProjectAssetCatalog loadProjectAssetCatalog(
     asset.id.value = asset_json.value("id", AssetId{}.value);
     asset.label = asset_json.value("label", "");
     asset.model_path = readPath(asset_json, "glb", project_root);
-    if (asset.model_path.empty()) {
-      asset.model_path = readPath(asset_json, "model", project_root);
-    }
     asset.source_path = readPath(asset_json, "source", project_root);
-    if (!asset.id.isValid() && !asset.model_path.empty()) {
-      asset.id = makeStableAssetId("asset", asset.model_path);
-    }
     for (const json& pack_json :
          asset_json.value("animation_packs", json::array())) {
       AssetRegistry::AnimationPackEntry pack;
@@ -88,9 +89,6 @@ ProjectAssetCatalog loadProjectAssetCatalog(
     environment.label = environment_json.value("label", "");
     environment.path = readPath(environment_json, "path", project_root);
     environment.hdr = environment_json.value("hdr", false);
-    if (!environment.id.isValid() && !environment.path.empty()) {
-      environment.id = makeStableAssetId("environment", environment.path);
-    }
     if (environment.id.isValid() && !environment.label.empty() &&
         !environment.path.empty()) {
       catalog.environments.push_back(std::move(environment));

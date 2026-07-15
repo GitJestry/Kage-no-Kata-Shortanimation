@@ -9,6 +9,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -71,12 +72,6 @@ using kage::serialization::writeVec3;
         readVec3(parJson.value("direction_to_sun", json::array()),
                  sun.direction_to_sun),
         sun.direction_to_sun);
-  } else if (parJson.contains("direction")) {
-    const glm::vec3 incoming_ray =
-        readVec3(parJson.value("direction", json::array()),
-                 -sun.direction_to_sun);
-    sun.direction_to_sun =
-        normalizedOrFallback(-incoming_ray, sun.direction_to_sun);
   }
   sun.color = readVec3(parJson.value("color", json::array()), sun.color);
   sun.intensity = parJson.value("intensity", sun.intensity);
@@ -92,32 +87,28 @@ void readMeshComponent(kage::engine::EngineCore& parEngine,
   }
 
   const json& mesh_json = parEntityJson["mesh"];
-  std::size_t asset_index = kage::scene::INVALID_ASSET_LIBRARY_INDEX;
   const kage::assets::AssetId asset_id = readAssetId(mesh_json);
-  if (const std::optional<std::size_t> index =
-          parEngine.getAssetRegistry().getAssetIndexById(asset_id);
-      index.has_value()) {
-    asset_index = *index;
-  } else {
-    asset_index =
-        mesh_json.value("asset_index", kage::scene::INVALID_ASSET_LIBRARY_INDEX);
+  const std::optional<std::size_t> asset_index =
+      parEngine.getAssetRegistry().getAssetIndexById(asset_id);
+  if (!asset_index.has_value()) {
+    return;
   }
 
   const auto* asset = parEngine.getAssetRegistry().getAssetLibraryEntry(
-      asset_index);
+      *asset_index);
   if (asset == nullptr) {
     return;
   }
 
   const kage::assets::ModelAsset* document =
-      parEngine.getAssetRegistry().getLoadedAsset(asset_index);
+      parEngine.getAssetRegistry().getLoadedAsset(*asset_index);
   if (document == nullptr) {
-    parEngine.requestAssetLoad(asset_index);
+    parEngine.requestAssetLoad(*asset_index);
   }
 
   kage::scene::StaticMeshComponent mesh;
   mesh.mesh_handle = asset->mesh_handle;
-  mesh.asset_library_index = asset_index;
+  mesh.asset_library_index = *asset_index;
   mesh.local_bounds =
       document != nullptr ? document->static_model.bounds
                           : kage::math::makeAssetPlaceholderBounds();
@@ -135,34 +126,37 @@ void readMeshComponent(kage::engine::EngineCore& parEngine,
 [[nodiscard]] kage::render::MaterialDebugMode readMaterialDebugMode(
     const json& parJson,
     kage::render::MaterialDebugMode parFallback) {
-  const int raw_value = parJson.is_number_integer()
-                            ? parJson.get<int>()
-                            : static_cast<int>(parFallback);
+  if (!parJson.is_number_integer()) {
+    return parFallback;
+  }
+  const int raw_value = parJson.get<int>();
   constexpr int MIN_MODE = static_cast<int>(kage::render::MaterialDebugMode::Lit);
   constexpr int MAX_MODE = static_cast<int>(kage::render::MaterialDebugMode::Uv);
-  if (raw_value < MIN_MODE || raw_value > MAX_MODE) {
-    return kage::render::MaterialDebugMode::Lit;
-  }
-  return static_cast<kage::render::MaterialDebugMode>(raw_value);
+  return raw_value < MIN_MODE || raw_value > MAX_MODE
+             ? kage::render::MaterialDebugMode::Lit
+             : static_cast<kage::render::MaterialDebugMode>(raw_value);
 }
 
-[[nodiscard]] bool loadJsonFile(const std::filesystem::path& parPath,
-                                json& parDocument) {
-  if (!std::filesystem::exists(parPath)) {
-    return false;
-  }
+enum class JsonFileStatus { Missing, Loaded, Invalid };
 
+[[nodiscard]] JsonFileStatus loadJsonFile(
+    const std::filesystem::path& parPath, json& parDocument) {
+  std::error_code error;
+  if (!std::filesystem::exists(parPath, error)) {
+    return error ? JsonFileStatus::Invalid : JsonFileStatus::Missing;
+  }
   std::ifstream input(parPath);
   if (!input) {
-    return false;
+    return JsonFileStatus::Invalid;
   }
 
   try {
     input >> parDocument;
   } catch (const json::exception&) {
-    return false;
+    return JsonFileStatus::Invalid;
   }
-  return parDocument.is_object();
+  return parDocument.is_object() ? JsonFileStatus::Loaded
+                                 : JsonFileStatus::Invalid;
 }
 
 void writeJsonAtomically(const std::filesystem::path& parPath,
@@ -195,8 +189,6 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     const json& parSceneJson) {
   parScene.sun_light =
       readSunLight(parSceneJson.value("sun", json::object()));
-  const kage::scene::EntityId legacy_editor_camera{
-      parSceneJson.value("editor_camera", kage::scene::EntityId{}.value)};
 
   for (const json& entity_json :
        parSceneJson.value("entities", json::array())) {
@@ -215,10 +207,6 @@ void writeJsonAtomically(const std::filesystem::path& parPath,
     }
     record->transform.transform =
         readTransform(entity_json.value("transform", json::object()));
-    if (entity == legacy_editor_camera) {
-      parScene.world.deleteEntity(entity);
-      continue;
-    }
     readMeshComponent(parEngine, parScene, entity, entity_json);
 
     if (entity_json.contains("camera")) {
@@ -301,13 +289,20 @@ namespace kage::engine {
 
 bool ProjectSerializer::loadProject(EngineCore& parEngine) {
   json document;
-  if (!loadJsonFile(parEngine.m_runtime_paths.getProjectWorldPath(), document)) {
+  const JsonFileStatus file_status =
+      loadJsonFile(parEngine.m_runtime_paths.getProjectWorldPath(), document);
+  if (file_status == JsonFileStatus::Missing) {
     return false;
+  }
+  if (file_status == JsonFileStatus::Invalid) {
+    throw std::runtime_error("Could not read World");
   }
 
   try {
+    if (document.value("version", 0) != 6) {
+      throw std::runtime_error("Unsupported World schema version; expected 6");
+    }
     parEngine.m_scene_manager.clearScenes();
-    const int version = document.value("version", 1);
     const json& render_json = document.value("render", json::object());
     parEngine.m_render_settings.scene.sky_preset = static_cast<render::SkyPreset>(
         render_json.value(
@@ -317,18 +312,6 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
         render_json.value("environment", json::object());
     parEngine.m_render_settings.scene.environment.asset_id.value =
         environment_json.value("asset_id", assets::AssetId{}.value);
-    const std::filesystem::path legacy_environment_path =
-        environment_json.value("path", std::string{});
-    if (!parEngine.m_render_settings.scene.environment.asset_id.isValid() &&
-        !legacy_environment_path.empty()) {
-      const assets::AssetId migrated =
-          assets::makeStableAssetId("environment", legacy_environment_path);
-      parEngine.m_environment_assets.push_back(
-          {migrated, legacy_environment_path.stem().string(),
-           legacy_environment_path,
-           legacy_environment_path.extension() == ".hdr"});
-      parEngine.m_render_settings.scene.environment.asset_id = migrated;
-    }
     parEngine.m_render_settings.scene.environment.intensity =
         environment_json.value("intensity", 1.0f);
     parEngine.m_render_settings.scene.environment.yaw_degrees =
@@ -348,21 +331,6 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
         environment_asset != parEngine.m_environment_assets.end()
             ? environment_asset->path
             : std::filesystem::path{});
-    if (version < 2) {
-      parEngine.m_render_settings.viewport.floor_grid_visible =
-          render_json.value("floor_grid_visible", true);
-      parEngine.m_render_settings.viewport.floor_grid_radius =
-          render_json.value("floor_grid_radius", 80);
-      parEngine.m_render_settings.viewport.material_debug_mode =
-          readMaterialDebugMode(
-              render_json.value("material_debug_mode", json{}),
-              parEngine.m_render_settings.viewport.material_debug_mode);
-      parEngine.m_render_settings.viewport.gizmo_axis_space =
-          static_cast<render::GizmoAxisSpace>(render_json.value(
-              "gizmo_axis_space",
-              static_cast<int>(
-                  parEngine.m_render_settings.viewport.gizmo_axis_space)));
-    }
     parEngine.m_lighting_state.exposure =
         render_json.value("exposure", parEngine.m_lighting_state.exposure);
 
@@ -380,24 +348,21 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
         continue;
       }
       if (!readSceneJson(parEngine, *scene_record, scene_json)) {
-        return false;
+        throw std::runtime_error("Could not read World");
       }
       scene_record->selected_entity = {};
 
     }
   } catch (const json::exception&) {
     parEngine.m_scene_manager.clearScenes();
-    return false;
+    throw std::runtime_error("Could not read World");
   }
 
   if (parEngine.m_scene_manager.getScenes().empty()) {
-    return false;
+    throw std::runtime_error("Could not read World");
   }
 
-  parEngine.m_scene_manager.setActiveScene(
-      document.value("version", 1) < 2
-          ? document.value("active_scene", std::size_t{0})
-          : std::size_t{0});
+  parEngine.m_scene_manager.setActiveScene(0);
   parEngine.rebuildAssetInstanceCounts();
   parEngine.m_project_dirty = false;
   parEngine.m_local_session_autosave_timer_seconds = 0.0f;
@@ -447,16 +412,45 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
 
 bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
   json document;
-  if (!loadJsonFile(parEngine.m_runtime_paths.getLocalSessionPath(), document)) {
+  const JsonFileStatus file_status =
+      loadJsonFile(parEngine.m_runtime_paths.getLocalSessionPath(), document);
+  if (file_status == JsonFileStatus::Missing) {
+    return false;
+  }
+  if (file_status == JsonFileStatus::Invalid) {
+    std::cerr << "Ignoring Local Session\n";
     return false;
   }
 
+  const camera::Camera default_camera = parEngine.m_camera_system.getEditorCamera();
+  const float default_fly_speed = parEngine.m_camera_system.getFlyMoveSpeed();
+  const double default_playhead = parEngine.m_film_playback.playhead_frame;
+  const auto default_viewport = parEngine.m_render_settings.viewport;
+  const std::size_t default_scene_count = parEngine.m_scene_manager.getScenes().size();
+  const std::size_t default_active_scene =
+      parEngine.m_scene_manager.getActiveSceneIndex();
+  const scene::EntityId default_selected = parEngine.m_scene_manager.getSelectedEntity();
+  const auto ignore_session = [&]() {
+    parEngine.m_camera_system.getEditorCamera() = default_camera;
+    parEngine.m_camera_system.syncFlyControllerFromCamera();
+    parEngine.m_camera_system.setFlyMoveSpeed(default_fly_speed);
+    parEngine.m_film_playback.playhead_frame = default_playhead;
+    parEngine.m_render_settings.viewport = default_viewport;
+    while (parEngine.m_scene_manager.getScenes().size() > default_scene_count) {
+      parEngine.m_scene_manager.deleteScene(
+          parEngine.m_scene_manager.getScenes().size() - 1);
+    }
+    parEngine.m_scene_manager.setActiveScene(default_active_scene);
+    parEngine.m_scene_manager.selectEntity(default_selected);
+    std::cerr << "Ignoring Local Session\n";
+    return false;
+  };
+
   try {
-    const int version = document.value("version", 1);
-    const float fly_speed = document.value(
-        "fly_speed", parEngine.m_camera_system.getFlyMoveSpeed());
-    parEngine.m_camera_system.setFlyMoveSpeed(fly_speed);
-    if (version >= 4 && document.contains("editor_camera")) {
+    if (document.value("version", 0) != 4) {
+      return ignore_session();
+    }
+    if (document.contains("editor_camera")) {
       const json& camera_json = document["editor_camera"];
       const math::Transform transform =
           readTransform(camera_json.value("transform", json::object()));
@@ -474,21 +468,23 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
         const float z = stored_rotation[3].get<float>();
         stored_rotation_length = std::sqrt(w * w + x * x + y * y + z * z);
       }
-      const bool stored_rotation_normalized =
-          std::isfinite(stored_rotation_length) &&
-          std::abs(stored_rotation_length - 1.0f) <= 0.01f;
-      if (stored_rotation_normalized &&
-          camera::isValidSessionCamera(transform, fov, near_plane,
-                                       far_plane)) {
-        camera::Camera& camera = parEngine.m_camera_system.getEditorCamera();
-        camera.position = transform.translation;
-        camera.orientation = glm::normalize(transform.rotation);
-        camera.vertical_fov_degrees = fov;
-        camera.near_plane = near_plane;
-        camera.far_plane = far_plane;
-        parEngine.m_camera_system.syncFlyControllerFromCamera();
+      if (!std::isfinite(stored_rotation_length) ||
+          std::abs(stored_rotation_length - 1.0f) > 0.01f ||
+          !camera::isValidSessionCamera(transform, fov, near_plane,
+                                        far_plane)) {
+        return ignore_session();
       }
+      camera::Camera& camera = parEngine.m_camera_system.getEditorCamera();
+      camera.position = transform.translation;
+      camera.orientation = glm::normalize(transform.rotation);
+      camera.vertical_fov_degrees = fov;
+      camera.near_plane = near_plane;
+      camera.far_plane = far_plane;
+      parEngine.m_camera_system.syncFlyControllerFromCamera();
     }
+    const float fly_speed = document.value(
+        "fly_speed", parEngine.m_camera_system.getFlyMoveSpeed());
+    parEngine.m_camera_system.setFlyMoveSpeed(fly_speed);
     parEngine.m_film_playback.playhead_frame =
         std::max(document.value("film_playhead", 0.0), 0.0);
     parEngine.m_render_settings.viewport.floor_grid_visible = document.value(
@@ -528,30 +524,25 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
         continue;
       }
       if (!readSceneJson(parEngine, *scene_record, scene_json)) {
-        return false;
+        return ignore_session();
       }
     }
 
     const std::size_t active_scene =
         document.value("active_scene", parEngine.m_scene_manager
                                            .getActiveSceneIndex());
+    const scene::EntityId selected{
+        document.value("selected_entity", scene::EntityId{}.value)};
     if (active_scene < parEngine.m_scene_manager.getScenes().size()) {
       parEngine.m_scene_manager.setActiveScene(active_scene);
     }
-    if (version < 4) {
-      parEngine.frameWorld();
-      parEngine.m_local_session_dirty = true;
-    }
-
-    const scene::EntityId selected{
-        document.value("selected_entity", scene::EntityId{}.value)};
     if (parEngine.getActiveScene().world.findEntity(selected) != nullptr) {
       parEngine.m_scene_manager.selectEntity(selected);
     } else {
       parEngine.m_scene_manager.selectEntity({});
     }
   } catch (const json::exception&) {
-    return false;
+    return ignore_session();
   }
   return true;
 }

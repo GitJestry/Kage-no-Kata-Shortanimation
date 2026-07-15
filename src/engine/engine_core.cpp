@@ -287,9 +287,6 @@ void EngineCore::saveProject() {
 bool EngineCore::loadLocalSession() {
   const bool loaded = ProjectSerializer::loadLocalSession(*this);
   m_last_session_fly_speed = m_camera_system.getFlyMoveSpeed();
-  if (loaded && m_local_session_dirty) {
-    saveLocalSession();
-  }
   return loaded;
 }
 

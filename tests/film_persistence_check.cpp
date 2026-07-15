@@ -129,6 +129,13 @@ int main() {
                                .looping = true};
   MovementClip camera_movement;
   camera_movement.end.translation = {1.0f, 5.0f, 7.0f};
+  MovementClip camera_transition;
+  camera_transition.start_mode = MovementStartMode::ExplicitPosition;
+  camera_transition.explicit_start = camera_movement.end;
+  camera_transition.explicit_start->translation = {7.0f, 6.0f, 4.0f};
+  camera_transition.end.translation = {10.0f, 8.0f, 1.0f};
+  camera_transition.transition_before = {
+      true, {{2.0f, 7.0f, 9.0f}, {6.0f, 8.0f, 2.0f}, 0.21f, 0.79f, false}};
   PropertyClip camera_fov;
   camera_fov.kind = PropertyKind::CameraFov;
   camera_fov.start_value = camera_fov.control_1 = glm::vec4(52.0f);
@@ -139,15 +146,18 @@ int main() {
   light_intensity.end_value = light_intensity.control_2 = glm::vec4(6.0f);
 
   const auto rig_move_id = edits.appendClipToLane(*rig_sequence, 60, rig_movement);
-  const auto animation_id = edits.appendClipToLane(*rig_sequence, 60, arm_action);
+  const auto animation_id = edits.appendClipToLane(*rig_sequence, 130, arm_action);
   const auto camera_move_id =
       edits.appendClipToLane(*camera_sequence, 60, camera_movement);
+  const auto camera_transition_id =
+      edits.appendClipToLane(*camera_sequence, 40, camera_transition);
   const auto fov_id = edits.appendClipToLane(*camera_sequence, 60, camera_fov);
   const auto intensity_id = edits.appendClipToLane(*light_sequence, 60, light_intensity);
   const auto rig_instance = edits.placeSequence(*rig_sequence, 0);
   const auto camera_instance = edits.placeSequence(*camera_sequence, 0);
   const auto light_instance = edits.placeSequence(*light_sequence, 0);
-  if (!rig_move_id || !animation_id || !camera_move_id || !fov_id || !intensity_id ||
+  if (!rig_move_id || !animation_id || !camera_move_id || !camera_transition_id ||
+      !edits.moveClip(*camera_transition_id, 90, 130) || !fov_id || !intensity_id ||
       !rig_instance || !camera_instance || !light_instance ||
       validateMovieTimeline(timeline, true).hasErrors()) {
     return fail("Film v2 authoring setup is invalid");
@@ -172,6 +182,7 @@ int main() {
   if (encoded.find("\"schema_version\":2") == std::string::npos ||
       !decodeMovieTimeline(encoded, reloaded, error) ||
       decodeMovieTimeline("{\"schema_version\":1}", reloaded, error) ||
+      encodeMovieTimeline(reloaded) != encoded ||
       reloaded.next_sequence_id != timeline.next_sequence_id ||
       reloaded.next_instance_id != timeline.next_instance_id ||
       reloaded.next_clip_id != timeline.next_clip_id ||
@@ -203,7 +214,9 @@ int main() {
   }
 
   const FilmFrameState after = evaluateMovieTimeline(reloaded, 30);
-  if (!sameEvaluatedFrame(before, after, rig, light)) {
+  if (!sameEvaluatedFrame(before, after, rig, light) ||
+      !sameEvaluatedFrame(evaluateMovieTimeline(timeline, 75),
+                          evaluateMovieTimeline(reloaded, 75), rig, light)) {
     return fail("Film round trip changed evaluated output");
   }
   if (!close(world.findEntity(rig)->transform.transform.translation,

@@ -27,6 +27,19 @@ using kage::serialization::writeVec3;
   return json::array({parValue.x, parValue.y, parValue.z, parValue.w});
 }
 
+[[nodiscard]] MovementCurve readCurve(const json& parJson) {
+  MovementCurve curve;
+  curve.position_control_1 =
+      readVec3(parJson.value("position_control_1", json::array()));
+  curve.position_control_2 =
+      readVec3(parJson.value("position_control_2", json::array()));
+  curve.timing_control_1 = parJson.value("timing_control_1", 1.0f / 3.0f);
+  curve.timing_control_2 = parJson.value("timing_control_2", 2.0f / 3.0f);
+  curve.automatic_position_controls =
+      parJson.value("automatic_position_controls", true);
+  return curve;
+}
+
 [[nodiscard]] TimelineTargetKind readTargetKind(const json& parJson) {
   const int raw = parJson.get<int>();
   return raw >= static_cast<int>(TimelineTargetKind::RiggedEntity) &&
@@ -116,30 +129,11 @@ using kage::serialization::writeVec3;
           value.explicit_start = readTransform(clip_json["explicit_start"]);
         }
         value.end = readTransform(clip_json.value("end", json::object()));
-        const json curve = clip_json.value("curve", json::object());
-        value.curve.position_control_1 =
-            readVec3(curve.value("position_control_1", json::array()));
-        value.curve.position_control_2 =
-            readVec3(curve.value("position_control_2", json::array()));
-        value.curve.timing_control_1 = curve.value("timing_control_1", 1.0f / 3.0f);
-        value.curve.timing_control_2 = curve.value("timing_control_2", 2.0f / 3.0f);
-        value.curve.automatic_position_controls =
-            curve.value("automatic_position_controls", true);
+        value.curve = readCurve(clip_json.value("curve", json::object()));
         const json transition = clip_json.value("transition_before", json::object());
         value.transition_before.enabled = transition.value("enabled", false);
-        if (transition.contains("curve")) {
-          const json transition_curve = transition["curve"];
-          value.transition_before.curve.position_control_1 = readVec3(
-              transition_curve.value("position_control_1", json::array()));
-          value.transition_before.curve.position_control_2 = readVec3(
-              transition_curve.value("position_control_2", json::array()));
-          value.transition_before.curve.timing_control_1 =
-              transition_curve.value("timing_control_1", 1.0f / 3.0f);
-          value.transition_before.curve.timing_control_2 =
-              transition_curve.value("timing_control_2", 2.0f / 3.0f);
-          value.transition_before.curve.automatic_position_controls =
-              transition_curve.value("automatic_position_controls", true);
-        }
+        value.transition_before.curve =
+            readCurve(transition.value("curve", json::object()));
         clip.payload = value;
       }
       sequence.clips.push_back(std::move(clip));
