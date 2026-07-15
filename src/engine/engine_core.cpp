@@ -74,14 +74,6 @@ std::size_t EngineCore::registerStaticAsset(std::string parLabel,
                                               std::move(parPath));
 }
 
-std::size_t EngineCore::registerStaticAsset(
-    std::string parLabel, std::filesystem::path parPath,
-    std::filesystem::path parSourcePath) {
-  return m_asset_registry.registerStaticAsset(std::move(parLabel),
-                                              std::move(parPath),
-                                              std::move(parSourcePath));
-}
-
 std::size_t EngineCore::registerModelAsset(std::string parLabel,
                                            std::filesystem::path parPath,
                                            assets::ModelAsset parDocument) {

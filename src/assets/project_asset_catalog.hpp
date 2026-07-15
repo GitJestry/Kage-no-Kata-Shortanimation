@@ -11,7 +11,6 @@ struct ProjectAssetEntry final {
   AssetId id;
   std::string label;
   std::filesystem::path model_path;
-  std::filesystem::path source_path;
   std::vector<AssetRegistry::AnimationPackEntry> animation_packs;
 };
 

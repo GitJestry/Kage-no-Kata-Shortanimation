@@ -66,7 +66,6 @@ ProjectAssetCatalog loadProjectAssetCatalog(
     asset.id.value = asset_json.value("id", AssetId{}.value);
     asset.label = asset_json.value("label", "");
     asset.model_path = readPath(asset_json, "glb", project_root);
-    asset.source_path = readPath(asset_json, "source", project_root);
     for (const json& pack_json :
          asset_json.value("animation_packs", json::array())) {
       AssetRegistry::AnimationPackEntry pack;
@@ -108,7 +107,6 @@ void saveProjectAssetCatalog(const std::filesystem::path& parCatalogPath,
         {"id", asset.id.value},
         {"label", asset.label},
         {"glb", asset.model_path.generic_string()},
-        {"source", asset.source_path.generic_string()},
     };
     asset_json["animation_packs"] = json::array();
     for (const AssetRegistry::AnimationPackEntry& pack :

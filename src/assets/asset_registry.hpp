@@ -33,7 +33,6 @@ class AssetRegistry final {
     AssetId id;
     std::string label;
     std::filesystem::path path;
-    std::filesystem::path source_path;
     AssetLoadState load_state = AssetLoadState::MetadataReady;
     std::optional<ModelAsset> document;
     std::string load_error;
@@ -46,12 +45,8 @@ class AssetRegistry final {
 
   std::size_t registerStaticAsset(std::string parLabel,
                                   std::filesystem::path parPath);
-  std::size_t registerStaticAsset(std::string parLabel,
-                                  std::filesystem::path parPath,
-                                  std::filesystem::path parSourcePath);
   std::size_t registerStaticAsset(AssetId parAssetId, std::string parLabel,
-                                  std::filesystem::path parPath,
-                                  std::filesystem::path parSourcePath);
+                                  std::filesystem::path parPath);
   std::size_t registerModelAsset(std::string parLabel,
                                  std::filesystem::path parPath,
                                  ModelAsset parDocument);

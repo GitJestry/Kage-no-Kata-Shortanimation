@@ -253,20 +253,12 @@ AssetId makeStableAssetId(std::string_view parNamespace,
 
 std::size_t AssetRegistry::registerStaticAsset(
     std::string parLabel, std::filesystem::path parPath) {
-  return registerStaticAsset(std::move(parLabel), std::move(parPath), {});
-}
-
-std::size_t AssetRegistry::registerStaticAsset(
-    std::string parLabel, std::filesystem::path parPath,
-    std::filesystem::path parSourcePath) {
   return registerStaticAsset(makeStableAssetId("asset", parPath),
-                             std::move(parLabel), std::move(parPath),
-                             std::move(parSourcePath));
+                             std::move(parLabel), std::move(parPath));
 }
 
 std::size_t AssetRegistry::registerStaticAsset(
-    AssetId parAssetId, std::string parLabel, std::filesystem::path parPath,
-    std::filesystem::path parSourcePath) {
+    AssetId parAssetId, std::string parLabel, std::filesystem::path parPath) {
   if (const std::optional<std::size_t> existing =
           getAssetIndexById(parAssetId);
       existing.has_value()) {
@@ -278,7 +270,6 @@ std::size_t AssetRegistry::registerStaticAsset(
                                   : makeStableAssetId("asset", parPath);
   entry.label = std::move(parLabel);
   entry.path = std::move(parPath);
-  entry.source_path = std::move(parSourcePath);
   entry.load_state = AssetLoadState::MetadataReady;
 
   m_asset_library.push_back(std::move(entry));

@@ -40,13 +40,9 @@ class EngineCore final {
 
   std::size_t registerStaticAsset(std::string parLabel,
                                   std::filesystem::path parPath);
-  std::size_t registerStaticAsset(std::string parLabel,
-                                  std::filesystem::path parPath,
-                                  std::filesystem::path parSourcePath);
   std::size_t registerStaticAsset(assets::AssetId parAssetId,
                                   std::string parLabel,
-                                  std::filesystem::path parPath,
-                                  std::filesystem::path parSourcePath);
+                                  std::filesystem::path parPath);
   std::size_t registerModelAsset(std::string parLabel,
                                  std::filesystem::path parPath,
                                  assets::ModelAsset parDocument);

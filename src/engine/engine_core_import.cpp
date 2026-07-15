@@ -30,7 +30,6 @@ namespace {
     entry.id = asset.id;
     entry.label = asset.label;
     entry.model_path = project_relative(asset.path);
-    entry.source_path = project_relative(asset.source_path);
     for (const kage::assets::AssetRegistry::AnimationPackEntry& pack :
          asset.animation_packs) {
       entry.animation_packs.push_back(
@@ -52,10 +51,9 @@ namespace kage::engine {
 
 std::size_t EngineCore::registerStaticAsset(
     assets::AssetId parAssetId, std::string parLabel,
-    std::filesystem::path parPath, std::filesystem::path parSourcePath) {
-  return m_asset_registry.registerStaticAsset(
-      parAssetId, std::move(parLabel), std::move(parPath),
-      std::move(parSourcePath));
+    std::filesystem::path parPath) {
+  return m_asset_registry.registerStaticAsset(parAssetId, std::move(parLabel),
+                                              std::move(parPath));
 }
 
 void EngineCore::loadProjectAssetCatalog(
@@ -64,8 +62,7 @@ void EngineCore::loadProjectAssetCatalog(
       assets::loadProjectAssetCatalog(parCatalogPath);
   for (const assets::ProjectAssetEntry& entry : catalog.assets) {
     const std::size_t index =
-        registerStaticAsset(entry.id, entry.label, entry.model_path,
-                            entry.source_path);
+        registerStaticAsset(entry.id, entry.label, entry.model_path);
     assets::AssetRegistry::AssetLibraryEntry* asset =
         m_asset_registry.getAssetLibraryEntry(index);
     if (asset != nullptr) {
@@ -113,11 +110,6 @@ std::optional<std::size_t> EngineCore::importModelAsset(
 
   const std::size_t asset_index =
       registerModelAsset(std::move(parLabel), destination, std::move(document));
-  assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(asset_index);
-  if (asset != nullptr) {
-    asset->source_path = parSourcePath;
-  }
   assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
                                   buildCatalog(m_asset_registry,
                                                m_environment_assets,

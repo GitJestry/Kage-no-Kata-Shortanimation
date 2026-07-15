@@ -1,54 +1,66 @@
 # KageEngine
 
-KageEngine is the C++ OpenGL editor/runtime for **Kage no Kata - The Final
-Cut**, a University of Bonn short animation project by Julian Meyer and Faouzi
-Homsani.
+KageEngine is the C++23/OpenGL editor and runtime used to produce **Kage no
+Kata – The Final Cut**, a University of Bonn computer-animation project by
+Julian Meyer and Faouzi Homsani.
 
-Current scope: load Blender GLB assets, edit the film world, validate and render
-the samurai rig, play authored animation clips from catalog-driven animation
-packs and embedded GLTF animations, import models and panoramas, and keep
-shared scene data in
-`projects/kage_no_kata_world.kage.json`.
+The repository contains the authored world, asset catalog, Movie Editor,
+skeletal-animation pipeline, lighting and shadow pipeline, and deterministic
+2160p30 film export. The submitted feature claims are deliberately narrower
+than the complete engine: only features listed in
+[Project Scope and Evidence](docs/PROJECT_SCOPE_AND_EVIDENCE.md) are claimed for
+assessment.
 
-## Build
+![](/docs/images/final.png)
 
-Large assets use Git LFS:
+## Quick start
+
+Large runtime assets are stored with Git LFS:
 
 ```bash
 git lfs install
 git lfs pull
 ```
 
-```bash
-cmake -S . -B build
-cmake --build build --config Release
-```
-
-Final MPEG4 export requires `ffmpeg` on `PATH` (for example
-`brew install ffmpeg` on macOS).
-
-CMake fetches the pinned framework version. Run from the project root:
+Configure, build, and run:
 
 ```bash
-build/kage_engine
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+./build/kage_engine
 ```
 
-## Where To Look
+On multi-configuration Windows generators, use `--config Release` and run
+`build/Release/kage_engine.exe`.
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Performance baseline](docs/PERFORMANCE.md)
-- [Engineering contract](docs/ENGINEERING_CONTRACT.md)
-- [Asset pipeline](docs/ASSET_PIPELINE.md)
-- [Requirements and evidence](docs/PROJECT_REQUIREMENTS.md)
-- [Editor workflow](docs/EDITOR_WORKFLOW.md)
-- [Film workflow](docs/FILM_WORKFLOW.md)
-- [Milestone checklist](docs/TODO.md)
+The first CMake configure downloads pinned framework dependencies. Final MPEG4
+encoding requires `ffmpeg` on `PATH`.
 
-## References
+## Authoritative documentation
 
-- [Project concept](assets/reference/Kage_no_Kata_Konzept.pdf)
-- [Storyboard PDF](assets/reference/Kage_no_Kata_Storyboard.pdf)
-- [Official project brief](assets/reference/cgintro-animation-project-info.pdf)
-- [Official assessment sheet](assets/reference/cgintro-bewertungsbogen.pdf)
+- [Project Scope and Evidence](docs/PROJECT_SCOPE_AND_EVIDENCE.md) — exact
+  assessment claims, ownership, implementation evidence, and non-claims.
+- [Architecture](docs/ARCHITECTURE.md) — system boundaries, data flow, ownership,
+  rendering, animation, persistence, and export.
+- [Build and Validation](docs/BUILD_AND_VALIDATION.md) — prerequisites,
+  reproducible build commands, automated checks, and the manual submission
+  checklist.
+- [Project Report](docs/PROJECT_REPORT.md) — results, challenges, reflection,
+  concept comparison, and lessons learned.
+- [Asset Pipeline](docs/ASSET_PIPELINE.md)
+- [Editor Workflow](docs/EDITOR_WORKFLOW.md)
+- [Film Workflow](docs/FILM_WORKFLOW.md)
+- [Code Style](docs/CODE_STYLE.md)
 
-Local editor state and local test scenes stay in `.kage_local/`.
+## Submission data
+
+- `projects/kage_no_kata_assets.kage.json` — Asset Catalog schema v2.
+- `projects/kage_no_kata_world.kage.json` — World schema v6 containing Film
+  schema v2.
+- `output/` — generated PNG frame sequences and MPEG4 files; generated output is
+  not source data.
+
+The full submission package must additionally contain all runtime assets,
+licenses, the final MPEG4 film, and the illustrated report required by the
+course brief.
