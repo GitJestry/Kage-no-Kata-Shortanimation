@@ -14,7 +14,6 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
-#include <numeric>
 #include <span>
 #include <utility>
 
@@ -576,23 +575,10 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                             &nanoseconds);
       const float milliseconds =
           static_cast<float>(nanoseconds) / 1000000.0f;
-      m_gpu_frame_samples[m_gpu_frame_sample_cursor] = milliseconds;
-      m_gpu_frame_sample_cursor =
-          (m_gpu_frame_sample_cursor + 1) % m_gpu_frame_samples.size();
-      m_gpu_frame_sample_count = std::min(
-          m_gpu_frame_sample_count + 1, m_gpu_frame_samples.size());
-      std::array<float, 120> sorted_samples = m_gpu_frame_samples;
-      std::sort(sorted_samples.begin(),
-                sorted_samples.begin() + m_gpu_frame_sample_count);
-      const float total = std::accumulate(
-          sorted_samples.begin(),
-          sorted_samples.begin() + m_gpu_frame_sample_count, 0.0f);
-      parSnapshot.gpu_average_ms =
-          total / static_cast<float>(m_gpu_frame_sample_count);
-      const std::size_t p95_index = std::min(
-          m_gpu_frame_sample_count - 1,
-          (m_gpu_frame_sample_count * 95 + 99) / 100 - 1);
-      parSnapshot.gpu_p95_ms = sorted_samples[p95_index];
+      const FrameTimeStats gpu_stats =
+          m_gpu_frame_history.record(milliseconds);
+      parSnapshot.gpu_average_ms = gpu_stats.average_ms;
+      parSnapshot.gpu_p95_ms = gpu_stats.p95_ms;
       m_gpu_timer_pending[timer_slot] = false;
     }
   }

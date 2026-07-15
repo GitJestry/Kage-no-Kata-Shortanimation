@@ -13,6 +13,7 @@
 #include "render/viewport_rect.hpp"
 #include "render/environment_renderer.hpp"
 #include "render/film_framebuffer.hpp"
+#include "render/frame_time_history.hpp"
 #include "render/shadow_renderer.hpp"
 #include "scene/scene_manager.hpp"
 
@@ -163,9 +164,7 @@ class WorldRenderer final {
   std::array<GLuint, 3> m_gpu_timer_queries{};
   std::array<bool, 3> m_gpu_timer_pending{};
   std::size_t m_gpu_timer_cursor = 0;
-  std::array<float, 120> m_gpu_frame_samples{};
-  std::size_t m_gpu_frame_sample_count = 0;
-  std::size_t m_gpu_frame_sample_cursor = 0;
+  FrameTimeHistory m_gpu_frame_history;
 };
 
 inline bool PlacementGhost::isActive() const {

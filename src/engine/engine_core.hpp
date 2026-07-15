@@ -8,6 +8,7 @@
 #include "film/film_exporter.hpp"
 #include "lighting/lighting_system.hpp"
 #include "platform/runtime_paths.hpp"
+#include "render/frame_time_history.hpp"
 #include "render/mesh_resource_cache.hpp"
 #include "render/viewport_rect.hpp"
 #include "render/world_renderer.hpp"
@@ -15,7 +16,6 @@
 
 #include <glm/glm.hpp>
 
-#include <array>
 #include <cstddef>
 #include <expected>
 #include <filesystem>
@@ -34,11 +34,6 @@ class EngineCore final {
     scene::EntityId entity;
     film::TargetSequenceId sequence_id = 0;
     film::SequenceInstanceId instance_id = 0;
-  };
-
-  struct CameraRay final {
-    glm::vec3 origin{0.0f};
-    glm::vec3 direction{0.0f, 0.0f, -1.0f};
   };
 
   EngineCore();
@@ -192,8 +187,6 @@ class EngineCore final {
   void pollAssetStreaming();
   [[nodiscard]] scene::SceneManager::SceneRecord& getActiveScene();
   [[nodiscard]] const scene::SceneManager::SceneRecord& getActiveScene() const;
-  [[nodiscard]] CameraRay makeCameraRay(const glm::vec2& parCursorPixel,
-                                        const glm::vec2& parViewportSize) const;
   [[nodiscard]] lighting::LightingState buildLightingState(
       const camera::Camera& parCamera,
       const film::FilmFrameState* parFilmState = nullptr) const;
@@ -224,9 +217,7 @@ class EngineCore final {
   bool m_viewport_black_output = false;
   std::vector<animation::EvaluatedSkinPalette> m_film_skin_palettes;
   film::FinalRenderJob m_final_render_job;
-  std::array<float, 120> m_cpu_frame_samples{};
-  std::size_t m_cpu_frame_sample_count = 0;
-  std::size_t m_cpu_frame_sample_cursor = 0;
+  render::FrameTimeHistory m_cpu_frame_history;
   bool m_project_dirty = false;
   bool m_local_session_dirty = false;
   float m_local_session_autosave_timer_seconds = 0.0f;

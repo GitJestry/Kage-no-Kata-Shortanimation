@@ -13,12 +13,10 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
-#include <array>
 #include <charconv>
 #include <chrono>
 #include <cmath>
 #include <limits>
-#include <numeric>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -32,7 +30,6 @@ namespace {
 
 constexpr float DEFAULT_PLACEMENT_DISTANCE = 4.0f;
 constexpr float ENTITY_HANDLE_EXTENT = 0.35f;
-constexpr float RAY_EPSILON = 0.00001f;
 constexpr float AUTOSAVE_INTERVAL_SECONDS = 2.0f;
 constexpr float HANDLE_SCREEN_RADIUS = 28.0f;
 
@@ -41,57 +38,6 @@ using Clock = std::chrono::steady_clock;
 [[nodiscard]] float elapsedMilliseconds(Clock::time_point parStart,
                                         Clock::time_point parEnd) {
   return std::chrono::duration<float, std::milli>(parEnd - parStart).count();
-}
-
-[[nodiscard]] bool intersectBounds(
-    const kage::engine::EngineCore::CameraRay& parRay,
-    const kage::math::Bounds3& parBounds, float& parDistance) {
-  if (!parBounds.is_valid) {
-    return false;
-  }
-
-  float min_distance = 0.0f;
-  float max_distance = std::numeric_limits<float>::max();
-  for (int axis = 0; axis < 3; ++axis) {
-    const float origin = parRay.origin[axis];
-    const float direction = parRay.direction[axis];
-    const float min_value = parBounds.min[axis];
-    const float max_value = parBounds.max[axis];
-    if (std::abs(direction) < RAY_EPSILON) {
-      if (origin < min_value || origin > max_value) {
-        return false;
-      }
-      continue;
-    }
-
-    float near_distance = (min_value - origin) / direction;
-    float far_distance = (max_value - origin) / direction;
-    if (near_distance > far_distance) {
-      std::swap(near_distance, far_distance);
-    }
-    min_distance = std::max(min_distance, near_distance);
-    max_distance = std::min(max_distance, far_distance);
-    if (min_distance > max_distance) {
-      return false;
-    }
-  }
-
-  parDistance = min_distance;
-  return true;
-}
-
-[[nodiscard]] bool intersectSphere(
-    const kage::engine::EngineCore::CameraRay& parRay,
-    const glm::vec3& parCenter, float parRadius) {
-  const glm::vec3 to_center = parCenter - parRay.origin;
-  const float projected = glm::dot(to_center, parRay.direction);
-  if (projected < 0.0f) {
-    return false;
-  }
-
-  const glm::vec3 closest = parRay.origin + parRay.direction * projected;
-  const glm::vec3 delta = closest - parCenter;
-  return glm::dot(delta, delta) <= parRadius * parRadius;
 }
 
 [[nodiscard]] std::size_t readInstanceSuffix(std::string_view parName,
@@ -506,23 +452,10 @@ void EngineCore::render(const render::ViewportRect& parViewport,
   const float cpu_frame_ms = m_performance_snapshot.animation_update_ms +
                              m_performance_snapshot.render_ms +
                              m_performance_snapshot.gpu_upload_ms;
-  m_cpu_frame_samples[m_cpu_frame_sample_cursor] = cpu_frame_ms;
-  m_cpu_frame_sample_cursor =
-      (m_cpu_frame_sample_cursor + 1) % m_cpu_frame_samples.size();
-  m_cpu_frame_sample_count =
-      std::min(m_cpu_frame_sample_count + 1, m_cpu_frame_samples.size());
-  std::array<float, 120> sorted_samples = m_cpu_frame_samples;
-  std::sort(sorted_samples.begin(),
-            sorted_samples.begin() + m_cpu_frame_sample_count);
-  const float total = std::accumulate(
-      sorted_samples.begin(),
-      sorted_samples.begin() + m_cpu_frame_sample_count, 0.0f);
-  m_performance_snapshot.cpu_average_ms =
-      total / static_cast<float>(m_cpu_frame_sample_count);
-  const std::size_t p95_index =
-      std::min(m_cpu_frame_sample_count - 1,
-               (m_cpu_frame_sample_count * 95 + 99) / 100 - 1);
-  m_performance_snapshot.cpu_p95_ms = sorted_samples[p95_index];
+  const render::FrameTimeStats cpu_stats =
+      m_cpu_frame_history.record(cpu_frame_ms);
+  m_performance_snapshot.cpu_average_ms = cpu_stats.average_ms;
+  m_performance_snapshot.cpu_p95_ms = cpu_stats.p95_ms;
 }
 
 scene::World& EngineCore::getWorld() {
@@ -668,7 +601,8 @@ std::optional<scene::EntityId> EngineCore::pickEntity(
       return gpu_pick;
     }
   }
-  const CameraRay ray = makeCameraRay(parCursorPixel, parViewportSize);
+  const render::ViewportPickRay ray = render::makeViewportPickRay(
+      m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize);
   float closest_distance = std::numeric_limits<float>::max();
   std::optional<scene::EntityId> closest_entity;
   for (const scene::EntityRecord& entity :
@@ -681,15 +615,18 @@ std::optional<scene::EntityId> EngineCore::pickEntity(
     bool hit = false;
     if (entity.static_mesh.has_value() && entity.static_mesh->visible) {
       const math::Bounds3 world_bounds = getEntityWorldBounds(entity.id);
-      if (!intersectBounds(ray, world_bounds, distance)) {
+      if (!render::viewportRayIntersectsBounds(ray, world_bounds, distance)) {
         continue;
       }
       hit = true;
     } else {
-      hit = intersectSphere(ray, entity.transform.transform.translation,
-                            ENTITY_HANDLE_EXTENT);
-      distance =
-          glm::length(entity.transform.transform.translation - ray.origin);
+      hit = render::viewportRayIntersectsSphere(
+          ray, entity.transform.transform.translation, ENTITY_HANDLE_EXTENT,
+          distance);
+      if (hit) {
+        distance =
+            glm::length(entity.transform.transform.translation - ray.origin);
+      }
     }
 
     if (!hit) {
@@ -753,15 +690,19 @@ bool EngineCore::isCursorOverEntityCore(
       std::max({bounds.getSize().x, bounds.getSize().y, bounds.getSize().z,
                 1.0f}) *
       0.055f;
-  return intersectSphere(makeCameraRay(parCursorPixel, parViewportSize),
-                         entity->transform.transform.translation,
-                         std::max(core_radius, 0.12f));
+  const render::ViewportPickRay ray = render::makeViewportPickRay(
+      m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize);
+  float distance = 0.0f;
+  return render::viewportRayIntersectsSphere(
+      ray, entity->transform.transform.translation,
+      std::max(core_radius, 0.12f), distance);
 }
 
 glm::vec3 EngineCore::getPlacementPointOnFloor(
     const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
-  const CameraRay ray = makeCameraRay(parCursorPixel, parViewportSize);
-  if (std::abs(ray.direction.y) > RAY_EPSILON) {
+  const render::ViewportPickRay ray = render::makeViewportPickRay(
+      m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize);
+  if (std::abs(ray.direction.y) > 0.00001f) {
     const float distance = -ray.origin.y / ray.direction.y;
     if (distance > 0.0f) {
       return ray.origin + ray.direction * distance;
@@ -784,28 +725,6 @@ scene::SceneManager::SceneRecord& EngineCore::getActiveScene() {
 
 const scene::SceneManager::SceneRecord& EngineCore::getActiveScene() const {
   return m_scene_manager.getActiveScene();
-}
-
-EngineCore::CameraRay EngineCore::makeCameraRay(
-    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
-  const camera::Camera& camera = m_camera_system.getEditorCamera();
-  const glm::vec2 viewport_size = glm::max(parViewportSize, glm::vec2(1.0f));
-  const glm::vec2 normalized_device_coordinate{
-      (parCursorPixel.x / viewport_size.x) * 2.0f - 1.0f,
-      1.0f - (parCursorPixel.y / viewport_size.y) * 2.0f};
-  const glm::mat4 inverse_view_projection = glm::inverse(
-      camera.getProjectionMatrix(viewport_size) * camera.getViewMatrix());
-  glm::vec4 near_point = inverse_view_projection *
-                         glm::vec4(normalized_device_coordinate, -1.0f, 1.0f);
-  glm::vec4 far_point = inverse_view_projection *
-                        glm::vec4(normalized_device_coordinate, 1.0f, 1.0f);
-  near_point /= near_point.w;
-  far_point /= far_point.w;
-
-  CameraRay ray;
-  ray.origin = glm::vec3(near_point);
-  ray.direction = glm::normalize(glm::vec3(far_point - near_point));
-  return ray;
 }
 
 lighting::LightingState EngineCore::buildLightingState(
