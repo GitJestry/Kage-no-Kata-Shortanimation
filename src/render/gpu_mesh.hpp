@@ -111,6 +111,18 @@ class GpuMesh final {
     TextureSampler sampler;
   };
 
+  [[nodiscard]] bool bindTextureSlot(
+      const assets::MaterialTextureSlot& parSlot, GLuint parTextureUnit,
+      bool parEnabled = true) const;
+  void bindSkinning(
+      const ShaderProgram& parShader, const PrimitiveGpuData& parPrimitive,
+      std::span<const std::vector<glm::mat4>> parSkinMatrices,
+      bool parRequireValidSkinIndex = true) const;
+  void bindAlphaMaskMaterial(
+      const ShaderProgram& parShader,
+      const PrimitiveGpuData& parPrimitive) const;
+  static void drawIndexed(const PrimitiveGpuData& parPrimitive);
+
   std::vector<PrimitiveGpuData> m_primitives;
   std::size_t m_index_count = 0;
   bool m_has_opaque_primitives = false;
