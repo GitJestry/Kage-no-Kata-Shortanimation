@@ -20,7 +20,6 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
                         editor::EditorSession& parSession,
                         bool parFitToMovie, int parZoomDirection,
                         std::string& parError) {
-  constexpr float LABEL_WIDTH = 176.0f;
   constexpr float ROW_HEIGHT = 44.0f;
   struct TargetRow final {
     film::TimelineTarget target;
@@ -51,48 +50,21 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
   const float canvas_height = std::max(1.0f, ImGui::GetContentRegionAvail().y);
   ImGui::BeginChild("MasterTimelineCanvas", ImVec2(0.0f, canvas_height), true,
                     ImGuiWindowFlags_HorizontalScrollbar);
-  const ImVec2 origin = ImGui::GetCursorScreenPos();
-  const float canvas_width = ImGui::GetContentRegionAvail().x;
-  if (parFitToMovie) {
-    setTimelinePixelsPerFrame(parSession,
-                              timelineFitPixelsPerFrame(canvas_width,
-                                                        LABEL_WIDTH, duration),
-                              canvas_width, LABEL_WIDTH);
-    ImGui::SetScrollX(0.0f);
-  } else if (parZoomDirection != 0) {
-    setTimelinePixelsPerFrame(
-        parSession, parSession.target_sequence_pixels_per_frame *
-                        (parZoomDirection > 0 ? 1.2f : 1.0f / 1.2f),
-        canvas_width, LABEL_WIDTH);
-  } else {
-    setTimelinePixelsPerFrame(parSession,
-                              parSession.target_sequence_pixels_per_frame,
-                              canvas_width, LABEL_WIDTH);
-  }
-  static_cast<void>(updateTimelineZoom(parSession, origin, canvas_width,
-                                        LABEL_WIDTH));
+  const TimelineCanvas canvas = prepareTimelineCanvas(
+      parSession, canvas_height, rows.size(), ROW_HEIGHT, duration,
+      parFitToMovie, parZoomDirection);
   if (rows.empty()) {
     ImGui::EndChild();
     return;
   }
-  const float pixels_per_frame = parSession.target_sequence_pixels_per_frame;
-  const float content_width = std::max(
-      canvas_width, LABEL_WIDTH +
-                        static_cast<float>(film::MAX_FILM_FRAMES) *
-                            pixels_per_frame);
-  const float content_height = std::max(
-      canvas_height - ImGui::GetStyle().WindowPadding.y * 2.0f,
-      timelineRulerHeight() + static_cast<float>(rows.size()) * ROW_HEIGHT);
-  ImDrawList* draw_list = ImGui::GetWindowDrawList();
-  drawTimelineRuler(*draw_list, origin, LABEL_WIDTH, pixels_per_frame,
+  const auto& [origin, label_width, pixels_per_frame, content_width,
+               content_height, draw_list] = canvas;
+  drawTimelineRuler(*draw_list, origin, label_width, pixels_per_frame,
                     content_width);
   static_cast<void>(scrubTimelineRuler("##MasterTimelineRuler", origin,
-                                       LABEL_WIDTH, content_width,
+                                       label_width, content_width,
                                        pixels_per_frame, parSession, duration,
                                        parEngine.getFilmPlayback()));
-  const auto frame_x = [&](film::FilmFrame frame) {
-    return timelineFrameX(origin, LABEL_WIDTH, frame, pixels_per_frame);
-  };
   std::optional<film::TargetSequenceId> sequence_to_place;
 
   for (std::size_t row_index = 0; row_index < rows.size(); ++row_index) {
@@ -105,7 +77,8 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
     draw_list->AddText(ImVec2(origin.x + 6.0f, y + 7.0f),
                       IM_COL32(205, 210, 212, 255),
                       movieTargetLabel(parEngine, row.target).c_str());
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + LABEL_WIDTH - 32.0f, y + 9.0f));
+    ImGui::SetCursorScreenPos(
+        ImVec2(origin.x + label_width - 32.0f, y + 9.0f));
     pushMovieWidgetId(MovieWidgetIdKind::TimelineTargetRow,
                       static_cast<std::uint64_t>(row_index));
     if (ImGui::SmallButton("+")) {
@@ -141,8 +114,9 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
         start = std::clamp(gesture.start_frame + delta, 0,
                            film::MAX_FILM_FRAMES - sequence->durationFrames());
       }
-      const ImVec2 bar_min(frame_x(start), y + 7.0f);
-      const ImVec2 bar_max(frame_x(start + sequence->durationFrames()), y + 28.0f);
+      const ImVec2 bar_min(canvas.frameX(start), y + 7.0f);
+      const ImVec2 bar_max(canvas.frameX(start + sequence->durationFrames()),
+                           y + 28.0f);
       const bool selected = parSession.movie_selection.instance_id == instance.id;
       const bool camera_warning = [&] {
         if (sequence->target.kind != film::TimelineTargetKind::Camera) {
@@ -211,11 +185,11 @@ void drawMasterTimeline(engine::EngineCore& parEngine,
       ImGui::PopID();
     }
   }
-  const float playhead_x = frame_x(parSession.authoring_cursor_frame);
+  const float playhead_x = canvas.frameX(parSession.authoring_cursor_frame);
   drawTimelinePlayhead(*draw_list, playhead_x, origin.y,
                         origin.y + content_height);
   static_cast<void>(dragTimelinePlayhead(
-      "##MasterTimelinePlayhead", origin, LABEL_WIDTH, content_height,
+      "##MasterTimelinePlayhead", origin, label_width, content_height,
       pixels_per_frame, parSession, parEngine.getFilmPlayback(), duration));
   ImGui::SetCursorScreenPos(origin);
   ImGui::Dummy(ImVec2(content_width, content_height));

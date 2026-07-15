@@ -5,6 +5,7 @@
 
 #include <imgui.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -12,6 +13,17 @@
 namespace kage::editor {
 
 struct EditorSession;
+
+struct TimelineCanvas final {
+  ImVec2 origin;
+  float label_width;
+  float pixels_per_frame;
+  float content_width;
+  float content_height;
+  ImDrawList* draw_list;
+
+  [[nodiscard]] float frameX(film::FilmFrame parFrame) const;
+};
 
 enum class MovieWidgetIdKind : std::uint64_t {
   TimelineTarget = 1,
@@ -46,18 +58,10 @@ void drawTimelinePlayhead(ImDrawList& parDrawList, float parX, float parTop,
 void drawTimelineRuler(ImDrawList& parDrawList, const ImVec2& parOrigin,
                        float parLabelWidth, float parPixelsPerFrame,
                        float parContentWidth);
-[[nodiscard]] float timelineMinimumPixelsPerFrame(float parContentWidth,
-                                                   float parLabelWidth);
-[[nodiscard]] float timelineFitPixelsPerFrame(float parContentWidth,
-                                               float parLabelWidth,
-                                               film::FilmFrame parRangeFrames);
-void setTimelinePixelsPerFrame(EditorSession& parSession,
-                               float parPixelsPerFrame,
-                               float parContentWidth, float parLabelWidth);
-// Ctrl + wheel zooms around the cursor while plain wheel/trackpad gestures are
-// left to ImGui scrolling. Timeline data is never changed by this view operation.
-bool updateTimelineZoom(EditorSession& parSession, const ImVec2& parOrigin,
-                        float parContentWidth, float parLabelWidth);
+[[nodiscard]] TimelineCanvas prepareTimelineCanvas(
+    EditorSession& parSession, float parCanvasHeight,
+    std::size_t parTrackCount, float parTrackHeight,
+    film::FilmFrame parFitRange, bool parFit, int parZoomDirection);
 bool scrubTimelineRuler(const char* parId, const ImVec2& parOrigin,
                          float parLabelWidth, float parContentWidth,
                          float parPixelsPerFrame,

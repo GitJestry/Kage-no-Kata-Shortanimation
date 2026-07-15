@@ -16,6 +16,7 @@ namespace kage::editor {
 namespace {
 
 constexpr float TIMELINE_RULER_HEIGHT = 24.0f;
+constexpr float TIMELINE_LABEL_WIDTH = 176.0f;
 constexpr float MINIMUM_MAX_TIMELINE_PIXELS_PER_FRAME = 96.0f;
 constexpr float PLAYHEAD_GRAB_WIDTH = 8.0f;
 
@@ -135,6 +136,10 @@ float timelineFrameX(const ImVec2& parOrigin, float parLabelWidth,
          static_cast<float>(parFrame) * parPixelsPerFrame;
 }
 
+float TimelineCanvas::frameX(film::FilmFrame parFrame) const {
+  return timelineFrameX(origin, label_width, parFrame, pixels_per_frame);
+}
+
 film::FilmFrame timelineFrameDelta(float parMouseX, float parGestureMouseX,
                                    float parPixelsPerFrame) {
   return static_cast<film::FilmFrame>(std::lround(
@@ -148,33 +153,6 @@ void drawTimelinePlayhead(ImDrawList& parDrawList, float parX, float parTop,
 }
 
 float timelineRulerHeight() { return TIMELINE_RULER_HEIGHT; }
-
-float timelineMinimumPixelsPerFrame(float parContentWidth,
-                                    float parLabelWidth) {
-  const float available_width = std::max(1.0f, parContentWidth - parLabelWidth);
-  return available_width / static_cast<float>(film::MAX_FILM_FRAMES);
-}
-
-float timelineFitPixelsPerFrame(float parContentWidth, float parLabelWidth,
-                                film::FilmFrame parRangeFrames) {
-  const film::FilmFrame range =
-      parRangeFrames > 0 ? parRangeFrames : film::MAX_FILM_FRAMES;
-  const float available_width = std::max(1.0f, parContentWidth - parLabelWidth);
-  return std::clamp(available_width / static_cast<float>(range),
-                    timelineMinimumPixelsPerFrame(parContentWidth,
-                                                  parLabelWidth),
-                    timelineMaximumPixelsPerFrame(parContentWidth,
-                                                  parLabelWidth));
-}
-
-void setTimelinePixelsPerFrame(EditorSession& parSession,
-                               float parPixelsPerFrame,
-                               float parContentWidth, float parLabelWidth) {
-  parSession.target_sequence_pixels_per_frame = std::clamp(
-      parPixelsPerFrame,
-      timelineMinimumPixelsPerFrame(parContentWidth, parLabelWidth),
-      timelineMaximumPixelsPerFrame(parContentWidth, parLabelWidth));
-}
 
 void drawTimelineRuler(ImDrawList& parDrawList, const ImVec2& parOrigin,
                        float parLabelWidth, float parPixelsPerFrame,
@@ -207,28 +185,63 @@ void drawTimelineRuler(ImDrawList& parDrawList, const ImVec2& parOrigin,
   }
 }
 
-bool updateTimelineZoom(EditorSession& parSession, const ImVec2& parOrigin,
-                        float parContentWidth, float parLabelWidth) {
-  if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) ||
-      !ImGui::GetIO().KeyCtrl || ImGui::GetIO().MouseWheel == 0.0f) {
-    return false;
+TimelineCanvas prepareTimelineCanvas(EditorSession& parSession,
+                                     float parCanvasHeight,
+                                     std::size_t parTrackCount,
+                                     float parTrackHeight,
+                                     film::FilmFrame parFitRange, bool parFit,
+                                     int parZoomDirection) {
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  const float canvas_width = ImGui::GetContentRegionAvail().x;
+  const float available_width =
+      std::max(1.0f, canvas_width - TIMELINE_LABEL_WIDTH);
+  const float minimum_scale =
+      available_width / static_cast<float>(film::MAX_FILM_FRAMES);
+  const float maximum_scale =
+      timelineMaximumPixelsPerFrame(canvas_width, TIMELINE_LABEL_WIDTH);
+  float requested_scale = parSession.target_sequence_pixels_per_frame;
+  if (parFit) {
+    const film::FilmFrame range =
+        parFitRange > 0 ? parFitRange : film::MAX_FILM_FRAMES;
+    requested_scale = available_width / static_cast<float>(range);
+  } else if (parZoomDirection != 0) {
+    requested_scale *= parZoomDirection > 0 ? 1.2f : 1.0f / 1.2f;
   }
-  const float old_pixels_per_frame = parSession.target_sequence_pixels_per_frame;
-  const float new_pixels_per_frame = std::clamp(
-      old_pixels_per_frame * std::pow(1.2f, ImGui::GetIO().MouseWheel),
-      timelineMinimumPixelsPerFrame(parContentWidth, parLabelWidth),
-      timelineMaximumPixelsPerFrame(parContentWidth, parLabelWidth));
-  if (new_pixels_per_frame == old_pixels_per_frame) {
-    return false;
+  parSession.target_sequence_pixels_per_frame =
+      std::clamp(requested_scale, minimum_scale, maximum_scale);
+  if (parFit) {
+    ImGui::SetScrollX(0.0f);
   }
-  const float frame_under_cursor = std::max(
-      0.0f, (ImGui::GetIO().MousePos.x - parOrigin.x - parLabelWidth) /
-                old_pixels_per_frame);
-  parSession.target_sequence_pixels_per_frame = new_pixels_per_frame;
-  ImGui::SetScrollX(ImGui::GetScrollX() +
-                    frame_under_cursor *
-                        (new_pixels_per_frame - old_pixels_per_frame));
-  return true;
+
+  const bool wheel_zoom =
+      ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+      ImGui::GetIO().KeyCtrl && ImGui::GetIO().MouseWheel != 0.0f;
+  if (wheel_zoom) {
+    const float old_scale = parSession.target_sequence_pixels_per_frame;
+    const float new_scale = std::clamp(
+        old_scale * std::pow(1.2f, ImGui::GetIO().MouseWheel), minimum_scale,
+        maximum_scale);
+    if (new_scale != old_scale) {
+      const float frame_under_cursor = std::max(
+          0.0f, (ImGui::GetIO().MousePos.x - origin.x - TIMELINE_LABEL_WIDTH) /
+                    old_scale);
+      parSession.target_sequence_pixels_per_frame = new_scale;
+      ImGui::SetScrollX(ImGui::GetScrollX() +
+                        frame_under_cursor * (new_scale - old_scale));
+    }
+  }
+
+  const float pixels_per_frame = parSession.target_sequence_pixels_per_frame;
+  const float content_width = std::max(
+      canvas_width, TIMELINE_LABEL_WIDTH +
+                        static_cast<float>(film::MAX_FILM_FRAMES) *
+                            pixels_per_frame);
+  const float content_height = std::max(
+      parCanvasHeight - ImGui::GetStyle().WindowPadding.y * 2.0f,
+      timelineRulerHeight() +
+          static_cast<float>(parTrackCount) * parTrackHeight);
+  return {origin, TIMELINE_LABEL_WIDTH, pixels_per_frame, content_width,
+          content_height, ImGui::GetWindowDrawList()};
 }
 
 bool scrubTimelineRuler(const char* parId, const ImVec2& parOrigin,
