@@ -3,6 +3,7 @@
 #include "editor/lighting_panel.hpp"
 #include "editor/movie_editor_controller.hpp"
 #include "editor/movie_editor_panel.hpp"
+#include "editor/text_buffer.hpp"
 #include "editor/ui_layout.hpp"
 
 #include <imgui.h>
@@ -10,12 +11,9 @@
 
 #include <algorithm>
 #include <array>
-#include <cstring>
 #include <filesystem>
 #include <optional>
-#include <span>
 #include <string>
-#include <string_view>
 #include <utility>
 
 namespace {
@@ -29,17 +27,6 @@ using kage::editor::clampPanelPosition;
 using kage::editor::clampPanelSize;
 using kage::editor::getUiWorkArea;
 using kage::editor::UiWorkArea;
-
-void copyToBuffer(std::string_view parText, std::span<char> parBuffer) {
-  if (parBuffer.empty()) {
-    return;
-  }
-
-  const std::size_t copy_size =
-      std::min(parText.size(), parBuffer.size() - 1);
-  std::memcpy(parBuffer.data(), parText.data(), copy_size);
-  parBuffer[copy_size] = '\0';
-}
 
 void requestEntityDeletionConfirmation(kage::editor::ConfirmationDialog& parDialog,
                          kage::engine::EngineCore& parEngine,
@@ -64,25 +51,28 @@ void drawVector3(const char* parLabel, const glm::vec3& parValue) {
               parValue.z);
 }
 
+bool drawPositionRotation(glm::vec3& parPosition, glm::quat& parRotation) {
+  ImGui::TextDisabled("Position  X        Y        Z");
+  ImGui::SetNextItemWidth(-1.0f);
+  bool changed = ImGui::DragFloat3("##PositionXYZ", &parPosition.x, 0.05f);
+
+  glm::vec3 rotation_degrees =
+      glm::degrees(glm::eulerAngles(parRotation));
+  ImGui::TextDisabled("Rotation  X        Y        Z");
+  ImGui::SetNextItemWidth(-1.0f);
+  if (ImGui::DragFloat3("##RotationXYZ", &rotation_degrees.x, 0.5f)) {
+    parRotation = glm::normalize(glm::quat(glm::radians(rotation_degrees)));
+    changed = true;
+  }
+  return changed;
+}
+
 bool drawTransformControls(kage::engine::EngineCore& parEngine,
                            const kage::scene::EntityRecord& parEntity,
                            kage::math::Transform& parTransform) {
   bool changed = false;
-
-  ImGui::TextDisabled("Position  X        Y        Z");
-  ImGui::SetNextItemWidth(-1.0f);
-  changed |= ImGui::DragFloat3("##PositionXYZ", &parTransform.translation.x,
-                               0.05f);
-
-  glm::vec3 rotation_degrees =
-      glm::degrees(glm::eulerAngles(parTransform.rotation));
-  ImGui::TextDisabled("Rotation  X        Y        Z");
-  ImGui::SetNextItemWidth(-1.0f);
-  if (ImGui::DragFloat3("##RotationXYZ", &rotation_degrees.x, 0.5f)) {
-    parTransform.rotation =
-        glm::normalize(glm::quat(glm::radians(rotation_degrees)));
-    changed = true;
-  }
+  changed |= drawPositionRotation(parTransform.translation,
+                                  parTransform.rotation);
 
   ImGui::TextDisabled("Scale     X        Y        Z");
   ImGui::SetNextItemWidth(-1.0f);
@@ -138,31 +128,27 @@ void EditorUi::draw(engine::EngineCore& parEngine,
                     SelectionController& parSelectionController,
                     GizmoController& parGizmoController,
                     ConfirmationDialog& parConfirmationDialog,
-                    const glm::vec2& parViewportSize, float parDeltaSeconds,
-                    unsigned int parFrameCount) {
+                    float parDeltaSeconds) {
   applyStyle();
   beginPanelTracking();
   m_movie_layout_computed = false;
   if (parSession.workspace == Workspace::Movie) {
     computeMovieEditorLayout(parSession);
   }
-  drawTopBar(parEngine, parSession, parViewportSize);
+  drawTopBar(parEngine, parSession);
   const bool world_edit = parSession.workspace == Workspace::WorldEdit;
   if (world_edit && m_panel_visible) {
-    drawLeftPanel(parEngine, parPlacementController,
-                  parSelectionController, parGizmoController,
-                  parConfirmationDialog, parViewportSize);
+    drawLeftPanel(parEngine, parPlacementController, parSelectionController,
+                  parConfirmationDialog);
   } else if (world_edit) {
     drawHiddenPanelButton();
   }
 
   if (world_edit && m_diagnostics_visible) {
-    drawRuntimeDiagnostics(parEngine, parViewportSize, parDeltaSeconds,
-                           parFrameCount);
+    drawRuntimeDiagnostics(parEngine, parDeltaSeconds);
   }
   if (world_edit && m_inspector_visible) {
-    drawInspector(parEngine, parGizmoController, parConfirmationDialog,
-                  parViewportSize);
+    drawInspector(parEngine, parGizmoController, parConfirmationDialog);
   } else if (world_edit) {
     drawHiddenInspectorButton();
   }
@@ -174,8 +160,7 @@ void EditorUi::draw(engine::EngineCore& parEngine,
   }
 
   if (world_edit) {
-    drawStatusStrip(parEngine, parPlacementController, parGizmoController,
-                    parViewportSize);
+    drawStatusStrip();
   }
   drawImportDialogs(parEngine, parPlacementController);
 }
@@ -195,9 +180,7 @@ void EditorUi::computeMovieEditorLayout(EditorSession& parSession) {
 }
 
 void EditorUi::drawTopBar(engine::EngineCore& parEngine,
-                          EditorSession& parSession,
-                          const glm::vec2& parViewportSize) {
-  static_cast<void>(parViewportSize);
+                          EditorSession& parSession) {
   const UiWorkArea area = getUiWorkArea();
   constexpr float WORKSPACE_WIDTH = 206.0f;
   ImGui::SetNextWindowPos(
@@ -398,11 +381,7 @@ void EditorUi::drawHiddenInspectorButton() {
 void EditorUi::drawLeftPanel(engine::EngineCore& parEngine,
                              PlacementController& parPlacementController,
                              SelectionController& parSelectionController,
-                             GizmoController& parGizmoController,
-                             ConfirmationDialog& parConfirmationDialog,
-                             const glm::vec2& parViewportSize) {
-  static_cast<void>(parViewportSize);
-  static_cast<void>(parGizmoController);
+                             ConfirmationDialog& parConfirmationDialog) {
   const UiWorkArea area = getUiWorkArea();
   const float panel_height = std::max(320.0f, area.size.y - STATUS_HEIGHT);
   ImGui::SetNextWindowPos(area.position, ImGuiCond_Always);
@@ -598,12 +577,15 @@ void EditorUi::drawWorldControls(engine::EngineCore& parEngine) {
     parEngine.setFloorGridVisible(floor_visible);
   }
   int grid_radius = parEngine.getFloorGridRadius();
-  if (ImGui::DragInt("Grid radius", &grid_radius, 1.0f, 8, 1000)) {
+  if (ImGui::DragInt("Grid radius", &grid_radius, 1.0f,
+                     render::MIN_FLOOR_GRID_RADIUS,
+                     render::MAX_FLOOR_GRID_RADIUS)) {
     parEngine.setFloorGridRadius(grid_radius);
   }
   float view_distance = parEngine.getEditorViewDistance();
-  if (ImGui::DragFloat("View distance", &view_distance, 2.0f, 5.0f,
-                       5000.0f)) {
+  if (ImGui::DragFloat("View distance", &view_distance, 2.0f,
+                       render::MIN_EDITOR_VIEW_DISTANCE,
+                       render::MAX_EDITOR_VIEW_DISTANCE)) {
     parEngine.setEditorViewDistance(view_distance);
   }
 }
@@ -677,9 +659,7 @@ void EditorUi::drawOutliner(engine::EngineCore& parEngine,
 
 void EditorUi::drawInspector(engine::EngineCore& parEngine,
                              GizmoController& parGizmoController,
-                             ConfirmationDialog& parConfirmationDialog,
-                             const glm::vec2& parViewportSize) {
-  static_cast<void>(parViewportSize);
+                             ConfirmationDialog& parConfirmationDialog) {
   const UiWorkArea area = getUiWorkArea();
   const ImVec2 size = clampPanelSize(
       area, ImVec2(INSPECTOR_WIDTH, INSPECTOR_HEIGHT), true);
@@ -709,21 +689,7 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
     ImGui::Separator();
     ImGui::PushID("EditorCamera");
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-      bool changed = false;
-      ImGui::TextDisabled("Position  X        Y        Z");
-      ImGui::SetNextItemWidth(-1.0f);
-      changed |= ImGui::DragFloat3("##PositionXYZ", &camera.position.x, 0.05f);
-
-      glm::vec3 rotation_degrees =
-          glm::degrees(glm::eulerAngles(camera.orientation));
-      ImGui::TextDisabled("Rotation  X        Y        Z");
-      ImGui::SetNextItemWidth(-1.0f);
-      if (ImGui::DragFloat3("##RotationXYZ", &rotation_degrees.x, 0.5f)) {
-        camera.orientation =
-            glm::normalize(glm::quat(glm::radians(rotation_degrees)));
-        changed = true;
-      }
-      if (changed) {
+      if (drawPositionRotation(camera.position, camera.orientation)) {
         parEngine.getCameraSystem().syncFlyControllerFromCamera();
       }
     }
@@ -892,7 +858,7 @@ void EditorUi::refreshSceneNameBuffer(engine::EngineCore& parEngine) {
   m_scene_name_buffer.fill('\0');
   const auto scenes = parEngine.getScenes();
   if (active_scene < scenes.size()) {
-    copyToBuffer(scenes[active_scene].name, m_scene_name_buffer);
+    copyTextToBuffer(scenes[active_scene].name, m_scene_name_buffer);
   }
   m_scene_name_buffer_index = active_scene;
 }
@@ -903,7 +869,7 @@ void EditorUi::refreshEntityNameBuffer(const scene::EntityRecord& parEntity) {
   }
 
   m_entity_name_buffer.fill('\0');
-  copyToBuffer(parEntity.name.name, m_entity_name_buffer);
+  copyTextToBuffer(parEntity.name.name, m_entity_name_buffer);
   m_entity_name_buffer_id = parEntity.id.value;
 }
 

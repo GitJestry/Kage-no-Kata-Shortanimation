@@ -1,4 +1,5 @@
 #include "render/gpu_mesh.hpp"
+#include "render/shader_limits.hpp"
 
 #include "render/texture_resource_cache.hpp"
 #include "render/shadow_renderer.hpp"
@@ -26,7 +27,6 @@ constexpr GLuint BASE_COLOR_TEXTURE_UNIT = 0;
 constexpr GLuint NORMAL_TEXTURE_UNIT = 1;
 constexpr GLuint METALLIC_ROUGHNESS_TEXTURE_UNIT = 2;
 constexpr GLuint EMISSIVE_TEXTURE_UNIT = 3;
-constexpr GLsizei MAX_SHADER_JOINTS = 128;
 constexpr glm::vec4 DEFAULT_BASE_COLOR_FACTOR{1.0f};
 constexpr std::array<unsigned char, 4> FALLBACK_TEXTURE_PIXELS{
     255, 255, 255, 255};

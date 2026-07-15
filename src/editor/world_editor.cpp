@@ -130,12 +130,9 @@ void WorldEditor::render(const glm::vec2& parViewportSize) {
   m_engine.advanceFilmExport();
 }
 
-void WorldEditor::buildImGui(const glm::vec2& parViewportSize,
-                             float parDeltaSeconds,
-                             unsigned int parFrameCount) {
+void WorldEditor::buildImGui(float parDeltaSeconds) {
   m_ui.draw(m_engine, m_session, m_placement_controller, m_selection_controller,
-            m_gizmo_controller, m_confirmation_dialog, parViewportSize, parDeltaSeconds,
-            parFrameCount);
+            m_gizmo_controller, m_confirmation_dialog, parDeltaSeconds);
   m_confirmation_dialog.draw();
 }
 

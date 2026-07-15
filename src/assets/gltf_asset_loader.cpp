@@ -1,6 +1,5 @@
 #include "assets/gltf_asset_loader.hpp"
 
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <tiny_gltf.h>
@@ -23,6 +22,14 @@
 namespace {
 
 constexpr int DEFAULT_SCENE_INDEX = 0;
+constexpr float EFFECTIVELY_OPAQUE_ALPHA = 0.999f;
+constexpr std::size_t ALPHA_PERCENT_SCALE = 100;
+constexpr std::size_t MAX_MASK_PARTIAL_ALPHA_PERCENT = 1;
+constexpr std::size_t SUSPICIOUS_BLEND_RATIO_NUMERATOR = 9;
+constexpr std::size_t SUSPICIOUS_BLEND_RATIO_DENOMINATOR = 10;
+constexpr std::size_t VIEWPORT_VERTEX_WARNING_LIMIT = 500000;
+constexpr std::size_t VIEWPORT_MATERIAL_WARNING_LIMIT = 32;
+constexpr int VIEWPORT_TEXTURE_WARNING_LIMIT = 2048;
 
 [[nodiscard]] std::runtime_error makeImportError(
     const std::filesystem::path& parPath, const std::string& parMessage) {
@@ -233,52 +240,62 @@ void validateAttributeCount(const tinygltf::Accessor& parAccessor,
   }
 }
 
-[[nodiscard]] glm::vec3 readVec3AccessorElement(
+[[nodiscard]] const tinygltf::Accessor* findAttribute(
+    const tinygltf::Model& parModel, const tinygltf::Primitive& parPrimitive,
+    std::string_view parName, std::size_t parExpectedCount,
+    const std::filesystem::path& parPath) {
+  const auto attribute = parPrimitive.attributes.find(std::string(parName));
+  if (attribute == parPrimitive.attributes.end()) {
+    return nullptr;
+  }
+  const tinygltf::Accessor& accessor =
+      getAccessor(parModel, attribute->second, parPath);
+  validateAttributeCount(accessor, parExpectedCount, parName, parPath);
+  return &accessor;
+}
+
+template <typename Value>
+[[nodiscard]] Value readFloatAccessorElement(
     const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    std::size_t parElementIndex, int parExpectedType,
+    std::string_view parExpectedName, const std::filesystem::path& parPath) {
   if (parAccessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
-      parAccessor.type != TINYGLTF_TYPE_VEC3) {
-    throw makeImportError(parPath, "expected a float vec3 accessor");
+      parAccessor.type != parExpectedType) {
+    throw makeImportError(parPath, "expected a float " +
+                                       std::string(parExpectedName) +
+                                       " accessor");
   }
 
-  glm::vec3 value{};
+  Value value{};
   std::memcpy(glm::value_ptr(value),
               getAccessorElement(parModel, parAccessor, parElementIndex,
                                  parPath),
-              sizeof(float) * 3);
+              sizeof(Value));
   return value;
+}
+
+[[nodiscard]] glm::vec3 readVec3AccessorElement(
+    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+  return readFloatAccessorElement<glm::vec3>(
+      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC3, "vec3",
+      parPath);
 }
 
 [[nodiscard]] glm::vec2 readVec2AccessorElement(
     const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
     std::size_t parElementIndex, const std::filesystem::path& parPath) {
-  if (parAccessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
-      parAccessor.type != TINYGLTF_TYPE_VEC2) {
-    throw makeImportError(parPath, "expected a float vec2 accessor");
-  }
-
-  glm::vec2 value{};
-  std::memcpy(glm::value_ptr(value),
-              getAccessorElement(parModel, parAccessor, parElementIndex,
-                                 parPath),
-              sizeof(float) * 2);
-  return value;
+  return readFloatAccessorElement<glm::vec2>(
+      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC2, "vec2",
+      parPath);
 }
 
 [[nodiscard]] glm::vec4 readVec4AccessorElement(
     const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
     std::size_t parElementIndex, const std::filesystem::path& parPath) {
-  if (parAccessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
-      parAccessor.type != TINYGLTF_TYPE_VEC4) {
-    throw makeImportError(parPath, "expected a float vec4 accessor");
-  }
-
-  glm::vec4 value{};
-  std::memcpy(glm::value_ptr(value),
-              getAccessorElement(parModel, parAccessor, parElementIndex,
-                                 parPath),
-              sizeof(float) * 4);
-  return value;
+  return readFloatAccessorElement<glm::vec4>(
+      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC4, "vec4",
+      parPath);
 }
 
 [[nodiscard]] float readFloatScalarAccessorElement(
@@ -300,17 +317,9 @@ void validateAttributeCount(const tinygltf::Accessor& parAccessor,
 [[nodiscard]] glm::mat4 readMat4AccessorElement(
     const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
     std::size_t parElementIndex, const std::filesystem::path& parPath) {
-  if (parAccessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
-      parAccessor.type != TINYGLTF_TYPE_MAT4) {
-    throw makeImportError(parPath, "expected a float mat4 accessor");
-  }
-
-  glm::mat4 value{1.0f};
-  std::memcpy(glm::value_ptr(value),
-              getAccessorElement(parModel, parAccessor, parElementIndex,
-                                 parPath),
-              sizeof(float) * 16);
-  return value;
+  return readFloatAccessorElement<glm::mat4>(
+      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_MAT4, "mat4",
+      parPath);
 }
 
 [[nodiscard]] glm::uvec4 readJointAccessorElement(
@@ -446,36 +455,14 @@ void validateAttributeCount(const tinygltf::Accessor& parAccessor,
   return indices;
 }
 
+[[nodiscard]] kage::math::Transform getNodeTransform(
+    const tinygltf::Node& parNode);
+
 [[nodiscard]] glm::mat4 getNodeMatrix(const tinygltf::Node& parNode) {
   if (parNode.matrix.size() == 16) {
     return glm::make_mat4(parNode.matrix.data());
   }
-
-  glm::mat4 transform{1.0f};
-  if (parNode.translation.size() == 3) {
-    transform = glm::translate(
-        transform, glm::vec3(static_cast<float>(parNode.translation[0]),
-                             static_cast<float>(parNode.translation[1]),
-                             static_cast<float>(parNode.translation[2])));
-  }
-
-  if (parNode.rotation.size() == 4) {
-    const glm::quat rotation(
-        static_cast<float>(parNode.rotation[3]),
-        static_cast<float>(parNode.rotation[0]),
-        static_cast<float>(parNode.rotation[1]),
-        static_cast<float>(parNode.rotation[2]));
-    transform *= glm::mat4_cast(rotation);
-  }
-
-  if (parNode.scale.size() == 3) {
-    transform = glm::scale(
-        transform, glm::vec3(static_cast<float>(parNode.scale[0]),
-                             static_cast<float>(parNode.scale[1]),
-                             static_cast<float>(parNode.scale[2])));
-  }
-
-  return transform;
+  return getNodeTransform(parNode).toMatrix();
 }
 
 [[nodiscard]] kage::math::Transform getNodeTransform(
@@ -561,8 +548,9 @@ void validateAttributeCount(const tinygltf::Accessor& parAccessor,
   return transform;
 }
 
+template <typename TextureInfo>
 [[nodiscard]] kage::assets::MaterialTextureSlot readTextureSlot(
-    const tinygltf::TextureInfo& parTextureInfo,
+    const TextureInfo& parTextureInfo,
     const tinygltf::Model& parModel, const std::filesystem::path& parPath) {
   kage::assets::MaterialTextureSlot slot;
   if (parTextureInfo.index < 0) {
@@ -570,24 +558,6 @@ void validateAttributeCount(const tinygltf::Accessor& parAccessor,
   }
   if (parTextureInfo.texCoord != 0) {
     throw makeImportError(parPath, "only TEXCOORD_0 material textures are "
-                                  "supported");
-  }
-
-  slot.texture_index =
-      checkedTextureIndex(parTextureInfo.index, parModel, parPath);
-  slot.transform = readTextureTransform(parTextureInfo.extensions);
-  return slot;
-}
-
-[[nodiscard]] kage::assets::MaterialTextureSlot readNormalTextureSlot(
-    const tinygltf::NormalTextureInfo& parTextureInfo,
-    const tinygltf::Model& parModel, const std::filesystem::path& parPath) {
-  kage::assets::MaterialTextureSlot slot;
-  if (parTextureInfo.index < 0) {
-    return slot;
-  }
-  if (parTextureInfo.texCoord != 0) {
-    throw makeImportError(parPath, "only TEXCOORD_0 normal textures are "
                                   "supported");
   }
 
@@ -608,14 +578,9 @@ void importImages(const tinygltf::Model& parModel,
       throw makeImportError(parPath, "image data is incomplete");
     }
 
-    kage::assets::StaticImage output_image;
-    output_image.name = image.name;
-    output_image.pixels = image.image;
-    output_image.width = image.width;
-    output_image.height = image.height;
-    output_image.component_count = image.component;
-    output_image.pixel_type = image.pixel_type;
-    parOutput.images.push_back(std::move(output_image));
+    parOutput.images.push_back({image.name, image.image, image.width,
+                                image.height, image.component,
+                                image.pixel_type});
   }
 }
 
@@ -700,7 +665,7 @@ void importMaterials(const tinygltf::Model& parModel,
         material.pbrMetallicRoughness.baseColorTexture, parModel, parPath);
 
     if (output_material.alpha_mode == kage::assets::AlphaMode::Blend &&
-        output_material.base_color_factor.a >= 0.999f) {
+        output_material.base_color_factor.a >= EFFECTIVELY_OPAQUE_ALPHA) {
       bool opaque = !output_material.base_color_texture.isValid();
       bool mask = false;
       if (output_material.base_color_texture.isValid()) {
@@ -730,7 +695,8 @@ void importMaterials(const tinygltf::Model& parModel,
               }
               const std::size_t pixel_count = image.pixels.size() / 4;
               mask = transparent_alpha_count > 0 && pixel_count > 0 &&
-                     partial_alpha_count * 100 <= pixel_count;
+                     partial_alpha_count * ALPHA_PERCENT_SCALE <=
+                         pixel_count * MAX_MASK_PARTIAL_ALPHA_PERCENT;
             }
           }
         }
@@ -748,7 +714,7 @@ void importMaterials(const tinygltf::Model& parModel,
         readTextureSlot(material.pbrMetallicRoughness.metallicRoughnessTexture,
                         parModel, parPath);
     output_material.normal_texture =
-        readNormalTextureSlot(material.normalTexture, parModel, parPath);
+        readTextureSlot(material.normalTexture, parModel, parPath);
     output_material.normal_scale =
         static_cast<float>(std::max(material.normalTexture.scale, 0.0));
     output_material.emissive_texture =
@@ -766,7 +732,8 @@ void importMaterials(const tinygltf::Model& parModel,
   const bool suspicious_all_blend_export =
       !parModel.materials.empty() &&
       declared_blend_count == parModel.materials.size() &&
-      reclassified_blend_count * 10 >= declared_blend_count * 9;
+      reclassified_blend_count * SUSPICIOUS_BLEND_RATIO_DENOMINATOR >=
+          declared_blend_count * SUSPICIOUS_BLEND_RATIO_NUMERATOR;
   if (reclassified_blend_count > 0 && !parOutput.import_warning.empty()) {
     parOutput.import_warning += '\n';
   }
@@ -860,40 +827,21 @@ void importPrimitive(const tinygltf::Model& parModel,
 
   const tinygltf::Accessor& position_accessor =
       getAccessor(parModel, position_attribute->second, parPath);
-  const tinygltf::Accessor* normal_accessor = nullptr;
-  const tinygltf::Accessor* tangent_accessor = nullptr;
-  const tinygltf::Accessor* tex_coord_accessor = nullptr;
-  const tinygltf::Accessor* joint_accessor = nullptr;
-  const tinygltf::Accessor* weight_accessor = nullptr;
   if (position_accessor.count == 0) {
     throw makeImportError(parPath, "primitive has no vertices");
   }
 
-  const auto normal_attribute = parPrimitive.attributes.find("NORMAL");
-  if (normal_attribute != parPrimitive.attributes.end()) {
-    normal_accessor = &getAccessor(parModel, normal_attribute->second, parPath);
-    validateAttributeCount(*normal_accessor, position_accessor.count, "NORMAL",
-                           parPath);
-  }
-
-  const auto tangent_attribute = parPrimitive.attributes.find("TANGENT");
-  if (tangent_attribute != parPrimitive.attributes.end()) {
-    tangent_accessor =
-        &getAccessor(parModel, tangent_attribute->second, parPath);
-    validateAttributeCount(*tangent_accessor, position_accessor.count,
-                           "TANGENT", parPath);
-  }
-
-  const auto tex_coord_attribute = parPrimitive.attributes.find("TEXCOORD_0");
-  if (tex_coord_attribute != parPrimitive.attributes.end()) {
-    tex_coord_accessor =
-        &getAccessor(parModel, tex_coord_attribute->second, parPath);
-    validateAttributeCount(*tex_coord_accessor, position_accessor.count,
-                           "TEXCOORD_0", parPath);
-  }
+  const tinygltf::Accessor* normal_accessor = findAttribute(
+      parModel, parPrimitive, "NORMAL", position_accessor.count, parPath);
+  const tinygltf::Accessor* tangent_accessor = findAttribute(
+      parModel, parPrimitive, "TANGENT", position_accessor.count, parPath);
+  const tinygltf::Accessor* tex_coord_accessor = findAttribute(
+      parModel, parPrimitive, "TEXCOORD_0", position_accessor.count, parPath);
 
   const auto joint_attribute = parPrimitive.attributes.find("JOINTS_0");
   const auto weight_attribute = parPrimitive.attributes.find("WEIGHTS_0");
+  const tinygltf::Accessor* joint_accessor = nullptr;
+  const tinygltf::Accessor* weight_accessor = nullptr;
   if (joint_attribute != parPrimitive.attributes.end() ||
       weight_attribute != parPrimitive.attributes.end()) {
     if (joint_attribute == parPrimitive.attributes.end() ||
@@ -903,12 +851,10 @@ void importPrimitive(const tinygltf::Model& parModel,
                             "WEIGHTS_0");
     }
 
-    joint_accessor = &getAccessor(parModel, joint_attribute->second, parPath);
-    weight_accessor = &getAccessor(parModel, weight_attribute->second, parPath);
-    validateAttributeCount(*joint_accessor, position_accessor.count, "JOINTS_0",
-                           parPath);
-    validateAttributeCount(*weight_accessor, position_accessor.count,
-                           "WEIGHTS_0", parPath);
+    joint_accessor = findAttribute(parModel, parPrimitive, "JOINTS_0",
+                                   position_accessor.count, parPath);
+    weight_accessor = findAttribute(parModel, parPrimitive, "WEIGHTS_0",
+                                    position_accessor.count, parPath);
   }
 
   kage::assets::StaticPrimitive output_primitive;
@@ -1088,7 +1034,7 @@ void importSkins(const tinygltf::Model& parModel,
       }
     }
 
-    parOutput.stats.joint_count += output_skin.joints.size();
+    parOutput.static_model.stats.joint_count += output_skin.joints.size();
     parOutput.skins.push_back(std::move(output_skin));
   }
 }
@@ -1111,11 +1057,9 @@ void importMarkers(kage::assets::GltfDocument& parOutput) {
       continue;
     }
 
-    kage::assets::GltfMarker marker;
-    marker.name = node.name;
-    marker.node_index = static_cast<std::uint32_t>(node_index);
-    marker.transform = node.global_transform;
-    parOutput.markers.push_back(marker);
+    parOutput.markers.push_back(
+        {node.name, static_cast<std::uint32_t>(node_index),
+         node.global_transform});
   }
 }
 
@@ -1141,6 +1085,15 @@ void importMarkers(kage::assets::GltfDocument& parOutput) {
   }
 
   throw makeImportError(parAssetPath, "unsupported animation target path");
+}
+
+template <typename Container, typename Reader>
+void readAccessorValues(const tinygltf::Accessor& parAccessor,
+                        Container& parOutput, Reader&& parReader) {
+  parOutput.reserve(parAccessor.count);
+  for (std::size_t index = 0; index < parAccessor.count; ++index) {
+    parOutput.push_back(parReader(index));
+  }
 }
 
 void importAnimations(const tinygltf::Model& parModel,
@@ -1224,37 +1177,37 @@ void importAnimations(const tinygltf::Model& parModel,
 
       switch (channel.target_path) {
         case kage::assets::AnimationTargetPath::Translation:
-          sampler.translations.reserve(output_accessor.count);
-          for (std::size_t value_index = 0; value_index < output_accessor.count;
-               ++value_index) {
-            sampler.translations.push_back(readVec3AccessorElement(
-                parModel, output_accessor, value_index, parPath));
-          }
+          readAccessorValues(output_accessor, sampler.translations,
+                             [&](std::size_t index) {
+                               return readVec3AccessorElement(
+                                   parModel, output_accessor, index, parPath);
+                             });
           break;
         case kage::assets::AnimationTargetPath::Rotation:
-          sampler.rotations.reserve(output_accessor.count);
-          for (std::size_t value_index = 0; value_index < output_accessor.count;
-               ++value_index) {
-            const glm::vec4 rotation = readVec4AccessorElement(
-                parModel, output_accessor, value_index, parPath);
-            sampler.rotations.push_back(glm::normalize(glm::quat(
-                rotation.w, rotation.x, rotation.y, rotation.z)));
-          }
+          readAccessorValues(output_accessor, sampler.rotations,
+                             [&](std::size_t index) {
+                               const glm::vec4 rotation =
+                                   readVec4AccessorElement(
+                                       parModel, output_accessor, index,
+                                       parPath);
+                               return glm::normalize(glm::quat(
+                                   rotation.w, rotation.x, rotation.y,
+                                   rotation.z));
+                             });
           break;
         case kage::assets::AnimationTargetPath::Scale:
-          sampler.scales.reserve(output_accessor.count);
-          for (std::size_t value_index = 0; value_index < output_accessor.count;
-               ++value_index) {
-            sampler.scales.push_back(readVec3AccessorElement(
-                parModel, output_accessor, value_index, parPath));
-          }
+          readAccessorValues(output_accessor, sampler.scales,
+                             [&](std::size_t index) {
+                               return readVec3AccessorElement(
+                                   parModel, output_accessor, index, parPath);
+                             });
           break;
       }
 
       clip.channels.push_back(channel);
     }
 
-    parOutput.stats.animation_channel_count += clip.channels.size();
+    parOutput.static_model.stats.animation_channel_count += clip.channels.size();
     parOutput.animation_clips.push_back(std::move(clip));
   }
 }
@@ -1263,11 +1216,6 @@ void importSceneNode(const tinygltf::Model& parModel, int parNodeIndex,
                      const glm::mat4& parParentTransform,
                      const std::filesystem::path& parPath,
                      kage::assets::GltfDocument& parOutput) {
-  if (parNodeIndex < 0 ||
-      static_cast<std::size_t>(parNodeIndex) >= parModel.nodes.size()) {
-    throw makeImportError(parPath, "node index is out of range");
-  }
-
   const tinygltf::Node& node =
       parModel.nodes[static_cast<std::size_t>(parNodeIndex)];
   const glm::mat4 node_transform = parParentTransform * getNodeMatrix(node);
@@ -1275,10 +1223,6 @@ void importSceneNode(const tinygltf::Model& parModel, int parNodeIndex,
       node_transform;
 
   if (node.mesh >= 0) {
-    if (static_cast<std::size_t>(node.mesh) >= parModel.meshes.size()) {
-      throw makeImportError(parPath, "mesh index is out of range");
-    }
-
     const tinygltf::Mesh& mesh =
         parModel.meshes[static_cast<std::size_t>(node.mesh)];
     for (std::size_t primitive_index = 0;
@@ -1336,20 +1280,17 @@ GltfDocument GltfAssetLoader::loadDocument(
   }
 
   GltfDocument output;
-  output.source_path = parPath;
-  output.import_warning = warning;
   output.static_model.source_path = parPath;
   output.static_model.import_warning = warning;
-  output.stats.scene_count = gltf_model.scenes.size();
-  output.stats.node_count = gltf_model.nodes.size();
-  output.stats.mesh_count = gltf_model.meshes.size();
-  output.stats.material_count = gltf_model.materials.size();
-  output.stats.texture_count = gltf_model.textures.size();
-  output.stats.image_count = gltf_model.images.size();
-  output.stats.skin_count = gltf_model.skins.size();
-  output.stats.animation_count = gltf_model.animations.size();
-
-  output.static_model.stats = output.stats;
+  GltfAssetStats& stats = output.static_model.stats;
+  stats.scene_count = gltf_model.scenes.size();
+  stats.node_count = gltf_model.nodes.size();
+  stats.mesh_count = gltf_model.meshes.size();
+  stats.material_count = gltf_model.materials.size();
+  stats.texture_count = gltf_model.textures.size();
+  stats.image_count = gltf_model.images.size();
+  stats.skin_count = gltf_model.skins.size();
+  stats.animation_count = gltf_model.animations.size();
   importImages(gltf_model, parPath, output.static_model);
   importTextures(gltf_model, parPath, output.static_model);
   importMaterials(gltf_model, parPath, output.static_model);
@@ -1366,8 +1307,7 @@ GltfDocument GltfAssetLoader::loadDocument(
 
   const tinygltf::Scene& scene =
       gltf_model.scenes[static_cast<std::size_t>(scene_index)];
-  output.scene_name = scene.name.empty() ? "default" : scene.name;
-  output.static_model.scene_name = output.scene_name;
+  output.static_model.scene_name = scene.name.empty() ? "default" : scene.name;
   output.root_nodes.reserve(scene.nodes.size());
 
   for (const int node_index : scene.nodes) {
@@ -1403,43 +1343,35 @@ GltfDocument GltfAssetLoader::loadDocument(
     }
   }
 
-  output.bounds = output.static_model.bounds;
-  output.stats.primitive_count = output.static_model.primitives.size();
-  output.stats.vertex_count = output.static_model.stats.vertex_count;
-  output.stats.skinned_vertex_count =
-      output.static_model.stats.skinned_vertex_count;
-  output.stats.index_count = output.static_model.stats.index_count;
-  output.stats.triangle_count = output.static_model.stats.triangle_count;
-  output.stats.marker_count = output.markers.size();
+  stats.primitive_count = output.static_model.primitives.size();
+  stats.marker_count = output.markers.size();
   int max_texture_dimension = 0;
   for (const StaticImage& image : output.static_model.images) {
     max_texture_dimension =
         std::max({max_texture_dimension, image.width, image.height});
   }
   std::vector<std::string> performance_warnings;
-  if (output.stats.vertex_count > 500000) {
+  if (stats.vertex_count > VIEWPORT_VERTEX_WARNING_LIMIT) {
     performance_warnings.push_back("more than 500k vertices");
   }
-  if (output.stats.material_count > 32) {
+  if (stats.material_count > VIEWPORT_MATERIAL_WARNING_LIMIT) {
     performance_warnings.push_back("more than 32 materials");
   }
-  if (max_texture_dimension > 2048) {
+  if (max_texture_dimension > VIEWPORT_TEXTURE_WARNING_LIMIT) {
     performance_warnings.push_back("texture larger than 2048px");
   }
   if (!performance_warnings.empty()) {
-    if (!output.import_warning.empty()) {
-      output.import_warning += "\n";
+    if (!output.static_model.import_warning.empty()) {
+      output.static_model.import_warning += "\n";
     }
-    output.import_warning += "Viewport performance warning: ";
+    output.static_model.import_warning += "Viewport performance warning: ";
     for (std::size_t index = 0; index < performance_warnings.size(); ++index) {
       if (index != 0) {
-        output.import_warning += ", ";
+        output.static_model.import_warning += ", ";
       }
-      output.import_warning += performance_warnings[index];
+      output.static_model.import_warning += performance_warnings[index];
     }
-    output.static_model.import_warning = output.import_warning;
   }
-  output.static_model.stats = output.stats;
   return output;
 }
 

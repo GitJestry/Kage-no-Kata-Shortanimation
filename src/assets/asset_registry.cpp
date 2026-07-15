@@ -232,7 +232,8 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
     ++appended_count;
   }
 
-  parTarget.stats.animation_count = parTarget.animation_clips.size();
+  parTarget.static_model.stats.animation_count =
+      parTarget.animation_clips.size();
   return appended_count;
 }
 }  // namespace

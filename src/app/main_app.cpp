@@ -40,7 +40,7 @@ void MainApp::render() {
 }
 
 void MainApp::buildImGui() {
-  m_editor.buildImGui(resolution, delta, frames);
+  m_editor.buildImGui(delta);
 }
 
 void MainApp::keyCallback(Key parKey, Action parAction, Modifier) {

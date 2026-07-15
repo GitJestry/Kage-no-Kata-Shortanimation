@@ -2,6 +2,7 @@
 
 #include "editor/movie_editor_controller.hpp"
 #include "editor/movie_imgui_scope.hpp"
+#include "editor/text_buffer.hpp"
 #include "editor/timeline_view_helpers.hpp"
 #include "film/timeline_edit_service.hpp"
 
@@ -11,7 +12,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -35,9 +35,7 @@ void refreshNameEditState(NameEditState& parState, std::uint64_t parId,
     return;
   }
   parState.buffer.fill('\0');
-  const std::size_t copy_size =
-      std::min(parName.size(), parState.buffer.size() - 1);
-  std::memcpy(parState.buffer.data(), parName.data(), copy_size);
+  copyTextToBuffer(parName, parState.buffer);
   parState.id = parId;
   parState.name = parName;
   parState.initialized = true;
@@ -80,139 +78,101 @@ void drawTransformPoint(const char* parLabel, math::Transform& parTransform,
 
 enum class CurvePreset { Linear, EaseIn, EaseOut, EaseInOut, Custom };
 
+struct CurvePresetDefinition final {
+  const char* label;
+  float control_1;
+  float control_2;
+};
+
+constexpr std::array<CurvePresetDefinition, 4> CURVE_PRESETS{{
+    {"Linear", 1.0f / 3.0f, 2.0f / 3.0f},
+    {"Ease In", 0.0f, 0.0f},
+    {"Ease Out", 1.0f, 1.0f},
+    {"Ease In-Out", 0.0f, 1.0f},
+}};
+constexpr float CURVE_COMPARE_EPSILON = 0.0001f;
+
 [[nodiscard]] bool closeEnough(float parLeft, float parRight) {
-  return std::abs(parLeft - parRight) <= 0.0001f;
+  return std::abs(parLeft - parRight) <= CURVE_COMPARE_EPSILON;
 }
 
 [[nodiscard]] bool closeEnough(const glm::vec4& parLeft,
                                const glm::vec4& parRight) {
-  return glm::length(parLeft - parRight) <= 0.0001f;
+  return glm::length(parLeft - parRight) <= CURVE_COMPARE_EPSILON;
 }
 
 [[nodiscard]] CurvePreset timingPreset(float parControl1,
                                        float parControl2) {
-  if (closeEnough(parControl1, 1.0f / 3.0f) &&
-      closeEnough(parControl2, 2.0f / 3.0f)) {
-    return CurvePreset::Linear;
-  }
-  if (closeEnough(parControl1, 0.0f) && closeEnough(parControl2, 0.0f)) {
-    return CurvePreset::EaseIn;
-  }
-  if (closeEnough(parControl1, 1.0f) && closeEnough(parControl2, 1.0f)) {
-    return CurvePreset::EaseOut;
-  }
-  if (closeEnough(parControl1, 0.0f) && closeEnough(parControl2, 1.0f)) {
-    return CurvePreset::EaseInOut;
+  for (std::size_t index = 0; index < CURVE_PRESETS.size(); ++index) {
+    const CurvePresetDefinition& preset = CURVE_PRESETS[index];
+    if (closeEnough(parControl1, preset.control_1) &&
+        closeEnough(parControl2, preset.control_2)) {
+      return static_cast<CurvePreset>(index);
+    }
   }
   return CurvePreset::Custom;
 }
 
 void applyTimingPreset(CurvePreset parPreset, film::MovementCurve& parCurve) {
-  switch (parPreset) {
-    case CurvePreset::Linear:
-      parCurve.timing_control_1 = 1.0f / 3.0f;
-      parCurve.timing_control_2 = 2.0f / 3.0f;
-      break;
-    case CurvePreset::EaseIn:
-      parCurve.timing_control_1 = 0.0f;
-      parCurve.timing_control_2 = 0.0f;
-      break;
-    case CurvePreset::EaseOut:
-      parCurve.timing_control_1 = 1.0f;
-      parCurve.timing_control_2 = 1.0f;
-      break;
-    case CurvePreset::EaseInOut:
-      parCurve.timing_control_1 = 0.0f;
-      parCurve.timing_control_2 = 1.0f;
-      break;
-    case CurvePreset::Custom:
-      break;
+  const std::size_t index = static_cast<std::size_t>(parPreset);
+  if (index < CURVE_PRESETS.size()) {
+    parCurve.timing_control_1 = CURVE_PRESETS[index].control_1;
+    parCurve.timing_control_2 = CURVE_PRESETS[index].control_2;
   }
 }
 
 [[nodiscard]] CurvePreset propertyPreset(const film::PropertyClip& parProperty) {
-  const glm::vec4 linear_1 = glm::mix(parProperty.start_value,
-                                      parProperty.end_value, 1.0f / 3.0f);
-  const glm::vec4 linear_2 = glm::mix(parProperty.start_value,
-                                      parProperty.end_value, 2.0f / 3.0f);
-  if (closeEnough(parProperty.control_1, linear_1) &&
-      closeEnough(parProperty.control_2, linear_2)) {
-    return CurvePreset::Linear;
-  }
-  if (closeEnough(parProperty.control_1, parProperty.start_value) &&
-      closeEnough(parProperty.control_2, parProperty.start_value)) {
-    return CurvePreset::EaseIn;
-  }
-  if (closeEnough(parProperty.control_1, parProperty.end_value) &&
-      closeEnough(parProperty.control_2, parProperty.end_value)) {
-    return CurvePreset::EaseOut;
-  }
-  if (closeEnough(parProperty.control_1, parProperty.start_value) &&
-      closeEnough(parProperty.control_2, parProperty.end_value)) {
-    return CurvePreset::EaseInOut;
+  for (std::size_t index = 0; index < CURVE_PRESETS.size(); ++index) {
+    const CurvePresetDefinition& preset = CURVE_PRESETS[index];
+    if (closeEnough(parProperty.control_1,
+                    glm::mix(parProperty.start_value, parProperty.end_value,
+                             preset.control_1)) &&
+        closeEnough(parProperty.control_2,
+                    glm::mix(parProperty.start_value, parProperty.end_value,
+                             preset.control_2))) {
+      return static_cast<CurvePreset>(index);
+    }
   }
   return CurvePreset::Custom;
 }
 
 void applyPropertyPreset(CurvePreset parPreset,
                          film::PropertyClip& parProperty) {
-  switch (parPreset) {
-    case CurvePreset::Linear:
-      parProperty.control_1 = glm::mix(parProperty.start_value,
-                                       parProperty.end_value, 1.0f / 3.0f);
-      parProperty.control_2 = glm::mix(parProperty.start_value,
-                                       parProperty.end_value, 2.0f / 3.0f);
-      break;
-    case CurvePreset::EaseIn:
-      parProperty.control_1 = parProperty.start_value;
-      parProperty.control_2 = parProperty.start_value;
-      break;
-    case CurvePreset::EaseOut:
-      parProperty.control_1 = parProperty.end_value;
-      parProperty.control_2 = parProperty.end_value;
-      break;
-    case CurvePreset::EaseInOut:
-      parProperty.control_1 = parProperty.start_value;
-      parProperty.control_2 = parProperty.end_value;
-      break;
-    case CurvePreset::Custom:
-      break;
+  const std::size_t index = static_cast<std::size_t>(parPreset);
+  if (index < CURVE_PRESETS.size()) {
+    const CurvePresetDefinition& preset = CURVE_PRESETS[index];
+    parProperty.control_1 = glm::mix(
+        parProperty.start_value, parProperty.end_value, preset.control_1);
+    parProperty.control_2 = glm::mix(
+        parProperty.start_value, parProperty.end_value, preset.control_2);
   }
 }
 
-[[nodiscard]] bool drawCurvePreset(const char* parLabel,
-                                   CurvePreset& parPreset) {
-  constexpr const char* ITEMS =
-      "Linear\0Ease In\0Ease Out\0Ease In-Out\0Custom (loaded)\0";
-  int selected = static_cast<int>(parPreset);
-  if (!ImGui::Combo(parLabel, &selected, ITEMS)) {
-    return false;
-  }
-  parPreset = static_cast<CurvePreset>(selected);
-  return parPreset != CurvePreset::Custom;
-}
-
-[[nodiscard]] bool drawSpeedPreset(const char* parLabel,
-                                   CurvePreset& parPreset) {
-  constexpr std::array<const char*, 4> LABELS = {
-      "Linear", "Ease In", "Ease Out", "Ease In-Out"};
+[[nodiscard]] bool drawPreset(const char* parLabel, CurvePreset& parPreset,
+                              bool parShowLoadedCustom) {
   const int selected = static_cast<int>(parPreset);
-  const bool has_selected_preset =
-      selected >= 0 && selected < static_cast<int>(LABELS.size());
-  const char* preview = has_selected_preset
-                            ? LABELS[static_cast<std::size_t>(selected)]
-                            : "Select preset...";
+  const bool has_preset = selected >= 0 &&
+                          selected < static_cast<int>(CURVE_PRESETS.size());
+  const char* preview = has_preset
+                            ? CURVE_PRESETS[static_cast<std::size_t>(selected)].label
+                            : parShowLoadedCustom ? "Custom (loaded)"
+                                                  : "Select preset...";
   bool changed = false;
   if (ImGui::BeginCombo(parLabel, preview)) {
-    for (std::size_t index = 0; index < LABELS.size(); ++index) {
+    for (std::size_t index = 0; index < CURVE_PRESETS.size(); ++index) {
       const bool is_selected = selected == static_cast<int>(index);
-      if (ImGui::Selectable(LABELS[index], is_selected)) {
+      if (ImGui::Selectable(CURVE_PRESETS[index].label, is_selected)) {
         parPreset = static_cast<CurvePreset>(index);
         changed = true;
       }
       if (is_selected) {
         ImGui::SetItemDefaultFocus();
       }
+    }
+    if (parShowLoadedCustom && !has_preset) {
+      ImGui::Separator();
+      ImGui::Selectable("Custom (loaded)", true,
+                        ImGuiSelectableFlags_Disabled);
     }
     ImGui::EndCombo();
   }
@@ -292,7 +252,7 @@ void applyPropertyPreset(CurvePreset parPreset,
   }
   CurvePreset speed_profile = timingPreset(
       movement.curve.timing_control_1, movement.curve.timing_control_2);
-  if (drawSpeedPreset("Speed profile", speed_profile)) {
+  if (drawPreset("Speed profile", speed_profile, false)) {
     applyTimingPreset(speed_profile, movement.curve);
     changed = true;
   }
@@ -365,7 +325,7 @@ void applyPropertyPreset(CurvePreset parPreset,
   CurvePreset transition_profile = timingPreset(
       transition.curve.timing_control_1,
       transition.curve.timing_control_2);
-  if (drawSpeedPreset("Transition speed", transition_profile)) {
+  if (drawPreset("Transition speed", transition_profile, false)) {
     applyTimingPreset(transition_profile, transition.curve);
     transition_changed = true;
   }
@@ -491,7 +451,7 @@ bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
   if (changed && interpolation != CurvePreset::Custom) {
     applyPropertyPreset(interpolation, property);
   }
-  if (drawCurvePreset("Interpolation", interpolation)) {
+  if (drawPreset("Interpolation", interpolation, true)) {
     applyPropertyPreset(interpolation, property);
     changed = true;
   }
@@ -621,12 +581,7 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
     }
   }
   if (validation.hasErrors()) {
-    const auto error = std::find_if(
-        validation.diagnostics.begin(), validation.diagnostics.end(),
-        [](const film::TimelineDiagnostic& diagnostic) {
-          return diagnostic.severity == film::TimelineDiagnostic::Severity::Error;
-        });
-    if (error != validation.diagnostics.end()) {
+    if (const film::TimelineDiagnostic* error = validation.firstError()) {
       ImGui::TextColored(ImVec4(1.0f, 0.42f, 0.28f, 1.0f),
                          "Bake blocked: %s", error->message.c_str());
     }

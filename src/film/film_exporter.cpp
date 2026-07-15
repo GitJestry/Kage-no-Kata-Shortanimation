@@ -79,12 +79,8 @@ bool FinalRenderJob::start(const MovieTimeline& parTimeline,
   }
   const TimelineValidation validation = validateMovieTimeline(parTimeline, true);
   if (validation.hasErrors()) {
-    const auto diagnostic = std::find_if(
-        validation.diagnostics.begin(), validation.diagnostics.end(),
-        [](const TimelineDiagnostic& item) {
-          return item.severity == TimelineDiagnostic::Severity::Error;
-        });
-    parError = diagnostic != validation.diagnostics.end()
+    const TimelineDiagnostic* diagnostic = validation.firstError();
+    parError = diagnostic != nullptr
                    ? diagnostic->message
                    : "Movie is not valid for final render";
     return false;

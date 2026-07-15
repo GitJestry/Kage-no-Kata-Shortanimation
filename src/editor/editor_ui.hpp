@@ -26,8 +26,7 @@ class EditorUi final {
             SelectionController& parSelectionController,
             GizmoController& parGizmoController,
             ConfirmationDialog& parConfirmationDialog,
-            const glm::vec2& parViewportSize, float parDeltaSeconds,
-            unsigned int parFrameCount);
+            float parDeltaSeconds);
   [[nodiscard]] bool isCursorOverPanel(const glm::vec2& parUiCursor) const;
 
  private:
@@ -39,14 +38,11 @@ class EditorUi final {
                          bool parKeepAboveStatusStrip);
   void drawHiddenPanelButton();
   void drawHiddenInspectorButton();
-  void drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession,
-                             const glm::vec2& parViewportSize);
+  void drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession);
   void drawLeftPanel(engine::EngineCore& parEngine,
                      PlacementController& parPlacementController,
                      SelectionController& parSelectionController,
-                     GizmoController& parGizmoController,
-                     ConfirmationDialog& parConfirmationDialog,
-                     const glm::vec2& parViewportSize);
+                     ConfirmationDialog& parConfirmationDialog);
   void drawSceneControls(engine::EngineCore& parEngine,
                          ConfirmationDialog& parConfirmationDialog);
   void drawCreationPalette(engine::EngineCore& parEngine,
@@ -57,16 +53,10 @@ class EditorUi final {
                     ConfirmationDialog& parConfirmationDialog);
   void drawInspector(engine::EngineCore& parEngine,
                      GizmoController& parGizmoController,
-                     ConfirmationDialog& parConfirmationDialog,
-                     const glm::vec2& parViewportSize);
+                     ConfirmationDialog& parConfirmationDialog);
   void drawRuntimeDiagnostics(engine::EngineCore& parEngine,
-                              const glm::vec2& parViewportSize,
-                              float parDeltaSeconds,
-                              unsigned int parFrameCount);
-  void drawStatusStrip(engine::EngineCore& parEngine,
-                       const PlacementController& parPlacementController,
-                       const GizmoController& parGizmoController,
-                       const glm::vec2& parViewportSize);
+                              float parDeltaSeconds);
+  void drawStatusStrip();
   void drawImportDialogs(engine::EngineCore& parEngine,
                          PlacementController& parPlacementController);
   void refreshSceneNameBuffer(engine::EngineCore& parEngine);

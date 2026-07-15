@@ -1,9 +1,8 @@
 #include "editor/gizmo_controller.hpp"
 
-#include "camera/screen_metrics.hpp"
 #include "math/screen_projection.hpp"
+#include "render/gizmo_metrics.hpp"
 
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
@@ -17,29 +16,26 @@ constexpr float ROTATION_RADIANS_PER_PIXEL = 0.008f;
 constexpr float AXIS_SCREEN_HIT_RADIUS = 28.0f;
 constexpr float ROTATION_HANDLE_SCREEN_RADIUS = 34.0f;
 constexpr float SCALE_UNITS_PER_PIXEL = 0.006f;
-constexpr glm::vec3 AXIS_X_COLOR{0.18f, 0.82f, 0.28f};
-constexpr glm::vec3 AXIS_Y_COLOR{1.0f, 0.86f, 0.22f};
-constexpr glm::vec3 AXIS_Z_COLOR{0.22f, 0.48f, 1.0f};
 
-[[nodiscard]] float getLargestExtent(const kage::math::Bounds3& parBounds) {
-  const glm::vec3 size = parBounds.getSize();
-  return std::max({size.x, size.y, size.z, 1.0f});
+[[nodiscard]] std::array<glm::vec3, 3> getAxes(
+    const kage::math::Transform& parTransform,
+    kage::editor::GizmoController::AxisSpace parAxisSpace) {
+  const glm::quat rotation =
+      parAxisSpace == kage::editor::GizmoController::AxisSpace::World
+          ? glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
+          : parTransform.rotation;
+  return {rotation * glm::vec3(1.0f, 0.0f, 0.0f),
+          rotation * glm::vec3(0.0f, 1.0f, 0.0f),
+          rotation * glm::vec3(0.0f, 0.0f, 1.0f)};
 }
-
 [[nodiscard]] float getHandleLength(kage::engine::EngineCore& parEngine,
                                     const kage::scene::EntityRecord& parEntity,
                                     const glm::vec2& parViewportSize) {
-  const bool large_handle =
-      parEntity.light.has_value() || parEntity.camera.has_value();
-  const float pixels = large_handle ? 150.0f : 118.0f;
-  const float screen_length = kage::camera::getWorldLengthForPixels(
-      parEngine.getCameraSystem().getEditorCamera(),
-      parEntity.transform.transform.translation, parViewportSize, pixels);
   const kage::math::Bounds3 bounds = parEngine.getEntityWorldBounds(
       parEntity.id);
-  const float mesh_length =
-      bounds.is_valid ? getLargestExtent(bounds) * 0.18f : 0.0f;
-  return std::clamp(std::max(screen_length, mesh_length), 0.24f, 32.0f);
+  return kage::render::getGizmoLength(
+      parEngine.getCameraSystem().getEditorCamera(), parViewportSize,
+      parEntity, bounds);
 }
 
 }  // namespace
@@ -76,7 +72,7 @@ bool GizmoController::begin(engine::EngineCore& parEngine,
   }
 
   glm::vec3 picked_axis{1.0f, 0.0f, 0.0f};
-  glm::vec3 picked_axis_color = AXIS_X_COLOR;
+  glm::vec3 picked_axis_color = render::GIZMO_AXIS_X_COLOR;
   if (pickRotationHandle(parEngine, selected, parCursorPixel,
                          parViewportSize)) {
     m_operation = Operation::Rotate;
@@ -218,7 +214,7 @@ void GizmoController::end() {
   m_entity = {};
   m_drag_offset = glm::vec3(0.0f);
   m_axis = glm::vec3(1.0f, 0.0f, 0.0f);
-  m_axis_color = AXIS_X_COLOR;
+  m_axis_color = render::GIZMO_AXIS_X_COLOR;
   m_drag_height = 0.0f;
 }
 
@@ -264,15 +260,7 @@ bool GizmoController::pickAxis(engine::EngineCore& parEngine,
   const math::Transform& transform = entity->transform.transform;
   const float axis_length = getHandleLength(parEngine, *entity,
                                             parViewportSize);
-  const std::array<glm::vec3, 3> axes =
-      m_axis_space == AxisSpace::World
-          ? std::array<glm::vec3, 3>{glm::vec3(1.0f, 0.0f, 0.0f),
-                                     glm::vec3(0.0f, 1.0f, 0.0f),
-                                     glm::vec3(0.0f, 0.0f, 1.0f)}
-          : std::array<glm::vec3, 3>{
-                transform.rotation * glm::vec3(1.0f, 0.0f, 0.0f),
-                transform.rotation * glm::vec3(0.0f, 1.0f, 0.0f),
-                transform.rotation * glm::vec3(0.0f, 0.0f, 1.0f)};
+  const std::array<glm::vec3, 3> axes = getAxes(transform, m_axis_space);
   const glm::mat4 view_projection =
       parEngine.getCameraSystem().getEditorCamera().getViewProjectionMatrix(
           parViewportSize);
@@ -285,7 +273,8 @@ bool GizmoController::pickAxis(engine::EngineCore& parEngine,
   float closest_distance = AXIS_SCREEN_HIT_RADIUS;
   bool picked = false;
   constexpr std::array<glm::vec3, 3> AXIS_COLORS = {
-      AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR};
+      render::GIZMO_AXIS_X_COLOR, render::GIZMO_AXIS_Y_COLOR,
+      render::GIZMO_AXIS_Z_COLOR};
   for (std::size_t axis_index = 0; axis_index < axes.size(); ++axis_index) {
     const glm::vec3& axis = axes[axis_index];
     const kage::math::ScreenPoint end = kage::math::projectPoint(
@@ -318,14 +307,9 @@ bool GizmoController::pickRotationHandle(
   const math::Transform& transform = entity->transform.transform;
   const float axis_length = getHandleLength(parEngine, *entity,
                                             parViewportSize);
-  const glm::vec3 right =
-      m_axis_space == AxisSpace::World
-          ? glm::vec3(1.0f, 0.0f, 0.0f)
-          : transform.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
-  const glm::vec3 up =
-      m_axis_space == AxisSpace::World
-          ? glm::vec3(0.0f, 1.0f, 0.0f)
-          : transform.rotation * glm::vec3(0.0f, 1.0f, 0.0f);
+  const auto axes = getAxes(transform, m_axis_space);
+  const glm::vec3& right = axes[0];
+  const glm::vec3& up = axes[1];
   const glm::vec3 handle_position =
       transform.translation + glm::normalize(right + up) * axis_length * 0.42f;
   const glm::mat4 view_projection =

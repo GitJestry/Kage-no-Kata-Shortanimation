@@ -28,6 +28,11 @@
 
 namespace kage::render {
 
+inline constexpr int MIN_FLOOR_GRID_RADIUS = 8;
+inline constexpr int MAX_FLOOR_GRID_RADIUS = 1000;
+inline constexpr float MIN_EDITOR_VIEW_DISTANCE = 5.0f;
+inline constexpr float MAX_EDITOR_VIEW_DISTANCE = 5000.0f;
+
 enum class SkyPreset {
   ClearDay,
   MountainDawn,

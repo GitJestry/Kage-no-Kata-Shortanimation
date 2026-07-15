@@ -185,7 +185,6 @@ class EngineCore final {
   [[nodiscard]] lighting::LightingState buildLightingState(
       const camera::Camera& parCamera,
       const film::FilmFrameState* parFilmState = nullptr) const;
-  void createDefaultSceneEntities(scene::SceneManager::SceneRecord& parScene);
   void rebuildAssetInstanceCounts();
   friend class ProjectSerializer;
 

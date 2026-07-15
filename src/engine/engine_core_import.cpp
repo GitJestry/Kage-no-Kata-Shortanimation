@@ -17,19 +17,16 @@ namespace {
     std::span<const kage::assets::EnvironmentAsset> parEnvironments,
     const std::filesystem::path& parRegistryProjectRoot) {
   kage::assets::ProjectAssetCatalog catalog;
-  const std::filesystem::path project_root = parRegistryProjectRoot;
   const auto project_relative = [&](const std::filesystem::path& parPath) {
     std::error_code error_code;
     const std::filesystem::path relative =
-        std::filesystem::relative(parPath, project_root, error_code);
+        std::filesystem::relative(parPath, parRegistryProjectRoot, error_code);
     return error_code ? parPath : relative;
   };
   for (const kage::assets::AssetRegistry::AssetLibraryEntry& asset :
        parRegistry.getAssetLibrary()) {
-    kage::assets::ProjectAssetEntry entry;
-    entry.id = asset.id;
-    entry.label = asset.label;
-    entry.model_path = project_relative(asset.path);
+    kage::assets::ProjectAssetEntry entry{
+        asset.id, asset.label, project_relative(asset.path), {}};
     for (const kage::assets::AssetRegistry::AnimationPackEntry& pack :
          asset.animation_packs) {
       entry.animation_packs.push_back(
@@ -38,11 +35,20 @@ namespace {
     catalog.assets.push_back(std::move(entry));
   }
   for (const kage::assets::EnvironmentAsset& environment : parEnvironments) {
-    kage::assets::EnvironmentAsset entry = environment;
-    entry.path = project_relative(entry.path);
-    catalog.environments.push_back(std::move(entry));
+    catalog.environments.push_back(
+        {environment.id, environment.label, project_relative(environment.path),
+         environment.hdr});
   }
   return catalog;
+}
+
+void saveCatalog(
+    const kage::assets::AssetRegistry& parRegistry,
+    std::span<const kage::assets::EnvironmentAsset> parEnvironments,
+    const kage::platform::RuntimePaths& parPaths) {
+  kage::assets::saveProjectAssetCatalog(
+      parPaths.getProjectAssetCatalogPath(),
+      buildCatalog(parRegistry, parEnvironments, parPaths.getProjectRoot()));
 }
 
 }  // namespace
@@ -110,10 +116,7 @@ std::optional<std::size_t> EngineCore::importModelAsset(
 
   const std::size_t asset_index =
       registerModelAsset(std::move(parLabel), destination, std::move(document));
-  assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
-                                  buildCatalog(m_asset_registry,
-                                               m_environment_assets,
-                                               m_runtime_paths.getProjectRoot()));
+  saveCatalog(m_asset_registry, m_environment_assets, m_runtime_paths);
   markProjectDirty();
   return asset_index;
 }
@@ -146,10 +149,7 @@ std::optional<assets::AssetId> EngineCore::importPanorama(
         {id, std::move(parLabel), destination,
          assets::hasHdrExtension(destination)});
   }
-  assets::saveProjectAssetCatalog(
-      m_runtime_paths.getProjectAssetCatalogPath(),
-      buildCatalog(m_asset_registry, m_environment_assets,
-                   m_runtime_paths.getProjectRoot()));
+  saveCatalog(m_asset_registry, m_environment_assets, m_runtime_paths);
   render::EnvironmentSettings settings = m_render_settings.scene.environment;
   settings.asset_id = id;
   settings.visible = true;

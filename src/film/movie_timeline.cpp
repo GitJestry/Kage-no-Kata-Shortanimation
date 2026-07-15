@@ -3,9 +3,11 @@
 #include "math/cubic_bezier.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <functional>
 #include <limits>
-#include <map>
+#include <memory>
 
 namespace {
 
@@ -48,37 +50,31 @@ using kage::math::cubicBezier;
   return parStart < parOtherEnd && parEnd > parOtherStart;
 }
 
-[[nodiscard]] bool sameTarget(const TimelineTarget& parLeft,
-                              const TimelineTarget& parRight) {
-  return parLeft == parRight;
+template <typename Container, typename Value, typename Projection>
+auto& upsert(Container& parItems, Value parValue, Projection parProjection) {
+  const auto found = std::find_if(
+      parItems.begin(), parItems.end(), [&](const auto& item) {
+        return std::invoke(parProjection, item) ==
+               std::invoke(parProjection, parValue);
+      });
+  if (found != parItems.end()) {
+    return *found = std::move(parValue);
+  }
+  parItems.push_back(std::move(parValue));
+  return parItems.back();
 }
 
 void setTransform(FilmFrameState& parState, scene::EntityId parEntity,
                   const math::Transform& parTransform) {
-  auto found = std::find_if(parState.transforms.begin(), parState.transforms.end(),
-                            [parEntity](const TransformOverride& item) {
-                              return item.entity == parEntity;
-                            });
-  if (found == parState.transforms.end()) {
-    parState.transforms.push_back({parEntity, parTransform});
-  } else {
-    found->transform = parTransform;
-  }
+  static_cast<void>(upsert(parState.transforms,
+                           TransformOverride{parEntity, parTransform},
+                           &TransformOverride::entity));
 }
 
 EvaluatedPointLightState& setPointLight(
     FilmFrameState& parState, const EvaluatedPointLightState& parLight) {
-  auto found = std::find_if(
-      parState.point_lights.begin(), parState.point_lights.end(),
-      [entity = parLight.source_entity](const EvaluatedPointLightState& item) {
-        return item.source_entity == entity;
-      });
-  if (found == parState.point_lights.end()) {
-    parState.point_lights.push_back(parLight);
-    return parState.point_lights.back();
-  }
-  *found = parLight;
-  return *found;
+  return upsert(parState.point_lights, parLight,
+                &EvaluatedPointLightState::source_entity);
 }
 
 [[nodiscard]] RigAnimationPlayback asPlaybackAnimation(
@@ -108,6 +104,17 @@ void addDiagnostic(TimelineValidation& parValidation,
          parCurve.timing_control_1 >= 0.0f &&
          parCurve.timing_control_2 >= parCurve.timing_control_1 &&
          parCurve.timing_control_2 <= 1.0f;
+}
+
+template <typename Range, typename Id, typename Projection>
+[[nodiscard]] auto findById(Range& parItems, Id parId,
+                            Projection parProjection) {
+  const auto found = std::find_if(
+      parItems.begin(), parItems.end(), [&](const auto& item) {
+        return std::invoke(parProjection, item) == parId;
+      });
+  using Pointer = decltype(std::addressof(*parItems.begin()));
+  return found == parItems.end() ? Pointer{} : std::addressof(*found);
 }
 
 }  // namespace
@@ -221,19 +228,11 @@ std::vector<ResolvedMovementSegment> resolveMovementSegments(
 }
 
 TargetSequence* MovieTimeline::findSequence(TargetSequenceId parId) {
-  const auto found = std::find_if(sequences.begin(), sequences.end(),
-                                  [parId](const TargetSequence& item) {
-                                    return item.id == parId;
-                                  });
-  return found == sequences.end() ? nullptr : &*found;
+  return findById(sequences, parId, &TargetSequence::id);
 }
 
 const TargetSequence* MovieTimeline::findSequence(TargetSequenceId parId) const {
-  const auto found = std::find_if(sequences.begin(), sequences.end(),
-                                  [parId](const TargetSequence& item) {
-                                    return item.id == parId;
-                                  });
-  return found == sequences.end() ? nullptr : &*found;
+  return findById(sequences, parId, &TargetSequence::id);
 }
 
 SequenceClip* MovieTimeline::findClip(SequenceClipId parId) {
@@ -250,18 +249,19 @@ SequenceClip* MovieTimeline::findClip(SequenceClipId parId) {
 }
 
 SequenceInstance* MovieTimeline::findInstance(SequenceInstanceId parId) {
-  const auto found = std::find_if(instances.begin(), instances.end(),
-                                  [parId](const SequenceInstance& item) {
-                                    return item.id == parId;
-                                  });
-  return found == instances.end() ? nullptr : &*found;
+  return findById(instances, parId, &SequenceInstance::id);
 }
 
 bool TimelineValidation::hasErrors() const {
-  return std::any_of(diagnostics.begin(), diagnostics.end(),
-                     [](const TimelineDiagnostic& item) {
-                       return item.severity == TimelineDiagnostic::Severity::Error;
-                     });
+  return firstError() != nullptr;
+}
+
+const TimelineDiagnostic* TimelineValidation::firstError() const {
+  const auto found = std::find_if(
+      diagnostics.begin(), diagnostics.end(), [](const TimelineDiagnostic& item) {
+        return item.severity == TimelineDiagnostic::Severity::Error;
+      });
+  return found == diagnostics.end() ? nullptr : &*found;
 }
 
 bool isCameraSequence(const TargetSequence& parSequence) {
@@ -356,27 +356,39 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
     }
   }
 
-  for (int lane = 2; lane < 2 + static_cast<int>(PropertyKind::SunColor) + 1;
-       ++lane) {
-    const SequenceClip* selected = nullptr;
-    for (const SequenceClip& clip : parSequence.clips) {
-      if (laneFor(clip.payload) != lane || parLocalFrame < clip.start_frame) {
-        continue;
-      }
-      if (selected == nullptr || clip.start_frame > selected->start_frame) {
-        selected = &clip;
-      }
+  constexpr std::size_t PROPERTY_KIND_COUNT =
+      static_cast<std::size_t>(PropertyKind::SunColor) + 1;
+  std::array<const SequenceClip*, PROPERTY_KIND_COUNT> properties{};
+  const SequenceClip* animation_clip = nullptr;
+  for (const SequenceClip& clip : parSequence.clips) {
+    if (parLocalFrame < clip.start_frame) {
+      continue;
     }
+    if (const auto* property = std::get_if<PropertyClip>(&clip.payload)) {
+      const std::size_t index = static_cast<std::size_t>(property->kind);
+      if (properties[index] == nullptr ||
+          clip.start_frame > properties[index]->start_frame) {
+        properties[index] = &clip;
+      }
+    } else if (std::holds_alternative<RigAnimationClip>(clip.payload) &&
+               (animation_clip == nullptr ||
+                clip.start_frame > animation_clip->start_frame)) {
+      animation_clip = &clip;
+    }
+  }
+
+  for (const SequenceClip* selected : properties) {
     if (selected == nullptr) {
       continue;
     }
     const PropertyClip& property = std::get<PropertyClip>(selected->payload);
-    const glm::vec4 value = parLocalFrame < selected->end_frame
-                                ? cubicBezier(property.start_value, property.control_1,
-                                              property.control_2, property.end_value,
-                                              clipT(parLocalFrame, selected->start_frame,
-                                                    selected->end_frame))
-                                : property.end_value;
+    const glm::vec4 value =
+        parLocalFrame < selected->end_frame
+            ? cubicBezier(property.start_value, property.control_1,
+                          property.control_2, property.end_value,
+                          clipT(parLocalFrame, selected->start_frame,
+                                selected->end_frame))
+            : property.end_value;
     switch (property.kind) {
       case PropertyKind::CameraFov:
         if (parEmitCamera && parState.camera.has_value() &&
@@ -411,16 +423,6 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
     }
   }
 
-  const SequenceClip* animation_clip = nullptr;
-  for (const SequenceClip& clip : parSequence.clips) {
-    if (!std::holds_alternative<RigAnimationClip>(clip.payload) ||
-        parLocalFrame < clip.start_frame) {
-      continue;
-    }
-    if (animation_clip == nullptr || clip.start_frame > animation_clip->start_frame) {
-      animation_clip = &clip;
-    }
-  }
   if (animation_clip != nullptr &&
       std::holds_alternative<CapturedEntityBaseState>(parSequence.captured_base)) {
     const RigAnimationClip& animation =
@@ -435,16 +437,8 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
                                   static_cast<float>(elapsed_frames) /
                                       static_cast<float>(FILM_FPS) * animation.speed,
                                   1.0f, final_pose};
-    auto found = std::find_if(parState.rig_animations.begin(),
-                              parState.rig_animations.end(),
-                              [&override](const RigAnimationOverride& item) {
-                                return item.entity == override.entity;
-                              });
-    if (found == parState.rig_animations.end()) {
-      parState.rig_animations.push_back(override);
-    } else {
-      *found = override;
-    }
+    static_cast<void>(upsert(parState.rig_animations, override,
+                             &RigAnimationOverride::entity));
   }
 }
 
@@ -505,7 +499,7 @@ FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
     std::vector<Candidate> candidates;
     for (const SequenceInstance& instance : parTimeline.instances) {
       const TargetSequence* sequence = parTimeline.findSequence(instance.sequence_id);
-      if (sequence != nullptr && sameTarget(sequence->target, target)) {
+      if (sequence != nullptr && sequence->target == target) {
         candidates.push_back({&instance, sequence});
       }
     }
@@ -653,7 +647,7 @@ TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
       const bool camera_overlap = isCameraSequence(*first_sequence) &&
                                   isCameraSequence(*second_sequence);
       if (!camera_overlap &&
-          !sameTarget(first_sequence->target, second_sequence->target)) {
+          first_sequence->target != second_sequence->target) {
         continue;
       }
       addDiagnostic(validation,

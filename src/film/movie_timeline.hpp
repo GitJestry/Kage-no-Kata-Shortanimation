@@ -209,6 +209,7 @@ struct TimelineValidation final {
   std::vector<TimelineDiagnostic> diagnostics;
 
   [[nodiscard]] bool hasErrors() const;
+  [[nodiscard]] const TimelineDiagnostic* firstError() const;
 };
 
 [[nodiscard]] std::optional<FilmFrameState> evaluateTargetSequencePreview(

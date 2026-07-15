@@ -14,6 +14,8 @@
 
 namespace kage::render {
 
+inline constexpr float VIEWPORT_ENTITY_HANDLE_EXTENT = 0.35f;
+
 struct ViewportPickRay final {
   glm::vec3 origin{0.0f};
   glm::vec3 direction{0.0f, 0.0f, -1.0f};
@@ -33,6 +35,16 @@ struct ViewportPickRay final {
     }
   }
   return parEntity.transform.transform;
+}
+
+[[nodiscard]] inline math::Bounds3 viewportEntityBounds(
+    const scene::EntityRecord& parEntity, const math::Transform& parTransform,
+    float parHandleExtent = VIEWPORT_ENTITY_HANDLE_EXTENT) {
+  return parEntity.static_mesh.has_value()
+             ? math::transformBounds(parEntity.static_mesh->local_bounds,
+                                     parTransform.toMatrix())
+             : math::makePointBounds(parTransform.translation,
+                                     parHandleExtent);
 }
 
 [[nodiscard]] inline ViewportPickRay makeViewportPickRay(
@@ -107,7 +119,7 @@ struct ViewportPickRay final {
     const scene::World& parWorld, const camera::Camera* parCamera,
     const film::FilmFrameState* parFilmState,
     const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize,
-    float parHandleExtent) {
+    float parHandleExtent, bool parUseHandleCenterDistance = false) {
   if (parCamera == nullptr) {
     return std::nullopt;
   }
@@ -122,15 +134,18 @@ struct ViewportPickRay final {
     const math::Transform transform =
         viewportEntityTransform(entity, parFilmState);
     float distance = 0.0f;
+    const bool visible_mesh =
+        entity.static_mesh.has_value() && entity.static_mesh->visible;
     const bool hit =
-        entity.static_mesh.has_value() && entity.static_mesh->visible
+        visible_mesh
             ? viewportRayIntersectsBounds(
-                  ray,
-                  math::transformBounds(entity.static_mesh->local_bounds,
-                                        transform.toMatrix()),
+                  ray, viewportEntityBounds(entity, transform, parHandleExtent),
                   distance)
             : viewportRayIntersectsSphere(
                   ray, transform.translation, parHandleExtent, distance);
+    if (hit && !visible_mesh && parUseHandleCenterDistance) {
+      distance = glm::length(transform.translation - ray.origin);
+    }
     if (hit && distance < closest_distance) {
       closest_distance = distance;
       closest_entity = entity.id;

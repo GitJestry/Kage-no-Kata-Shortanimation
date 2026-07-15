@@ -9,14 +9,10 @@
 #include "render/viewport_picking.hpp"
 #include "scene/components.hpp"
 
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
-
 #include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cmath>
-#include <limits>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -29,9 +25,10 @@
 namespace {
 
 constexpr float DEFAULT_PLACEMENT_DISTANCE = 4.0f;
-constexpr float ENTITY_HANDLE_EXTENT = 0.35f;
 constexpr float AUTOSAVE_INTERVAL_SECONDS = 2.0f;
 constexpr float HANDLE_SCREEN_RADIUS = 28.0f;
+constexpr int ALLOCATOR_RELIEF_PASS_COUNT = 3;
+constexpr float ALLOCATOR_RELIEF_INTERVAL_SECONDS = 1.0f;
 
 using Clock = std::chrono::steady_clock;
 
@@ -179,7 +176,7 @@ void EngineCore::pollAssetStreaming() {
   m_performance_snapshot.streaming_work_items =
       m_asset_streamer.getPendingCount();
   if (m_streaming_was_active && !streaming_active) {
-    m_allocator_relief_passes_remaining = 3;
+    m_allocator_relief_passes_remaining = ALLOCATOR_RELIEF_PASS_COUNT;
     m_allocator_relief_timer_seconds = 0.0f;
   }
   m_streaming_was_active = streaming_active;
@@ -195,7 +192,6 @@ void EngineCore::createDefaultProject() {
     return;
   }
 
-  createDefaultSceneEntities(*scene);
   if (m_asset_registry.getAssetLibrary().size() >= 2) {
     const scene::EntityId torii =
         instantiateAssetAt(1, glm::vec3(0.0f));
@@ -252,15 +248,9 @@ const platform::RuntimePaths& EngineCore::getRuntimePaths() const {
 bool EngineCore::exportFilmSequence(std::string& parError) {
   const film::TimelineValidation validation = validateMovieTimeline(true);
   if (validation.hasErrors()) {
-    const auto error = std::find_if(
-        validation.diagnostics.begin(), validation.diagnostics.end(),
-        [](const film::TimelineDiagnostic& diagnostic) {
-          return diagnostic.severity ==
-                 film::TimelineDiagnostic::Severity::Error;
-        });
-    parError = error != validation.diagnostics.end()
-                   ? error->message
-                   : "Movie is not valid for final render";
+    const film::TimelineDiagnostic* error = validation.firstError();
+    parError = error != nullptr ? error->message
+                                : "Movie is not valid for final render";
     return false;
   }
   const std::string& name = getActiveScene().movie_timeline.name;
@@ -302,7 +292,8 @@ void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace,
   pollAssetStreaming();
   if (m_allocator_relief_passes_remaining > 0) {
     m_allocator_relief_timer_seconds += parDeltaSeconds;
-    if (m_allocator_relief_timer_seconds >= 1.0f) {
+    if (m_allocator_relief_timer_seconds >=
+        ALLOCATOR_RELIEF_INTERVAL_SECONDS) {
       releaseTransientAllocatorPages();
       --m_allocator_relief_passes_remaining;
       m_allocator_relief_timer_seconds = 0.0f;
@@ -566,13 +557,7 @@ math::Bounds3 EngineCore::getEntityWorldBounds(scene::EntityId parEntity) const 
     return {};
   }
 
-  if (entity->static_mesh.has_value()) {
-    return math::transformBounds(entity->static_mesh->local_bounds,
-                                 entity->transform.transform.toMatrix());
-  }
-
-  return math::makePointBounds(entity->transform.transform.translation,
-                               ENTITY_HANDLE_EXTENT);
+  return render::viewportEntityBounds(*entity, entity->transform.transform);
 }
 
 std::optional<scene::EntityId> EngineCore::pickEntity(
@@ -584,46 +569,10 @@ std::optional<scene::EntityId> EngineCore::pickEntity(
       return gpu_pick;
     }
   }
-  const render::ViewportPickRay ray = render::makeViewportPickRay(
-      m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize);
-  float closest_distance = std::numeric_limits<float>::max();
-  std::optional<scene::EntityId> closest_entity;
-  for (const scene::EntityRecord& entity :
-       getActiveScene().world.getEntities()) {
-    if (!entity.alive) {
-      continue;
-    }
-
-    float distance = 0.0f;
-    bool hit = false;
-    if (entity.static_mesh.has_value() && entity.static_mesh->visible) {
-      const math::Bounds3 world_bounds = getEntityWorldBounds(entity.id);
-      if (!render::viewportRayIntersectsBounds(ray, world_bounds, distance)) {
-        continue;
-      }
-      hit = true;
-    } else {
-      hit = render::viewportRayIntersectsSphere(
-          ray, entity.transform.transform.translation, ENTITY_HANDLE_EXTENT,
-          distance);
-      if (hit) {
-        distance =
-            glm::length(entity.transform.transform.translation - ray.origin);
-      }
-    }
-
-    if (!hit) {
-      continue;
-    }
-
-    const float candidate_distance = distance;
-    if (candidate_distance < closest_distance) {
-      closest_distance = candidate_distance;
-      closest_entity = entity.id;
-    }
-  }
-
-  return closest_entity;
+  return render::pickViewportEntityBounds(
+      getActiveScene().world, &m_camera_system.getEditorCamera(), nullptr,
+      parCursorPixel, parViewportSize, render::VIEWPORT_ENTITY_HANDLE_EXTENT,
+      true);
 }
 
 std::optional<scene::EntityId> EngineCore::pickMovieEntity(
@@ -644,7 +593,7 @@ std::optional<scene::EntityId> EngineCore::pickMovieEntity(
   return render::pickViewportEntityBounds(
       getActiveScene().world, &*m_viewport_camera,
       &m_viewport_film_frame_state, parCursorPixel, parViewportSize,
-      ENTITY_HANDLE_EXTENT);
+      render::VIEWPORT_ENTITY_HANDLE_EXTENT);
 }
 
 bool EngineCore::isCursorOverEntityCore(
@@ -722,12 +671,6 @@ lighting::LightingState EngineCore::buildLightingState(
   return m_lighting_system.extract(
       getActiveScene().world, getActiveScene().sun_light,
       parCamera.position, environment, parFilmState);
-}
-
-void EngineCore::createDefaultSceneEntities(
-    scene::SceneManager::SceneRecord& parScene) {
-  parScene.sun_light = {};
-  parScene.selected_entity = {};
 }
 
 void EngineCore::rebuildAssetInstanceCounts() {

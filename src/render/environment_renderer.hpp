@@ -32,9 +32,9 @@ class EnvironmentRenderer final {
 
   void request(assets::AssetId parAsset,
                const std::filesystem::path& parPath);
-  [[nodiscard]] bool draw(const camera::Camera& parCamera,
-                          const glm::vec2& parViewportSize,
-                          const EnvironmentSettings& parSettings);
+  void draw(const camera::Camera& parCamera,
+            const glm::vec2& parViewportSize,
+            const EnvironmentSettings& parSettings);
   [[nodiscard]] EnvironmentLoadState getState() const;
   [[nodiscard]] const std::string& getError() const;
 
