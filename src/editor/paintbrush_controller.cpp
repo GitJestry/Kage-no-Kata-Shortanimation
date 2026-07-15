@@ -97,7 +97,6 @@ bool PaintbrushController::paintStampAt(
   }
 
   const std::uint64_t seed = m_stroke_seed + static_cast<std::uint64_t>(m_stamp_index);
-  std::cout << seed << std::endl;
   const auto scatter_results = PaintbrushScatterGenerator::generate(
       parSettings, parPosition, parSelectedAssetIndices, seed);
   ++m_stamp_index;
