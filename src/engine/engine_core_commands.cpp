@@ -23,29 +23,11 @@ std::size_t EngineCore::createScene(std::string parName) {
   return index;
 }
 
-std::size_t EngineCore::createLocalScene(std::string parName) {
-  const std::size_t index =
-      m_scene_manager.createScene(std::move(parName), true);
-  scene::SceneManager::SceneRecord* scene = m_scene_manager.getScene(index);
-  if (scene != nullptr) {
-    createDefaultSceneEntities(*scene);
-  }
-  m_local_session_dirty = true;
-  return index;
-}
-
 bool EngineCore::deleteScene(std::size_t parSceneIndex) {
-  const scene::SceneManager::SceneRecord* scene =
-      m_scene_manager.getScene(parSceneIndex);
-  const bool local_only = scene != nullptr && scene->local_only;
   const bool deleted = m_scene_manager.deleteScene(parSceneIndex);
   if (deleted) {
     rebuildAssetInstanceCounts();
-    if (local_only) {
-      m_local_session_dirty = true;
-    } else {
-      markProjectDirty();
-    }
+    markProjectDirty();
   }
   return deleted;
 }
@@ -59,15 +41,8 @@ void EngineCore::setActiveScene(std::size_t parSceneIndex) {
 }
 
 void EngineCore::renameScene(std::size_t parSceneIndex, std::string parName) {
-  const scene::SceneManager::SceneRecord* scene =
-      m_scene_manager.getScene(parSceneIndex);
-  const bool local_only = scene != nullptr && scene->local_only;
   m_scene_manager.renameScene(parSceneIndex, std::move(parName));
-  if (local_only) {
-    m_local_session_dirty = true;
-  } else {
-    m_project_dirty = true;
-  }
+  m_project_dirty = true;
 }
 
 scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,

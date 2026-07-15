@@ -19,10 +19,9 @@ class SceneManager final {
     EntityId selected_entity;
     SunLightSettings sun_light;
     film::MovieTimeline movie_timeline;
-    bool local_only = false;
   };
 
-  std::size_t createScene(std::string parName, bool parLocalOnly = false);
+  std::size_t createScene(std::string parName);
   bool deleteScene(std::size_t parSceneIndex);
   void clearScenes();
   void setActiveScene(std::size_t parSceneIndex);

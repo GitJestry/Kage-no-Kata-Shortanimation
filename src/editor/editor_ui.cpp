@@ -455,11 +455,6 @@ void EditorUi::drawSceneControls(engine::EngineCore& parEngine,
       parEngine.createScene("Scene " + std::to_string(scenes.size() + 1));
       m_scene_name_buffer_index = static_cast<std::size_t>(-1);
     }
-    if (ImGui::Selectable("New local test scene")) {
-      parEngine.createLocalScene("Local Test " +
-                                 std::to_string(scenes.size() + 1));
-      m_scene_name_buffer_index = static_cast<std::size_t>(-1);
-    }
     ImGui::EndCombo();
   }
   ImGui::SameLine();

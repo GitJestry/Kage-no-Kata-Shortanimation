@@ -242,12 +242,6 @@ void EngineCore::saveLocalSession() {
 }
 
 void EngineCore::markProjectDirty() {
-  const auto scenes = m_scene_manager.getScenes();
-  const std::size_t active_scene = m_scene_manager.getActiveSceneIndex();
-  if (active_scene < scenes.size() && scenes[active_scene].local_only) {
-    m_local_session_dirty = true;
-    return;
-  }
   m_project_dirty = true;
 }
 

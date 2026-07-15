@@ -74,7 +74,6 @@ class EngineCore final {
   [[nodiscard]] const platform::RuntimePaths& getRuntimePaths() const;
 
   std::size_t createScene(std::string parName);
-  std::size_t createLocalScene(std::string parName);
   bool deleteScene(std::size_t parSceneIndex);
   void setActiveScene(std::size_t parSceneIndex);
   void renameScene(std::size_t parSceneIndex, std::string parName);

@@ -390,10 +390,6 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
     if (scene == nullptr) {
       continue;
     }
-    if (scene->local_only) {
-      continue;
-    }
-
     scenes_json.push_back(writeSceneJson(*scene, parEngine.m_asset_registry));
   }
   document["scenes"] = std::move(scenes_json);
@@ -419,7 +415,6 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
   const float default_fly_speed = parEngine.m_camera_system.getFlyMoveSpeed();
   const double default_playhead = parEngine.m_film_playback.playhead_frame;
   const auto default_viewport = parEngine.m_render_settings.viewport;
-  const std::size_t default_scene_count = parEngine.m_scene_manager.getScenes().size();
   const std::size_t default_active_scene =
       parEngine.m_scene_manager.getActiveSceneIndex();
   const scene::EntityId default_selected = parEngine.m_scene_manager.getSelectedEntity();
@@ -429,10 +424,6 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
     parEngine.m_camera_system.setFlyMoveSpeed(default_fly_speed);
     parEngine.m_film_playback.playhead_frame = default_playhead;
     parEngine.m_render_settings.viewport = default_viewport;
-    while (parEngine.m_scene_manager.getScenes().size() > default_scene_count) {
-      parEngine.m_scene_manager.deleteScene(
-          parEngine.m_scene_manager.getScenes().size() - 1);
-    }
     parEngine.m_scene_manager.setActiveScene(default_active_scene);
     parEngine.m_scene_manager.selectEntity(default_selected);
     std::cerr << "Ignoring Local Session\n";
@@ -501,26 +492,6 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
           static_cast<render::GizmoAxisSpace>(gizmo_axis_space);
     }
 
-    const json& local_scenes_json =
-        document.value("local_scenes", json::array());
-    for (const json& scene_json : local_scenes_json) {
-      const std::size_t scene_index = parEngine.m_scene_manager.createScene(
-          scene_json.value("name", "Local Test " +
-                                       std::to_string(parEngine.m_scene_manager
-                                                          .getScenes()
-                                                          .size() +
-                                                      1)),
-          true);
-      scene::SceneManager::SceneRecord* scene_record =
-          parEngine.m_scene_manager.getScene(scene_index);
-      if (scene_record == nullptr) {
-        continue;
-      }
-      if (!readSceneJson(parEngine, *scene_record, scene_json)) {
-        return ignore_session();
-      }
-    }
-
     const std::size_t active_scene =
         document.value("active_scene", parEngine.m_scene_manager
                                            .getActiveSceneIndex());
@@ -571,17 +542,6 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
       parEngine.m_render_settings.viewport.material_debug_mode);
   document["gizmo_axis_space"] =
       static_cast<int>(parEngine.m_render_settings.viewport.gizmo_axis_space);
-  document["local_scenes"] = json::array();
-
-  for (const scene::SceneManager::SceneRecord& scene :
-       parEngine.m_scene_manager.getScenes()) {
-    if (!scene.local_only) {
-      continue;
-    }
-
-    document["local_scenes"].push_back(
-        writeSceneJson(scene, parEngine.m_asset_registry));
-  }
 
   writeJsonAtomically(save_path, document);
 }
