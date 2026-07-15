@@ -67,6 +67,18 @@ bool drawPositionRotation(glm::vec3& parPosition, glm::quat& parRotation) {
   return changed;
 }
 
+template <typename Camera>
+bool drawCameraLens(Camera& parCamera) {
+  bool changed = false;
+  changed |= ImGui::DragFloat("Field of view", &parCamera.vertical_fov_degrees,
+                              0.2f, 10.0f, 120.0f);
+  changed |= ImGui::DragFloat("Near", &parCamera.near_plane, 0.001f, 0.001f,
+                              10.0f);
+  changed |= ImGui::DragFloat("Far", &parCamera.far_plane, 0.5f, 1.0f,
+                              5000.0f);
+  return changed;
+}
+
 bool drawTransformControls(kage::engine::EngineCore& parEngine,
                            const kage::scene::EntityRecord& parEntity,
                            kage::math::Transform& parTransform) {
@@ -150,7 +162,7 @@ void EditorUi::draw(engine::EngineCore& parEngine,
   if (world_edit && m_inspector_visible) {
     drawInspector(parEngine, parGizmoController, parConfirmationDialog);
   } else if (world_edit) {
-    drawHiddenInspectorButton();
+    drawHiddenPanelButton(true);
   }
   if (parSession.workspace == Workspace::Movie) {
     std::vector<UiPanelRect> movie_rects =
@@ -346,33 +358,25 @@ void EditorUi::clampCurrentPanel(const char* parPanelName,
   }
 }
 
-void EditorUi::drawHiddenPanelButton() {
+void EditorUi::drawHiddenPanelButton(bool parInspector) {
   const UiWorkArea area = getUiWorkArea();
-  ImGui::SetNextWindowPos(area.position, ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(116.0f, 42.0f), ImGuiCond_Always);
-  ImGui::Begin("EditorPanelToggle", nullptr,
-               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                   ImGuiWindowFlags_NoResize |
-                   ImGuiWindowFlags_NoSavedSettings);
-  if (ImGui::Button("Editor", ImVec2(92.0f, 24.0f))) {
-    m_panel_visible = true;
+  const ImVec2 position = parInspector
+                              ? ImVec2(area.position.x + area.size.x - 132.0f,
+                                       area.position.y + area.size.y -
+                                           STATUS_HEIGHT - 52.0f)
+                              : area.position;
+  ImGui::SetNextWindowPos(position, ImGuiCond_Always);
+  if (!parInspector) {
+    ImGui::SetNextWindowSize(ImVec2(116.0f, 42.0f), ImGuiCond_Always);
   }
-  trackCurrentPanel();
-  ImGui::End();
-}
-
-void EditorUi::drawHiddenInspectorButton() {
-  const UiWorkArea area = getUiWorkArea();
-  ImGui::SetNextWindowPos(
-      ImVec2(area.position.x + area.size.x - 132.0f,
-             area.position.y + area.size.y - STATUS_HEIGHT - 52.0f),
-      ImGuiCond_Always);
-  ImGui::Begin("InspectorFold", nullptr,
+  ImGui::Begin(parInspector ? "InspectorFold" : "EditorPanelToggle", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                   ImGuiWindowFlags_AlwaysAutoResize |
+                   (parInspector ? ImGuiWindowFlags_AlwaysAutoResize
+                                 : ImGuiWindowFlags_NoResize) |
                    ImGuiWindowFlags_NoSavedSettings);
-  if (ImGui::Button("Inspector", ImVec2(104.0f, 24.0f))) {
-    m_inspector_visible = true;
+  if (ImGui::Button(parInspector ? "Inspector" : "Editor",
+                    ImVec2(parInspector ? 104.0f : 92.0f, 24.0f))) {
+    (parInspector ? m_inspector_visible : m_panel_visible) = true;
   }
   trackCurrentPanel();
   ImGui::End();
@@ -699,10 +703,7 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
         parEngine.getCameraSystem().setFlyMoveSpeed(fly_speed);
       }
       ImGui::TextDisabled("Move: WASD | Shift down | Space up");
-      ImGui::DragFloat("Field of view", &camera.vertical_fov_degrees, 0.2f,
-                       10.0f, 120.0f);
-      ImGui::DragFloat("Near", &camera.near_plane, 0.001f, 0.001f, 10.0f);
-      ImGui::DragFloat("Far", &camera.far_plane, 0.5f, 1.0f, 5000.0f);
+      drawCameraLens(camera);
       camera.far_plane = std::max(camera.far_plane, camera.near_plane + 0.001f);
     }
     ImGui::PopID();
@@ -790,15 +791,7 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
   if (entity->camera.has_value() &&
       ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
     scene::CameraComponent camera = *entity->camera;
-    bool changed = false;
-    changed |= ImGui::DragFloat("Field of view", &camera.vertical_fov_degrees,
-                                0.2f,
-                                10.0f, 120.0f);
-    changed |= ImGui::DragFloat("Near", &camera.near_plane, 0.001f,
-                                0.001f, 10.0f);
-    changed |= ImGui::DragFloat("Far", &camera.far_plane, 0.5f, 1.0f,
-                                5000.0f);
-    if (changed) {
+    if (drawCameraLens(camera)) {
       parEngine.setEntityCamera(entity->id, camera);
     }
   }

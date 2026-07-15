@@ -231,10 +231,6 @@ struct GltfDocument final {
   std::vector<GltfMarker> markers;
 };
 
-using MeshData = StaticModel;
-using MaterialData = StaticMaterial;
-using SkeletonData = GltfSkin;
-using AnimationClipData = AnimationClip;
 using ModelAsset = GltfDocument;
 
 }  // namespace kage::assets

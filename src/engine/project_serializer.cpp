@@ -24,6 +24,8 @@ using kage::serialization::readTransform;
 using kage::serialization::readVec3;
 using kage::serialization::writeTransform;
 using kage::serialization::writeVec3;
+constexpr int PROJECT_SCHEMA_VERSION = 6;
+constexpr int LOCAL_SESSION_SCHEMA_VERSION = 4;
 
 [[nodiscard]] kage::assets::AssetId readAssetId(const json& parJson) {
   kage::assets::AssetId id;
@@ -292,7 +294,7 @@ bool ProjectSerializer::loadProject(EngineCore& parEngine) {
   }
 
   try {
-    if (document.value("version", 0) != 6) {
+    if (document.value("version", 0) != PROJECT_SCHEMA_VERSION) {
       throw std::runtime_error("Unsupported World schema version; expected 6");
     }
     parEngine.m_scene_manager.clearScenes();
@@ -368,7 +370,7 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
   std::filesystem::create_directories(save_path.parent_path());
 
   json document;
-  document["version"] = 6;
+  document["version"] = PROJECT_SCHEMA_VERSION;
   document["render"] = {
       {"sky", static_cast<int>(parEngine.m_render_settings.scene.sky_preset)},
       {"exposure", parEngine.m_lighting_state.exposure},
@@ -382,15 +384,9 @@ void ProjectSerializer::saveProject(EngineCore& parEngine) {
   };
 
   json scenes_json = json::array();
-  for (std::size_t scene_index = 0;
-       scene_index < parEngine.m_scene_manager.getScenes().size();
-       ++scene_index) {
-    const scene::SceneManager::SceneRecord* scene =
-        parEngine.m_scene_manager.getScene(scene_index);
-    if (scene == nullptr) {
-      continue;
-    }
-    scenes_json.push_back(writeSceneJson(*scene, parEngine.m_asset_registry));
+  for (const scene::SceneManager::SceneRecord& scene :
+       parEngine.m_scene_manager.getScenes()) {
+    scenes_json.push_back(writeSceneJson(scene, parEngine.m_asset_registry));
   }
   document["scenes"] = std::move(scenes_json);
 
@@ -431,7 +427,7 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
   };
 
   try {
-    if (document.value("version", 0) != 4) {
+    if (document.value("version", 0) != LOCAL_SESSION_SCHEMA_VERSION) {
       return ignore_session();
     }
     if (document.contains("editor_camera")) {
@@ -477,7 +473,7 @@ bool ProjectSerializer::loadLocalSession(EngineCore& parEngine) {
     parEngine.m_render_settings.viewport.floor_grid_radius = std::clamp(
         document.value("floor_grid_radius",
                        parEngine.m_render_settings.viewport.floor_grid_radius),
-        8, 1000);
+        render::MIN_FLOOR_GRID_RADIUS, render::MAX_FLOOR_GRID_RADIUS);
     parEngine.m_render_settings.viewport.material_debug_mode =
         readMaterialDebugMode(
             document.value("material_debug_mode", json{}),
@@ -517,7 +513,7 @@ void ProjectSerializer::saveLocalSession(const EngineCore& parEngine) {
   std::filesystem::create_directories(save_path.parent_path());
 
   json document;
-  document["version"] = 4;
+  document["version"] = LOCAL_SESSION_SCHEMA_VERSION;
   document["fly_speed"] = parEngine.m_camera_system.getFlyMoveSpeed();
   const camera::Camera& editor_camera =
       parEngine.m_camera_system.getEditorCamera();

@@ -37,6 +37,14 @@ constexpr float PLAYHEAD_GRAB_WIDTH = 8.0f;
   return steps.back();
 }
 
+[[nodiscard]] film::FilmFrame frameAtMouse(const ImVec2& parOrigin,
+                                           float parLabelWidth,
+                                           float parPixelsPerFrame) {
+  return clampMovieAuthoringCursor(static_cast<film::FilmFrame>(std::lround(
+      (ImGui::GetIO().MousePos.x - parOrigin.x - parLabelWidth) /
+      parPixelsPerFrame)));
+}
+
 }  // namespace
 
 void pushMovieWidgetId(MovieWidgetIdKind parKind, std::uint64_t parId) {
@@ -258,10 +266,8 @@ bool scrubTimelineRuler(const char* parId, const ImVec2& parOrigin,
   if (!ImGui::IsItemActive() && !ImGui::IsItemClicked()) {
     return false;
   }
-  const film::FilmFrame frame = clampMovieAuthoringCursor(
-      static_cast<film::FilmFrame>(std::lround(
-          (ImGui::GetIO().MousePos.x - parOrigin.x - parLabelWidth) /
-          parPixelsPerFrame)));
+  const film::FilmFrame frame =
+      frameAtMouse(parOrigin, parLabelWidth, parPixelsPerFrame);
   setMovieAuthoringCursor(parSession, parPlayback, parDuration, frame);
   return true;
 }
@@ -282,10 +288,8 @@ bool dragTimelinePlayhead(const char* parId, const ImVec2& parOrigin,
   if (!ImGui::IsItemActive() && !ImGui::IsItemClicked()) {
     return false;
   }
-  const film::FilmFrame frame = clampMovieAuthoringCursor(
-      static_cast<film::FilmFrame>(std::lround(
-          (ImGui::GetIO().MousePos.x - parOrigin.x - parLabelWidth) /
-          parPixelsPerFrame)));
+  const film::FilmFrame frame =
+      frameAtMouse(parOrigin, parLabelWidth, parPixelsPerFrame);
   setMovieAuthoringCursor(parSession, parPlayback, parDuration, frame);
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("Drag authoring cursor (0-%d)", film::MAX_FILM_FRAMES);

@@ -54,13 +54,20 @@ template <typename Result>
   return true;
 }
 
+template <typename Edit>
+[[nodiscard]] bool applyMovieEdit(engine::EngineCore& parEngine,
+                                  std::string& parError, Edit&& parEdit) {
+  film::TimelineEditService edits(parEngine.getMovieTimeline());
+  return acceptMovieEdit(parEngine, parError, parEdit(edits));
+}
+
 [[nodiscard]] bool setClipPayload(engine::EngineCore& parEngine,
                                   film::SequenceClipId parClipId,
                                   film::SequenceClipPayload parPayload,
                                   std::string& parError) {
-  film::TimelineEditService edits(parEngine.getMovieTimeline());
-  const auto result = edits.setClipPayload(parClipId, std::move(parPayload));
-  return acceptMovieEdit(parEngine, parError, result);
+  return applyMovieEdit(parEngine, parError, [&](auto& edits) {
+    return edits.setClipPayload(parClipId, std::move(parPayload));
+  });
 }
 
 void drawTransformPoint(const char* parLabel, math::Transform& parTransform,
@@ -119,6 +126,41 @@ void applyTimingPreset(CurvePreset parPreset, film::MovementCurve& parCurve) {
     parCurve.timing_control_1 = CURVE_PRESETS[index].control_1;
     parCurve.timing_control_2 = CURVE_PRESETS[index].control_2;
   }
+}
+
+[[nodiscard]] bool drawCurveHandles(const char* parId,
+                                    film::MovementCurve& parCurve,
+                                    const film::ResolvedMovementSpline& parPath,
+                                    bool parInitializeOnEdit) {
+  if (parCurve.automatic_position_controls && !parInitializeOnEdit) {
+    return false;
+  }
+  glm::vec3 leaving = parPath.control_1 - parPath.start.translation;
+  glm::vec3 approaching = parPath.control_2 - parPath.end.translation;
+  const float sensitivity = std::max(
+      glm::length(parPath.end.translation - parPath.start.translation) * 0.01f,
+      0.01f);
+  bool changed = false;
+  const auto commit = [&] {
+    if (parCurve.automatic_position_controls) {
+      parCurve.position_control_1 = parPath.control_1;
+      parCurve.position_control_2 = parPath.control_2;
+      parCurve.automatic_position_controls = false;
+    }
+  };
+  ImGui::PushID(parId);
+  if (ImGui::DragFloat3("Curve leaving start", &leaving.x, sensitivity)) {
+    commit();
+    parCurve.position_control_1 = parPath.start.translation + leaving;
+    changed = true;
+  }
+  if (ImGui::DragFloat3("Curve approaching end", &approaching.x, sensitivity)) {
+    commit();
+    parCurve.position_control_2 = parPath.end.translation + approaching;
+    changed = true;
+  }
+  ImGui::PopID();
+  return changed;
 }
 
 [[nodiscard]] CurvePreset propertyPreset(const film::PropertyClip& parProperty) {
@@ -199,9 +241,9 @@ void applyPropertyPreset(CurvePreset parPreset,
         explicit_start = entity->transform;
       }
     }
-    film::TimelineEditService edits(parEngine.getMovieTimeline());
-    const auto result = edits.setMovementStartMode(parClip.id, mode, explicit_start);
-    if (acceptMovieEdit(parEngine, parError, result)) {
+    if (applyMovieEdit(parEngine, parError, [&](auto& edits) {
+          return edits.setMovementStartMode(parClip.id, mode, explicit_start);
+        })) {
       return true;
     }
   }
@@ -232,23 +274,8 @@ void applyPropertyPreset(CurvePreset parPreset,
   }
   if (!movement.curve.automatic_position_controls &&
       resolved != resolved_movements.end()) {
-    const glm::vec3 start = resolved->movement.start.translation;
-    glm::vec3 leaving_start = movement.curve.position_control_1 - start;
-    glm::vec3 approaching_end =
-        movement.curve.position_control_2 - movement.end.translation;
-    const float sensitivity = std::max(
-        glm::length(movement.end.translation - start) * 0.01f, 0.01f);
-    if (ImGui::DragFloat3("Curve leaving start", &leaving_start.x,
-                          sensitivity)) {
-      movement.curve.position_control_1 = start + leaving_start;
-      changed = true;
-    }
-    if (ImGui::DragFloat3("Curve approaching end", &approaching_end.x,
-                          sensitivity)) {
-      movement.curve.position_control_2 =
-          movement.end.translation + approaching_end;
-      changed = true;
-    }
+    changed |= drawCurveHandles("MovementCurve", movement.curve,
+                                resolved->movement, false);
   }
   CurvePreset speed_profile = timingPreset(
       movement.curve.timing_control_1, movement.curve.timing_control_2);
@@ -271,9 +298,9 @@ void applyPropertyPreset(CurvePreset parPreset,
       transition.curve.automatic_position_controls = true;
       applyTimingPreset(CurvePreset::Linear, transition.curve);
     }
-    film::TimelineEditService edits(parEngine.getMovieTimeline());
-    const auto result = edits.setMovementTransition(parClip.id, transition);
-    if (acceptMovieEdit(parEngine, parError, result)) {
+    if (applyMovieEdit(parEngine, parError, [&](auto& edits) {
+          return edits.setMovementTransition(parClip.id, transition);
+        })) {
       return true;
     }
   }
@@ -282,45 +309,9 @@ void applyPropertyPreset(CurvePreset parPreset,
   }
   bool transition_changed = false;
   if (resolved->transition_before.has_value()) {
-    const film::ResolvedMovementSpline& transition_path =
-        resolved->transition_before->spline;
-    glm::vec3 leaving_start =
-        transition_path.control_1 - transition_path.start.translation;
-    glm::vec3 approaching_end =
-        transition_path.control_2 - transition_path.end.translation;
-    const glm::vec3 transition_delta =
-        transition_path.end.translation - transition_path.start.translation;
-    const float sensitivity =
-        std::max(glm::length(transition_delta) * 0.01f, 0.01f);
-    bool transition_curve_initialized =
-        !transition.curve.automatic_position_controls;
-    const auto initialize_transition_curve = [&]() {
-      if (transition_curve_initialized) {
-        return true;
-      }
-      transition.curve.position_control_1 = transition_path.control_1;
-      transition.curve.position_control_2 = transition_path.control_2;
-      transition.curve.automatic_position_controls = false;
-      transition_curve_initialized = true;
-      return transition_curve_initialized;
-    };
-
-    ImGui::PushID("TransitionCurve");
-    if (ImGui::DragFloat3("Curve leaving start", &leaving_start.x,
-                          sensitivity) &&
-        initialize_transition_curve()) {
-      transition.curve.position_control_1 =
-          transition_path.start.translation + leaving_start;
-      transition_changed = true;
-    }
-    if (ImGui::DragFloat3("Curve approaching end", &approaching_end.x,
-                          sensitivity) &&
-        initialize_transition_curve()) {
-      transition.curve.position_control_2 =
-          transition_path.end.translation + approaching_end;
-      transition_changed = true;
-    }
-    ImGui::PopID();
+    transition_changed |= drawCurveHandles(
+        "TransitionCurve", transition.curve,
+        resolved->transition_before->spline, true);
   }
   CurvePreset transition_profile = timingPreset(
       transition.curve.timing_control_1,
@@ -330,9 +321,9 @@ void applyPropertyPreset(CurvePreset parPreset,
     transition_changed = true;
   }
   if (transition_changed) {
-    film::TimelineEditService edits(parEngine.getMovieTimeline());
-    const auto result = edits.setMovementTransition(parClip.id, transition);
-    if (acceptMovieEdit(parEngine, parError, result)) {
+    if (applyMovieEdit(parEngine, parError, [&](auto& edits) {
+          return edits.setMovementTransition(parClip.id, transition);
+        })) {
       return true;
     }
   }
@@ -394,24 +385,50 @@ void applyPropertyPreset(CurvePreset parPreset,
   return false;
 }
 
-[[nodiscard]] bool isColorProperty(film::PropertyKind parKind) {
-  return parKind == film::PropertyKind::PointLightColor ||
-         parKind == film::PropertyKind::SunColor;
-}
+enum class PropertyEditor { Scalar, Color, Vector };
 
-[[nodiscard]] bool isVectorProperty(film::PropertyKind parKind) {
-  return parKind == film::PropertyKind::SunDirection;
+struct PropertyDescriptor final {
+  film::PropertyKind kind;
+  const char* start_label;
+  const char* end_label;
+  PropertyEditor editor = PropertyEditor::Scalar;
+};
+
+constexpr std::array PROPERTY_DESCRIPTORS{
+    PropertyDescriptor{film::PropertyKind::CameraFov, "Start FOV", "End FOV"},
+    PropertyDescriptor{film::PropertyKind::PointLightIntensity,
+                       "Start Intensity", "End Intensity"},
+    PropertyDescriptor{film::PropertyKind::PointLightColor, "Start Color",
+                       "End Color", PropertyEditor::Color},
+    PropertyDescriptor{film::PropertyKind::SunDirection, "Start Direction",
+                       "End Direction", PropertyEditor::Vector},
+    PropertyDescriptor{film::PropertyKind::SunIntensity, "Start Intensity",
+                       "End Intensity"},
+    PropertyDescriptor{film::PropertyKind::SunColor, "Start Color",
+                       "End Color", PropertyEditor::Color},
+};
+
+[[nodiscard]] const PropertyDescriptor& propertyDescriptor(
+    film::PropertyKind parKind) {
+  const auto found = std::find_if(
+      PROPERTY_DESCRIPTORS.begin(), PROPERTY_DESCRIPTORS.end(),
+      [parKind](const auto& value) { return value.kind == parKind; });
+  static constexpr PropertyDescriptor FALLBACK{
+      film::PropertyKind::CameraFov, "Start Value", "End Value"};
+  return found != PROPERTY_DESCRIPTORS.end() ? *found : FALLBACK;
 }
 
 bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
                        film::PropertyKind parKind) {
-  if (isColorProperty(parKind)) {
-    return ImGui::ColorEdit3(parLabel, &parValue.x);
+  switch (propertyDescriptor(parKind).editor) {
+    case PropertyEditor::Color:
+      return ImGui::ColorEdit3(parLabel, &parValue.x);
+    case PropertyEditor::Vector:
+      return ImGui::DragFloat3(parLabel, &parValue.x, 0.01f);
+    case PropertyEditor::Scalar:
+      return ImGui::DragFloat(parLabel, &parValue.x, 0.05f);
   }
-  if (isVectorProperty(parKind)) {
-    return ImGui::DragFloat3(parLabel, &parValue.x, 0.01f);
-  }
-  return ImGui::DragFloat(parLabel, &parValue.x, 0.05f);
+  return false;
 }
 
 [[nodiscard]] bool drawPropertyInspector(engine::EngineCore& parEngine,
@@ -422,32 +439,12 @@ bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
     return false;
   }
   film::PropertyClip property = *source;
-  const char* start_label = "Start Value";
-  const char* end_label = "End Value";
-  switch (property.kind) {
-    case film::PropertyKind::CameraFov:
-      start_label = "Start FOV";
-      end_label = "End FOV";
-      break;
-    case film::PropertyKind::PointLightIntensity:
-    case film::PropertyKind::SunIntensity:
-      start_label = "Start Intensity";
-      end_label = "End Intensity";
-      break;
-    case film::PropertyKind::PointLightColor:
-    case film::PropertyKind::SunColor:
-      start_label = "Start Color";
-      end_label = "End Color";
-      break;
-    case film::PropertyKind::SunDirection:
-      start_label = "Start Direction";
-      end_label = "End Direction";
-      break;
-  }
+  const PropertyDescriptor& descriptor = propertyDescriptor(property.kind);
   CurvePreset interpolation = propertyPreset(property);
-  bool changed = drawPropertyValue(start_label, property.start_value,
-                                   property.kind);
-  changed |= drawPropertyValue(end_label, property.end_value, property.kind);
+  bool changed = drawPropertyValue(descriptor.start_label,
+                                   property.start_value, property.kind);
+  changed |= drawPropertyValue(descriptor.end_label, property.end_value,
+                               property.kind);
   if (changed && interpolation != CurvePreset::Custom) {
     applyPropertyPreset(interpolation, property);
   }
@@ -499,9 +496,9 @@ bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
   }
   ImGui::SameLine();
   if (!mutated && ImGui::Button("Delete Clip", ImVec2(-1.0f, 0.0f))) {
-    film::TimelineEditService edits(parEngine.getMovieTimeline());
-    const auto result = edits.deleteClip(clip_id);
-    if (acceptMovieEdit(parEngine, parError, result)) {
+    if (applyMovieEdit(parEngine, parError, [&](auto& edits) {
+          return edits.deleteClip(clip_id);
+        })) {
       parSession.movie_selection.clip_id = 0;
       mutated = true;
     }
@@ -541,9 +538,9 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
       }
     }
     if (ImGui::Button("Delete Instance", ImVec2(-1.0f, 0.0f))) {
-      film::TimelineEditService edits(timeline);
-      const auto result = edits.deleteInstance(selected_instance->id);
-      if (acceptMovieEdit(parEngine, parError, result)) {
+      if (applyMovieEdit(parEngine, parError, [&](auto& edits) {
+            return edits.deleteInstance(selected_instance->id);
+          })) {
         parSession.movie_selection.instance_id = 0;
         return;
       }
@@ -554,10 +551,9 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
   int gap_mode = static_cast<int>(timeline.camera_gap_mode);
   if (ImGui::Combo("Camera gaps", &gap_mode,
                    "Hold last camera state\0Black\0")) {
-    film::TimelineEditService edits(timeline);
-    const auto result = edits.setCameraGapMode(
-        static_cast<film::CameraGapMode>(gap_mode));
-    (void)acceptMovieEdit(parEngine, parError, result);
+    (void)applyMovieEdit(parEngine, parError, [&](auto& edits) {
+      return edits.setCameraGapMode(static_cast<film::CameraGapMode>(gap_mode));
+    });
   }
 
   ImGui::SeparatorText("Bake Movie");
@@ -675,18 +671,18 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputText("Sequence Name", sequence_name_state.buffer.data(),
                          sequence_name_state.buffer.size())) {
-      film::TimelineEditService edits(timeline);
-      const auto result = edits.renameSequence(selected_sequence->id,
-                                               sequence_name_state.buffer.data());
-      if (acceptMovieEdit(parEngine, parError, result)) {
+      if (applyMovieEdit(parEngine, parError, [&](auto& edits) {
+            return edits.renameSequence(selected_sequence->id,
+                                        sequence_name_state.buffer.data());
+          })) {
         return;
       }
     }
     if (ImGui::Button("Delete Sequence", ImVec2(-1.0f, 0.0f))) {
       const film::TargetSequenceId sequence_id = selected_sequence->id;
-      film::TimelineEditService edits(timeline);
-      const auto result = edits.deleteSequence(sequence_id);
-      if (acceptMovieEdit(parEngine, parError, result)) {
+      if (applyMovieEdit(parEngine, parError, [&](auto& edits) {
+            return edits.deleteSequence(sequence_id);
+          })) {
         parEngine.clearFilmPreviewState();
         parSession.movie_selection.sequence_id = 0;
         parSession.movie_selection.clip_id = 0;

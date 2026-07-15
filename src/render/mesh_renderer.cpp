@@ -27,11 +27,6 @@ static_assert(kage::lighting::MAX_POINT_LIGHTS == 32,
   "         u_joint_matrices[inJoints.w] * inWeights.w;\n"               \
   "}\n"
 
-void clearGlErrors() {
-  while (glGetError() != GL_NO_ERROR) {
-  }
-}
-
 void configureDepthFallback(GLenum parTarget) {
   glTexParameteri(parTarget, GL_TEXTURE_BASE_LEVEL, 0);
   glTexParameteri(parTarget, GL_TEXTURE_MAX_LEVEL, 0);
@@ -40,6 +35,31 @@ void configureDepthFallback(GLenum parTarget) {
   glTexParameteri(parTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(parTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(parTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+void clearGlErrors() {
+  while (glGetError() != GL_NO_ERROR) {
+  }
+}
+
+[[nodiscard]] bool allocateDepthFallback(GLenum parTarget, GLuint parTexture) {
+  glBindTexture(parTarget, parTexture);
+  constexpr float FAR_DEPTH = 1.0f;
+  const int face_count = parTarget == GL_TEXTURE_CUBE_MAP ? 6 : 1;
+  for (int face = 0; face < face_count; ++face) {
+    const GLenum face_target = parTarget == GL_TEXTURE_CUBE_MAP
+                                   ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + face
+                                   : parTarget;
+    glTexImage2D(face_target, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0,
+                 GL_DEPTH_COMPONENT, GL_FLOAT, &FAR_DEPTH);
+  }
+  configureDepthFallback(parTarget);
+  if (parTarget == GL_TEXTURE_CUBE_MAP) {
+    glTexParameteri(parTarget, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  }
+  const bool valid = glGetError() == GL_NO_ERROR;
+  glBindTexture(parTarget, 0);
+  return valid;
 }
 
 constexpr char STATIC_MESH_VERTEX_SHADER[] = R"(#version 410 core
@@ -460,16 +480,8 @@ MeshRenderer::~MeshRenderer() {
 void MeshRenderer::createSunShadowFallback() {
   clearGlErrors();
   m_sun_shadow_fallback.create();
-
-  glBindTexture(GL_TEXTURE_2D, m_sun_shadow_fallback.getHandle());
-  constexpr float FAR_DEPTH = 1.0f;
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0,
-               GL_DEPTH_COMPONENT, GL_FLOAT, &FAR_DEPTH);
-  configureDepthFallback(GL_TEXTURE_2D);
-
-  const GLenum gl_error = glGetError();
-  glBindTexture(GL_TEXTURE_2D, 0);
-  if (gl_error != GL_NO_ERROR) {
+  if (!allocateDepthFallback(GL_TEXTURE_2D,
+                             m_sun_shadow_fallback.getHandle())) {
     m_sun_shadow_fallback.release();
     throw std::runtime_error("Failed to allocate Sun shadow fallback texture");
   }
@@ -482,18 +494,7 @@ void MeshRenderer::createPointShadowFallback() {
     throw std::runtime_error("Failed to create point shadow fallback texture");
   }
 
-  glBindTexture(GL_TEXTURE_CUBE_MAP, m_point_shadow_fallback);
-  constexpr float FAR_DEPTH = 1.0f;
-  for (int face = 0; face < 6; ++face) {
-    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0,
-                 GL_DEPTH_COMPONENT32F, 1, 1, 0, GL_DEPTH_COMPONENT,
-                 GL_FLOAT, &FAR_DEPTH);
-  }
-  configureDepthFallback(GL_TEXTURE_CUBE_MAP);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-  const GLenum gl_error = glGetError();
-  glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-  if (gl_error != GL_NO_ERROR) {
+  if (!allocateDepthFallback(GL_TEXTURE_CUBE_MAP, m_point_shadow_fallback)) {
     glDeleteTextures(1, &m_point_shadow_fallback);
     m_point_shadow_fallback = 0;
     throw std::runtime_error("Failed to allocate point shadow fallback texture");

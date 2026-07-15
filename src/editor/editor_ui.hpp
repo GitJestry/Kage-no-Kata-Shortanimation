@@ -36,8 +36,7 @@ class EditorUi final {
   void trackCurrentPanel();
   void clampCurrentPanel(const char* parPanelName,
                          bool parKeepAboveStatusStrip);
-  void drawHiddenPanelButton();
-  void drawHiddenInspectorButton();
+  void drawHiddenPanelButton(bool parInspector = false);
   void drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession);
   void drawLeftPanel(engine::EngineCore& parEngine,
                      PlacementController& parPlacementController,

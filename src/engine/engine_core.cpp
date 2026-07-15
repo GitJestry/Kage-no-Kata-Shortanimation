@@ -76,17 +76,25 @@ std::size_t EngineCore::registerModelAsset(std::string parLabel,
                                            assets::ModelAsset parDocument) {
   const std::size_t asset_index = m_asset_registry.registerModelAsset(
       std::move(parLabel), std::move(parPath), std::move(parDocument));
-  const assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(asset_index);
-  if (asset != nullptr && asset->document.has_value()) {
-    const Clock::time_point upload_begin = Clock::now();
-    m_mesh_resource_cache.uploadStaticMesh(
-        asset_index, asset->document->static_model);
-    m_performance_snapshot.gpu_upload_ms =
-        elapsedMilliseconds(upload_begin, Clock::now());
-    m_asset_registry.releaseStaticGeometryPayload(asset_index);
-  }
+  m_performance_snapshot.gpu_upload_ms = uploadLoadedAsset(asset_index);
   return asset_index;
+}
+
+float EngineCore::uploadLoadedAsset(std::size_t parAssetIndex) {
+  const assets::AssetRegistry::AssetLibraryEntry* asset =
+      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
+  if (asset == nullptr || !asset->document.has_value()) {
+    return 0.0f;
+  }
+  float elapsed = 0.0f;
+  if (m_mesh_resource_cache.getStaticMesh(parAssetIndex) == nullptr) {
+    const auto begin = Clock::now();
+    m_mesh_resource_cache.uploadStaticMesh(
+        parAssetIndex, asset->document->static_model);
+    elapsed = elapsedMilliseconds(begin, Clock::now());
+  }
+  m_asset_registry.releaseStaticGeometryPayload(parAssetIndex);
+  return elapsed;
 }
 
 void EngineCore::requestAssetLoad(std::size_t parAssetIndex) {
@@ -157,20 +165,13 @@ void EngineCore::pollAssetStreaming() {
 
     m_performance_snapshot.asset_load_ms += entry->last_cpu_import_ms;
     try {
-      if (m_mesh_resource_cache.getStaticMesh(asset_index) == nullptr) {
-        const Clock::time_point upload_begin = Clock::now();
-        m_mesh_resource_cache.uploadStaticMesh(asset_index,
-                                               document->static_model);
-        m_performance_snapshot.gpu_upload_ms +=
-            elapsedMilliseconds(upload_begin, Clock::now());
-      }
+      m_performance_snapshot.gpu_upload_ms += uploadLoadedAsset(asset_index);
     } catch (const std::exception& error) {
       m_asset_registry.failLoad(asset_index, error.what());
       continue;
     }
     attachLoadedAssetToInstances(asset_index);
     m_asset_registry.completeGpuUpload(asset_index);
-    m_asset_registry.releaseStaticGeometryPayload(asset_index);
   }
   const bool streaming_active = m_asset_streamer.getPendingCount() > 0;
   m_performance_snapshot.streaming_work_items =
@@ -562,17 +563,8 @@ math::Bounds3 EngineCore::getEntityWorldBounds(scene::EntityId parEntity) const 
 
 std::optional<scene::EntityId> EngineCore::pickEntity(
     const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
-  if (m_render_settings.viewport.mode != render::ViewportMode::Bounds) {
-    if (std::optional<scene::EntityId> gpu_pick = m_world_renderer.pickEntity(
-        getActiveScene(), m_mesh_resource_cache,
-        m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize)) {
-      return gpu_pick;
-    }
-  }
-  return render::pickViewportEntityBounds(
-      getActiveScene().world, &m_camera_system.getEditorCamera(), nullptr,
-      parCursorPixel, parViewportSize, render::VIEWPORT_ENTITY_HANDLE_EXTENT,
-      true);
+  return pickEntityForView(m_camera_system.getEditorCamera(), nullptr,
+                           parCursorPixel, parViewportSize, true);
 }
 
 std::optional<scene::EntityId> EngineCore::pickMovieEntity(
@@ -583,17 +575,25 @@ std::optional<scene::EntityId> EngineCore::pickMovieEntity(
   if (m_viewport_black_output || !m_viewport_camera.has_value()) {
     return std::nullopt;
   }
+  return pickEntityForView(*m_viewport_camera, &m_viewport_film_frame_state,
+                           parCursorPixel, parViewportSize, false);
+}
+
+std::optional<scene::EntityId> EngineCore::pickEntityForView(
+    const camera::Camera& parCamera, const film::FilmFrameState* parFilmState,
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize,
+    bool parUseHandleCenterDistance) {
   if (m_render_settings.viewport.mode != render::ViewportMode::Bounds) {
-    if (std::optional<scene::EntityId> gpu_pick = m_world_renderer.pickEntity(
-            getActiveScene(), m_mesh_resource_cache, *m_viewport_camera,
-            parCursorPixel, parViewportSize, &m_viewport_film_frame_state)) {
-      return gpu_pick;
+    if (auto picked = m_world_renderer.pickEntity(
+            getActiveScene(), m_mesh_resource_cache, parCamera, parCursorPixel,
+            parViewportSize, parFilmState)) {
+      return picked;
     }
   }
   return render::pickViewportEntityBounds(
-      getActiveScene().world, &*m_viewport_camera,
-      &m_viewport_film_frame_state, parCursorPixel, parViewportSize,
-      render::VIEWPORT_ENTITY_HANDLE_EXTENT);
+      getActiveScene().world, &parCamera, parFilmState, parCursorPixel,
+      parViewportSize, render::VIEWPORT_ENTITY_HANDLE_EXTENT,
+      parUseHandleCenterDistance);
 }
 
 bool EngineCore::isCursorOverEntityCore(

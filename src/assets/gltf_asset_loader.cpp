@@ -13,6 +13,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -30,6 +31,11 @@ constexpr std::size_t SUSPICIOUS_BLEND_RATIO_DENOMINATOR = 10;
 constexpr std::size_t VIEWPORT_VERTEX_WARNING_LIMIT = 500000;
 constexpr std::size_t VIEWPORT_MATERIAL_WARNING_LIMIT = 32;
 constexpr int VIEWPORT_TEXTURE_WARNING_LIMIT = 2048;
+
+struct GltfSource final {
+  const tinygltf::Model& model;
+  const std::filesystem::path& path;
+};
 
 [[nodiscard]] std::runtime_error makeImportError(
     const std::filesystem::path& parPath, const std::string& parMessage) {
@@ -98,17 +104,18 @@ void mergeStaticPrimitivesByMaterial(kage::assets::StaticModel& parModel) {
 }
 
 [[nodiscard]] const tinygltf::Accessor& getAccessor(
-    const tinygltf::Model& parModel, int parAccessorIndex,
-    const std::filesystem::path& parPath) {
+    const GltfSource& parSource, int parAccessorIndex) {
   if (parAccessorIndex < 0 ||
-      static_cast<std::size_t>(parAccessorIndex) >= parModel.accessors.size()) {
-    throw makeImportError(parPath, "accessor index is out of range");
+      static_cast<std::size_t>(parAccessorIndex) >=
+          parSource.model.accessors.size()) {
+    throw makeImportError(parSource.path, "accessor index is out of range");
   }
 
   const tinygltf::Accessor& accessor =
-      parModel.accessors[static_cast<std::size_t>(parAccessorIndex)];
+      parSource.model.accessors[static_cast<std::size_t>(parAccessorIndex)];
   if (accessor.sparse.isSparse) {
-    throw makeImportError(parPath, "sparse accessors are not supported yet");
+    throw makeImportError(parSource.path,
+                          "sparse accessors are not supported yet");
   }
 
   return accessor;
@@ -169,168 +176,154 @@ void mergeStaticPrimitivesByMaterial(kage::assets::StaticModel& parModel) {
 }
 
 [[nodiscard]] const unsigned char* getAccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
   if (parElementIndex >= parAccessor.count) {
-    throw makeImportError(parPath, "accessor element index is out of range");
+    throw makeImportError(parSource.path,
+                          "accessor element index is out of range");
   }
 
   if (parAccessor.bufferView < 0 ||
       static_cast<std::size_t>(parAccessor.bufferView) >=
-          parModel.bufferViews.size()) {
-    throw makeImportError(parPath, "accessor has no valid buffer view");
+          parSource.model.bufferViews.size()) {
+    throw makeImportError(parSource.path,
+                          "accessor has no valid buffer view");
   }
 
   const tinygltf::BufferView& buffer_view =
-      parModel.bufferViews[static_cast<std::size_t>(parAccessor.bufferView)];
+      parSource.model.bufferViews[
+          static_cast<std::size_t>(parAccessor.bufferView)];
   if (buffer_view.buffer < 0 ||
-      static_cast<std::size_t>(buffer_view.buffer) >= parModel.buffers.size()) {
-    throw makeImportError(parPath, "buffer view has no valid buffer");
+      static_cast<std::size_t>(buffer_view.buffer) >=
+          parSource.model.buffers.size()) {
+    throw makeImportError(parSource.path,
+                          "buffer view has no valid buffer");
   }
 
   const int byte_stride = parAccessor.ByteStride(buffer_view);
   if (byte_stride <= 0) {
-    throw makeImportError(parPath, "accessor byte stride is invalid");
+    throw makeImportError(parSource.path, "accessor byte stride is invalid");
   }
 
   const tinygltf::Buffer& buffer =
-      parModel.buffers[static_cast<std::size_t>(buffer_view.buffer)];
+      parSource.model.buffers[static_cast<std::size_t>(buffer_view.buffer)];
   if (!rangeFits(buffer_view.byteOffset, buffer_view.byteLength,
                  buffer.data.size())) {
-    throw makeImportError(parPath, "buffer view byte range is out of range");
+    throw makeImportError(parSource.path,
+                          "buffer view byte range is out of range");
   }
 
   const std::size_t element_byte_size =
-      getAccessorElementByteSize(parAccessor, parPath);
+      getAccessorElementByteSize(parAccessor, parSource.path);
   const std::size_t byte_stride_size = static_cast<std::size_t>(byte_stride);
   if (byte_stride_size < element_byte_size) {
-    throw makeImportError(parPath, "accessor byte stride is too small");
+    throw makeImportError(parSource.path,
+                          "accessor byte stride is too small");
   }
 
   if (parElementIndex >
       (std::numeric_limits<std::size_t>::max() - parAccessor.byteOffset) /
           byte_stride_size) {
-    throw makeImportError(parPath, "accessor byte offset overflow");
+    throw makeImportError(parSource.path, "accessor byte offset overflow");
   }
 
   const std::size_t byte_offset_in_view =
       parAccessor.byteOffset + byte_stride_size * parElementIndex;
   if (!rangeFits(byte_offset_in_view, element_byte_size,
                  buffer_view.byteLength)) {
-    throw makeImportError(parPath, "accessor element range is out of range");
+    throw makeImportError(parSource.path,
+                          "accessor element range is out of range");
   }
 
   const std::size_t byte_offset =
       buffer_view.byteOffset + byte_offset_in_view;
   if (!rangeFits(byte_offset, element_byte_size, buffer.data.size())) {
-    throw makeImportError(parPath, "accessor byte range is out of range");
+    throw makeImportError(parSource.path,
+                          "accessor byte range is out of range");
   }
 
   return buffer.data.data() + byte_offset;
 }
 
-void validateAttributeCount(const tinygltf::Accessor& parAccessor,
-                            std::size_t parExpectedCount,
-                            std::string_view parAttributeName,
-                            const std::filesystem::path& parPath) {
-  if (parAccessor.count != parExpectedCount) {
-    throw makeImportError(parPath, std::string(parAttributeName) +
-                                       " accessor count does not match "
-                                       "POSITION");
-  }
-}
-
 [[nodiscard]] const tinygltf::Accessor* findAttribute(
-    const tinygltf::Model& parModel, const tinygltf::Primitive& parPrimitive,
-    std::string_view parName, std::size_t parExpectedCount,
-    const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Primitive& parPrimitive,
+    std::string_view parName, std::size_t parExpectedCount) {
   const auto attribute = parPrimitive.attributes.find(std::string(parName));
   if (attribute == parPrimitive.attributes.end()) {
     return nullptr;
   }
   const tinygltf::Accessor& accessor =
-      getAccessor(parModel, attribute->second, parPath);
-  validateAttributeCount(accessor, parExpectedCount, parName, parPath);
+      getAccessor(parSource, attribute->second);
+  if (accessor.count != parExpectedCount) {
+    throw makeImportError(parSource.path, std::string(parName) +
+                                              " accessor count does not match POSITION");
+  }
   return &accessor;
 }
 
 template <typename Value>
 [[nodiscard]] Value readFloatAccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
     std::size_t parElementIndex, int parExpectedType,
-    std::string_view parExpectedName, const std::filesystem::path& parPath) {
+    std::string_view parExpectedName) {
   if (parAccessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
       parAccessor.type != parExpectedType) {
-    throw makeImportError(parPath, "expected a float " +
-                                       std::string(parExpectedName) +
-                                       " accessor");
+    throw makeImportError(parSource.path, "expected a float " +
+                                              std::string(parExpectedName) +
+                                              " accessor");
   }
 
   Value value{};
-  std::memcpy(glm::value_ptr(value),
-              getAccessorElement(parModel, parAccessor, parElementIndex,
-                                 parPath),
+  std::memcpy(&value,
+              getAccessorElement(parSource, parAccessor, parElementIndex),
               sizeof(Value));
   return value;
 }
 
 [[nodiscard]] glm::vec3 readVec3AccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
   return readFloatAccessorElement<glm::vec3>(
-      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC3, "vec3",
-      parPath);
+      parSource, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC3, "vec3");
 }
 
 [[nodiscard]] glm::vec2 readVec2AccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
   return readFloatAccessorElement<glm::vec2>(
-      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC2, "vec2",
-      parPath);
+      parSource, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC2, "vec2");
 }
 
 [[nodiscard]] glm::vec4 readVec4AccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
   return readFloatAccessorElement<glm::vec4>(
-      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC4, "vec4",
-      parPath);
+      parSource, parAccessor, parElementIndex, TINYGLTF_TYPE_VEC4, "vec4");
 }
 
 [[nodiscard]] float readFloatScalarAccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
-  if (parAccessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
-      parAccessor.type != TINYGLTF_TYPE_SCALAR) {
-    throw makeImportError(parPath, "expected a float scalar accessor");
-  }
-
-  float value = 0.0f;
-  std::memcpy(&value,
-              getAccessorElement(parModel, parAccessor, parElementIndex,
-                                 parPath),
-              sizeof(float));
-  return value;
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
+  return readFloatAccessorElement<float>(
+      parSource, parAccessor, parElementIndex, TINYGLTF_TYPE_SCALAR, "scalar");
 }
 
 [[nodiscard]] glm::mat4 readMat4AccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
   return readFloatAccessorElement<glm::mat4>(
-      parModel, parAccessor, parElementIndex, TINYGLTF_TYPE_MAT4, "mat4",
-      parPath);
+      parSource, parAccessor, parElementIndex, TINYGLTF_TYPE_MAT4, "mat4");
 }
 
 [[nodiscard]] glm::uvec4 readJointAccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
   if (parAccessor.type != TINYGLTF_TYPE_VEC4) {
-    throw makeImportError(parPath, "expected a vec4 joint accessor");
+    throw makeImportError(parSource.path, "expected a vec4 joint accessor");
   }
 
   const unsigned char* element =
-      getAccessorElement(parModel, parAccessor, parElementIndex, parPath);
+      getAccessorElement(parSource, parAccessor, parElementIndex);
 
   switch (parAccessor.componentType) {
     case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
@@ -346,19 +339,20 @@ template <typename Value>
       return value;
     }
     default:
-      throw makeImportError(parPath, "unsupported joint component type");
+      throw makeImportError(parSource.path,
+                            "unsupported joint component type");
   }
 }
 
 [[nodiscard]] glm::vec4 readWeightAccessorElement(
-    const tinygltf::Model& parModel, const tinygltf::Accessor& parAccessor,
-    std::size_t parElementIndex, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Accessor& parAccessor,
+    std::size_t parElementIndex) {
   if (parAccessor.type != TINYGLTF_TYPE_VEC4) {
-    throw makeImportError(parPath, "expected a vec4 weight accessor");
+    throw makeImportError(parSource.path, "expected a vec4 weight accessor");
   }
 
   const unsigned char* element =
-      getAccessorElement(parModel, parAccessor, parElementIndex, parPath);
+      getAccessorElement(parSource, parAccessor, parElementIndex);
   glm::vec4 weights{};
 
   switch (parAccessor.componentType) {
@@ -378,7 +372,8 @@ template <typename Value>
       break;
     }
     default:
-      throw makeImportError(parPath, "unsupported weight component type");
+      throw makeImportError(parSource.path,
+                            "unsupported weight component type");
   }
 
   const float weight_sum = weights.x + weights.y + weights.z + weights.w;
@@ -390,31 +385,30 @@ template <typename Value>
 }
 
 [[nodiscard]] std::vector<std::uint32_t> readIndices(
-    const tinygltf::Model& parModel, const tinygltf::Primitive& parPrimitive,
-    std::size_t parVertexCount, const std::filesystem::path& parPath) {
+    const GltfSource& parSource, const tinygltf::Primitive& parPrimitive,
+    std::size_t parVertexCount) {
   if (parVertexCount >
       static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
-    throw makeImportError(parPath, "primitive has too many vertices");
+    throw makeImportError(parSource.path, "primitive has too many vertices");
   }
 
   std::vector<std::uint32_t> indices;
   if (parPrimitive.indices < 0) {
     indices.resize(parVertexCount);
-    for (std::size_t index = 0; index < parVertexCount; ++index) {
-      indices[index] = static_cast<std::uint32_t>(index);
-    }
+    std::iota(indices.begin(), indices.end(), 0u);
   } else {
     const tinygltf::Accessor& accessor =
-        getAccessor(parModel, parPrimitive.indices, parPath);
+        getAccessor(parSource, parPrimitive.indices);
     if (accessor.type != TINYGLTF_TYPE_SCALAR) {
-      throw makeImportError(parPath, "expected scalar index accessor");
+      throw makeImportError(parSource.path,
+                            "expected scalar index accessor");
     }
 
     indices.reserve(accessor.count);
 
     for (std::size_t index = 0; index < accessor.count; ++index) {
       const unsigned char* element =
-          getAccessorElement(parModel, accessor, index, parPath);
+          getAccessorElement(parSource, accessor, index);
 
       switch (accessor.componentType) {
         case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
@@ -433,22 +427,26 @@ template <typename Value>
           break;
         }
         default:
-          throw makeImportError(parPath, "unsupported index component type");
+          throw makeImportError(parSource.path,
+                                "unsupported index component type");
       }
     }
   }
 
   if (indices.empty()) {
-    throw makeImportError(parPath, "primitive has no triangle indices");
+    throw makeImportError(parSource.path,
+                          "primitive has no triangle indices");
   }
 
   if (indices.size() % 3 != 0) {
-    throw makeImportError(parPath, "triangle index count is not divisible by 3");
+    throw makeImportError(parSource.path,
+                          "triangle index count is not divisible by 3");
   }
 
   for (const std::uint32_t index : indices) {
     if (static_cast<std::size_t>(index) >= parVertexCount) {
-      throw makeImportError(parPath, "index value is out of vertex range");
+      throw makeImportError(parSource.path,
+                            "index value is out of vertex range");
     }
   }
 
@@ -814,6 +812,7 @@ void importPrimitive(const tinygltf::Model& parModel,
                      const std::string& parName,
                      const std::filesystem::path& parPath,
                      kage::assets::StaticModel& parOutput) {
+  const GltfSource source{parModel, parPath};
   const int primitive_mode =
       parPrimitive.mode >= 0 ? parPrimitive.mode : TINYGLTF_MODE_TRIANGLES;
   if (primitive_mode != TINYGLTF_MODE_TRIANGLES) {
@@ -826,17 +825,17 @@ void importPrimitive(const tinygltf::Model& parModel,
   }
 
   const tinygltf::Accessor& position_accessor =
-      getAccessor(parModel, position_attribute->second, parPath);
+      getAccessor(source, position_attribute->second);
   if (position_accessor.count == 0) {
     throw makeImportError(parPath, "primitive has no vertices");
   }
 
   const tinygltf::Accessor* normal_accessor = findAttribute(
-      parModel, parPrimitive, "NORMAL", position_accessor.count, parPath);
+      source, parPrimitive, "NORMAL", position_accessor.count);
   const tinygltf::Accessor* tangent_accessor = findAttribute(
-      parModel, parPrimitive, "TANGENT", position_accessor.count, parPath);
+      source, parPrimitive, "TANGENT", position_accessor.count);
   const tinygltf::Accessor* tex_coord_accessor = findAttribute(
-      parModel, parPrimitive, "TEXCOORD_0", position_accessor.count, parPath);
+      source, parPrimitive, "TEXCOORD_0", position_accessor.count);
 
   const auto joint_attribute = parPrimitive.attributes.find("JOINTS_0");
   const auto weight_attribute = parPrimitive.attributes.find("WEIGHTS_0");
@@ -851,10 +850,10 @@ void importPrimitive(const tinygltf::Model& parModel,
                             "WEIGHTS_0");
     }
 
-    joint_accessor = findAttribute(parModel, parPrimitive, "JOINTS_0",
-                                   position_accessor.count, parPath);
-    weight_accessor = findAttribute(parModel, parPrimitive, "WEIGHTS_0",
-                                    position_accessor.count, parPath);
+    joint_accessor = findAttribute(source, parPrimitive, "JOINTS_0",
+                                   position_accessor.count);
+    weight_accessor = findAttribute(source, parPrimitive, "WEIGHTS_0",
+                                    position_accessor.count);
   }
 
   kage::assets::StaticPrimitive output_primitive;
@@ -889,33 +888,28 @@ void importPrimitive(const tinygltf::Model& parModel,
   for (std::size_t vertex_index = 0; vertex_index < position_accessor.count;
        ++vertex_index) {
     kage::assets::StaticVertex vertex;
-    vertex.position = readVec3AccessorElement(parModel, position_accessor,
-                                              vertex_index, parPath);
+    vertex.position =
+        readVec3AccessorElement(source, position_accessor, vertex_index);
     if (normal_accessor != nullptr) {
-      vertex.normal =
-          readVec3AccessorElement(parModel, *normal_accessor, vertex_index,
-                                  parPath);
+      vertex.normal = readVec3AccessorElement(source, *normal_accessor,
+                                              vertex_index);
     }
     if (tangent_accessor != nullptr) {
-      vertex.tangent =
-          readVec4AccessorElement(parModel, *tangent_accessor, vertex_index,
-                                  parPath);
+      vertex.tangent = readVec4AccessorElement(source, *tangent_accessor,
+                                               vertex_index);
     }
     if (tex_coord_accessor != nullptr) {
-      vertex.tex_coord =
-          readVec2AccessorElement(parModel, *tex_coord_accessor, vertex_index,
-                                  parPath);
+      vertex.tex_coord = readVec2AccessorElement(source, *tex_coord_accessor,
+                                                 vertex_index);
     }
 
     output_primitive.vertices.push_back(vertex);
     if (joint_accessor != nullptr && weight_accessor != nullptr) {
       kage::assets::SkinInfluence influence;
       influence.joints =
-          readJointAccessorElement(parModel, *joint_accessor, vertex_index,
-                                   parPath);
+          readJointAccessorElement(source, *joint_accessor, vertex_index);
       influence.weights =
-          readWeightAccessorElement(parModel, *weight_accessor, vertex_index,
-                                    parPath);
+          readWeightAccessorElement(source, *weight_accessor, vertex_index);
       output_primitive.skin_influences.push_back(influence);
     }
 
@@ -925,9 +919,8 @@ void importPrimitive(const tinygltf::Model& parModel,
     parOutput.bounds.includePoint(world_position);
   }
 
-  output_primitive.indices = readIndices(parModel, parPrimitive,
-                                         output_primitive.vertices.size(),
-                                         parPath);
+  output_primitive.indices =
+      readIndices(source, parPrimitive, output_primitive.vertices.size());
   if (tangent_accessor == nullptr &&
       output_primitive.material_index != kage::assets::INVALID_MATERIAL_INDEX) {
     const kage::assets::StaticMaterial& material =
@@ -995,6 +988,7 @@ void importNodeRecords(const tinygltf::Model& parModel,
 void importSkins(const tinygltf::Model& parModel,
                  const std::filesystem::path& parPath,
                  kage::assets::GltfDocument& parOutput) {
+  const GltfSource source{parModel, parPath};
   parOutput.skins.reserve(parModel.skins.size());
 
   for (const tinygltf::Skin& skin : parModel.skins) {
@@ -1020,7 +1014,7 @@ void importSkins(const tinygltf::Model& parModel,
                                              glm::mat4(1.0f));
     if (skin.inverseBindMatrices >= 0) {
       const tinygltf::Accessor& inverse_bind_accessor =
-          getAccessor(parModel, skin.inverseBindMatrices, parPath);
+          getAccessor(source, skin.inverseBindMatrices);
       if (inverse_bind_accessor.count != output_skin.joints.size()) {
         throw makeImportError(
             parPath, "inverse bind matrix count does not match skin joints");
@@ -1029,8 +1023,8 @@ void importSkins(const tinygltf::Model& parModel,
       for (std::size_t matrix_index = 0;
            matrix_index < inverse_bind_accessor.count; ++matrix_index) {
         output_skin.inverse_bind_matrices[matrix_index] =
-            readMat4AccessorElement(parModel, inverse_bind_accessor,
-                                    matrix_index, parPath);
+            readMat4AccessorElement(source, inverse_bind_accessor,
+                                    matrix_index);
       }
     }
 
@@ -1099,6 +1093,7 @@ void readAccessorValues(const tinygltf::Accessor& parAccessor,
 void importAnimations(const tinygltf::Model& parModel,
                       const std::filesystem::path& parPath,
                       kage::assets::GltfDocument& parOutput) {
+  const GltfSource source{parModel, parPath};
   parOutput.animation_clips.reserve(parModel.animations.size());
 
   for (std::size_t animation_index = 0;
@@ -1130,15 +1125,14 @@ void importAnimations(const tinygltf::Model& parModel,
       }
 
       const tinygltf::Accessor& input_accessor =
-          getAccessor(parModel, source_sampler.input, parPath);
+          getAccessor(source, source_sampler.input);
       kage::assets::AnimationSampler& sampler = clip.samplers[sampler_index];
       sampler.interpolation = getInterpolation(source_sampler);
       sampler.input_times.reserve(input_accessor.count);
       for (std::size_t time_index = 0; time_index < input_accessor.count;
            ++time_index) {
         const float time =
-            readFloatScalarAccessorElement(parModel, input_accessor,
-                                           time_index, parPath);
+            readFloatScalarAccessorElement(source, input_accessor, time_index);
         sampler.input_times.push_back(time);
         clip.duration_seconds = std::max(clip.duration_seconds, time);
       }
@@ -1160,8 +1154,7 @@ void importAnimations(const tinygltf::Model& parModel,
       const std::size_t sampler_index =
           static_cast<std::size_t>(source_channel.sampler);
       const tinygltf::Accessor& output_accessor =
-          getAccessor(parModel, animation.samplers[sampler_index].output,
-                      parPath);
+          getAccessor(source, animation.samplers[sampler_index].output);
       kage::assets::AnimationSampler& sampler = clip.samplers[sampler_index];
       if (output_accessor.count != sampler.input_times.size()) {
         throw makeImportError(
@@ -1180,7 +1173,7 @@ void importAnimations(const tinygltf::Model& parModel,
           readAccessorValues(output_accessor, sampler.translations,
                              [&](std::size_t index) {
                                return readVec3AccessorElement(
-                                   parModel, output_accessor, index, parPath);
+                                   source, output_accessor, index);
                              });
           break;
         case kage::assets::AnimationTargetPath::Rotation:
@@ -1188,8 +1181,7 @@ void importAnimations(const tinygltf::Model& parModel,
                              [&](std::size_t index) {
                                const glm::vec4 rotation =
                                    readVec4AccessorElement(
-                                       parModel, output_accessor, index,
-                                       parPath);
+                                       source, output_accessor, index);
                                return glm::normalize(glm::quat(
                                    rotation.w, rotation.x, rotation.y,
                                    rotation.z));
@@ -1199,7 +1191,7 @@ void importAnimations(const tinygltf::Model& parModel,
           readAccessorValues(output_accessor, sampler.scales,
                              [&](std::size_t index) {
                                return readVec3AccessorElement(
-                                   parModel, output_accessor, index, parPath);
+                                   source, output_accessor, index);
                              });
           break;
       }

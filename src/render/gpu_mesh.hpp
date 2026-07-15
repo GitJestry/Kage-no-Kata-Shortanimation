@@ -42,9 +42,9 @@ class GpuMesh final {
   GpuMesh(const GpuMesh&) = delete;
   GpuMesh& operator=(const GpuMesh&) = delete;
 
-  GpuMesh(GpuMesh&& parOther) noexcept;
-  GpuMesh& operator=(GpuMesh&& parOther) noexcept;
-  ~GpuMesh();
+  GpuMesh(GpuMesh&& parOther) noexcept = default;
+  GpuMesh& operator=(GpuMesh&& parOther) noexcept = default;
+  ~GpuMesh() = default;
 
   void upload(const assets::StaticModel& parModel,
               TextureResourceCache& parTextureCache);
@@ -87,18 +87,7 @@ class GpuMesh final {
     GpuBuffer vertex_buffer;
     GpuBuffer index_buffer;
     glm::mat4 transform{1.0f};
-    glm::vec4 base_color_factor{1.0f};
-    assets::MaterialTextureSlot base_color_texture;
-    assets::MaterialTextureSlot normal_texture;
-    assets::MaterialTextureSlot metallic_roughness_texture;
-    assets::MaterialTextureSlot emissive_texture;
-    float metallic_factor = 1.0f;
-    float roughness_factor = 1.0f;
-    float normal_scale = 1.0f;
-    float alpha_cutoff = 0.5f;
-    glm::vec3 emissive_factor{0.0f};
-    assets::AlphaMode alpha_mode = assets::AlphaMode::Opaque;
-    bool double_sided = false;
+    assets::StaticMaterial material;
     bool has_skin = false;
     std::uint32_t skin_index = assets::INVALID_SKIN_INDEX;
     std::size_t primitive_index = 0;

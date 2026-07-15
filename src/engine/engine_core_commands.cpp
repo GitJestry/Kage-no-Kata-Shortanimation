@@ -7,6 +7,20 @@
 #include <stdexcept>
 #include <utility>
 
+namespace {
+
+template <typename Edit>
+void editEntity(kage::engine::EngineCore& parEngine,
+                kage::scene::EntityId parEntity, Edit&& parEdit) {
+  kage::scene::EntityRecord* entity =
+      parEngine.getWorld().findEntity(parEntity);
+  if (entity != nullptr && parEdit(*entity)) {
+    parEngine.markProjectDirty();
+  }
+}
+
+}  // namespace
+
 namespace kage::engine {
 
 std::size_t EngineCore::createScene(std::string parName) {
@@ -208,62 +222,54 @@ void EngineCore::frameWorld() {
 
 void EngineCore::setEntityName(scene::EntityId parEntity,
                                std::string parName) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || parName.empty()) {
-    return;
-  }
-  entity->name.name = std::move(parName);
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (parName.empty()) return false;
+    entity.name.name = std::move(parName);
+    return true;
+  });
 }
 
 void EngineCore::setEntityPosition(scene::EntityId parEntity,
                                    const glm::vec3& parPosition) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-  entity->transform.transform.translation = parPosition;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    entity.transform.transform.translation = parPosition;
+    return true;
+  });
 }
 
 void EngineCore::setEntityTransform(scene::EntityId parEntity,
                                     const math::Transform& parTransform) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-  entity->transform.transform = parTransform;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    entity.transform.transform = parTransform;
+    return true;
+  });
 }
 
 void EngineCore::setEntityCamera(scene::EntityId parEntity,
                                  const scene::CameraComponent& parCamera) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->camera.has_value()) {
-    return;
-  }
-  entity->camera = parCamera;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (!entity.camera) return false;
+    entity.camera = parCamera;
+    return true;
+  });
 }
 
 void EngineCore::setStaticMeshVisible(scene::EntityId parEntity,
                                       bool parVisible) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->static_mesh.has_value()) {
-    return;
-  }
-  entity->static_mesh->visible = parVisible;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (!entity.static_mesh) return false;
+    entity.static_mesh->visible = parVisible;
+    return true;
+  });
 }
 
 void EngineCore::setLight(scene::EntityId parEntity,
                           const scene::LightComponent& parLight) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->light.has_value()) {
-    return;
-  }
-  entity->light = parLight;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (!entity.light) return false;
+    entity.light = parLight;
+    return true;
+  });
 }
 
 void EngineCore::setSunLightSettings(

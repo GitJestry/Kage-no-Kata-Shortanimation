@@ -72,27 +72,18 @@ namespace {
 [[nodiscard]] bool hasClipNamed(const ModelAsset& parAsset,
                                 std::string_view parClipName) {
   const std::string clip_key = normalizedTextKey(parClipName);
-  for (const AnimationClip& clip : parAsset.animation_clips) {
-    if (normalizedTextKey(clip.name) == clip_key) {
-      return true;
-    }
-  }
-  return false;
+  return std::any_of(parAsset.animation_clips.begin(),
+                     parAsset.animation_clips.end(), [&](const auto& clip) {
+                       return normalizedTextKey(clip.name) == clip_key;
+                     });
 }
 
 void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
-  std::vector<AssetRegistry::AnimationPackEntry> unique_packs;
-  unique_packs.reserve(parAsset.animation_packs.size());
   std::unordered_set<std::string> seen_paths;
-
-  for (AssetRegistry::AnimationPackEntry& pack : parAsset.animation_packs) {
+  std::erase_if(parAsset.animation_packs, [&](const auto& pack) {
     const std::string path_key = canonicalPathKey(pack.path).generic_string();
-    if (seen_paths.insert(path_key).second) {
-      unique_packs.push_back(std::move(pack));
-    }
-  }
-
-  parAsset.animation_packs = std::move(unique_packs);
+    return !seen_paths.insert(path_key).second;
+  });
 }
 
 [[nodiscard]] std::vector<const AnimationClip*> selectImportedAnimationClips(
@@ -120,21 +111,21 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
   return clips;
 }
 
-[[nodiscard]] std::optional<std::uint32_t> findNodeByName(
-    const ModelAsset& parAsset, std::string_view parName) {
-  if (parName.empty()) {
-    return std::nullopt;
-  }
-  for (std::size_t index = 0; index < parAsset.nodes.size(); ++index) {
-    if (parAsset.nodes[index].name == parName) {
-      return static_cast<std::uint32_t>(index);
+using NodeMap = std::unordered_map<std::string_view, std::uint32_t>;
+
+[[nodiscard]] NodeMap indexNodes(const ModelAsset& parAsset) {
+  NodeMap nodes;
+  for (std::uint32_t index = 0; index < parAsset.nodes.size(); ++index) {
+    if (!parAsset.nodes[index].name.empty()) {
+      nodes.try_emplace(parAsset.nodes[index].name, index);
     }
   }
-  return std::nullopt;
+  return nodes;
 }
 
 [[nodiscard]] bool hasCompatibleJointNames(const ModelAsset& parTarget,
                                            const ModelAsset& parSource,
+                                           const NodeMap& parTargetNodes,
                                            std::string& parError) {
   if (parTarget.skins.empty() || parSource.skins.empty()) {
     parError = "target and imported animation must both contain a skin";
@@ -148,9 +139,8 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
       return false;
     }
     const std::string& joint_name = parSource.nodes[source_joint].name;
-    const std::optional<std::uint32_t> target_node =
-        findNodeByName(parTarget, joint_name);
-    if (!target_node.has_value()) {
+    const auto target_node = parTargetNodes.find(joint_name);
+    if (target_node == parTargetNodes.end()) {
       parError = "target rig has no joint named " + joint_name;
       return false;
     }
@@ -167,7 +157,7 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
     const std::string& source_parent_name =
         parSource.nodes[source_parent].name;
     const std::uint32_t target_parent =
-        parTarget.nodes[*target_node].parent_index;
+        parTarget.nodes[target_node->second].parent_index;
     if (target_parent != INVALID_NODE_INDEX &&
         target_parent < parTarget.nodes.size() &&
         parTarget.nodes[target_parent].name == source_parent_name) {
@@ -188,7 +178,8 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
 
 [[nodiscard]] std::size_t appendRemappedAnimationClips(
     ModelAsset& parTarget, const ModelAsset& parSource,
-    std::string_view parPackLabel, std::string& parError) {
+    const NodeMap& parTargetNodes, std::string_view parPackLabel,
+    std::string& parError) {
   std::size_t appended_count = 0;
   const std::vector<const AnimationClip*> source_clips =
       selectImportedAnimationClips(parSource, parPackLabel);
@@ -207,15 +198,14 @@ void deduplicateAnimationPacks(AssetRegistry::AssetLibraryEntry& parAsset) {
       }
       const std::string& source_node_name =
           parSource.nodes[source_channel.target_node].name;
-      const std::optional<std::uint32_t> target_node =
-          findNodeByName(parTarget, source_node_name);
-      if (!target_node.has_value()) {
+      const auto target_node = parTargetNodes.find(source_node_name);
+      if (target_node == parTargetNodes.end()) {
         parError = "animation channel target is not in target rig: " +
                    source_node_name;
         return appended_count;
       }
       AnimationChannel channel = source_channel;
-      channel.target_node = *target_node;
+      channel.target_node = target_node->second;
       clip.channels.push_back(channel);
     }
 
@@ -281,26 +271,19 @@ std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
                                               std::filesystem::path parPath,
                                               ModelAsset parDocument) {
   const AssetId asset_id = makeStableAssetId("asset", parPath);
-  if (const std::optional<std::size_t> existing = getAssetIndexById(asset_id);
-      existing.has_value()) {
-    AssetLibraryEntry& entry = m_asset_library[*existing];
-    entry.label = std::move(parLabel);
-    entry.path = std::move(parPath);
-    entry.document = std::move(parDocument);
-    entry.load_state = AssetLoadState::Ready;
-    entry.load_error.clear();
-    return *existing;
+  const std::optional<std::size_t> existing = getAssetIndexById(asset_id);
+  const std::size_t index = existing.value_or(m_asset_library.size());
+  if (!existing) {
+    m_asset_library.push_back({});
+    m_asset_library.back().id = asset_id;
   }
-
-  AssetLibraryEntry entry;
-  entry.id = asset_id;
+  AssetLibraryEntry& entry = m_asset_library[index];
   entry.label = std::move(parLabel);
   entry.path = std::move(parPath);
   entry.document = std::move(parDocument);
   entry.load_state = AssetLoadState::Ready;
-
-  m_asset_library.push_back(std::move(entry));
-  return m_asset_library.size() - 1;
+  entry.load_error.clear();
+  return index;
 }
 
 void AssetRegistry::requestLoad(std::size_t parAssetIndex) {
@@ -430,11 +413,8 @@ const AssetRegistry::AssetLibraryEntry* AssetRegistry::getAssetLibraryEntry(
 
 AssetRegistry::AssetLibraryEntry* AssetRegistry::getAssetLibraryEntry(
     std::size_t parAssetIndex) {
-  if (parAssetIndex >= m_asset_library.size()) {
-    return nullptr;
-  }
-
-  return &m_asset_library[parAssetIndex];
+  return const_cast<AssetLibraryEntry*>(
+      std::as_const(*this).getAssetLibraryEntry(parAssetIndex));
 }
 
 std::optional<std::size_t> AssetRegistry::getAssetIndexById(
@@ -470,18 +450,20 @@ void AssetRegistry::applyAnimationPacks(AssetLibraryEntry& parAsset) {
   }
 
   deduplicateAnimationPacks(parAsset);
+  const NodeMap target_nodes = indexNodes(*parAsset.document);
   for (const AnimationPackEntry& pack : parAsset.animation_packs) {
     try {
       GltfAssetLoader loader;
       ModelAsset animation_asset = loader.loadDocument(pack.path);
       std::string error;
-      if (!hasCompatibleJointNames(*parAsset.document, animation_asset, error)) {
+      if (!hasCompatibleJointNames(*parAsset.document, animation_asset,
+                                   target_nodes, error)) {
         parAsset.load_error = error;
         parAsset.load_state = AssetLoadState::Error;
         return;
       }
       const std::size_t appended_count = appendRemappedAnimationClips(
-          *parAsset.document, animation_asset, pack.label, error);
+          *parAsset.document, animation_asset, target_nodes, pack.label, error);
       if (appended_count == 0) {
         parAsset.load_error = error.empty() ? "animation pack added no clips"
                                             : error;

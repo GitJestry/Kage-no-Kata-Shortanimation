@@ -250,6 +250,27 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
     parSession.movie_selection.clip_id = clip_id;
     parSession.movie_selection.instance_id = 0;
   };
+  const auto drawTrimHandle = [&](const char* id, bool left,
+                                  const ImVec2& bar_min,
+                                  const ImVec2& bar_max,
+                                  const film::SequenceClip& clip) {
+    const float x = left ? bar_min.x : bar_max.x - HANDLE_WIDTH;
+    ImGui::SetCursorScreenPos(ImVec2(x, bar_min.y));
+    ImGui::InvisibleButton(id, ImVec2(HANDLE_WIDTH, bar_max.y - bar_min.y));
+    if (ImGui::IsItemActivated()) {
+      selectClip(clip.id);
+      gesture = {clip.id, left ? ClipGesture::Mode::TrimStart
+                               : ClipGesture::Mode::TrimEnd,
+                 clip.start_frame, clip.end_frame, ImGui::GetIO().MousePos.x};
+    }
+    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
+      ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+      const float line_x = left ? bar_min.x + 1.0f : bar_max.x - 1.0f;
+      draw_list->AddLine(ImVec2(line_x, bar_min.y + 2.0f),
+                         ImVec2(line_x, bar_max.y - 2.0f),
+                         IM_COL32(245, 248, 250, 255), 2.0f);
+    }
+  };
   const auto resolved_movements = film::resolveMovementSegments(*sequence);
 
   for (std::size_t lane_index = 0; lane_index < lanes.size(); ++lane_index) {
@@ -307,32 +328,8 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
                    clip.end_frame, ImGui::GetIO().MousePos.x};
       }
 
-      ImGui::SetCursorScreenPos(bar_min);
-      ImGui::InvisibleButton("##TrimStart", ImVec2(HANDLE_WIDTH, bar_max.y - bar_min.y));
-      if (ImGui::IsItemActivated()) {
-        selectClip(clip.id);
-        gesture = {clip.id, ClipGesture::Mode::TrimStart, clip.start_frame,
-                   clip.end_frame, ImGui::GetIO().MousePos.x};
-      }
-      if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-        draw_list->AddLine(ImVec2(bar_min.x + 1.0f, bar_min.y + 2.0f),
-                           ImVec2(bar_min.x + 1.0f, bar_max.y - 2.0f),
-                           IM_COL32(245, 248, 250, 255), 2.0f);
-      }
-      ImGui::SetCursorScreenPos(ImVec2(bar_max.x - HANDLE_WIDTH, bar_min.y));
-      ImGui::InvisibleButton("##TrimEnd", ImVec2(HANDLE_WIDTH, bar_max.y - bar_min.y));
-      if (ImGui::IsItemActivated()) {
-        selectClip(clip.id);
-        gesture = {clip.id, ClipGesture::Mode::TrimEnd, clip.start_frame,
-                   clip.end_frame, ImGui::GetIO().MousePos.x};
-      }
-      if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-        draw_list->AddLine(ImVec2(bar_max.x - 1.0f, bar_min.y + 2.0f),
-                           ImVec2(bar_max.x - 1.0f, bar_max.y - 2.0f),
-                           IM_COL32(245, 248, 250, 255), 2.0f);
-      }
+      drawTrimHandle("##TrimStart", true, bar_min, bar_max, clip);
+      drawTrimHandle("##TrimEnd", false, bar_min, bar_max, clip);
       ImGui::PopID();
     }
   }

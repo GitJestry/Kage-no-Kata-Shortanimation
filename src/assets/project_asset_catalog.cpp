@@ -17,6 +17,7 @@
 namespace {
 
 using json = nlohmann::json;
+constexpr int ASSET_CATALOG_VERSION = 2;
 
 [[nodiscard]] std::filesystem::path projectRootFromCatalogPath(
     const std::filesystem::path& parCatalogPath) {
@@ -56,7 +57,8 @@ ProjectAssetCatalog loadProjectAssetCatalog(
 
   json document;
   input >> document;
-  if (!document.is_object() || document.value("version", 0) != 2) {
+  if (!document.is_object() ||
+      document.value("version", 0) != ASSET_CATALOG_VERSION) {
     throw std::runtime_error("Unsupported Asset Catalog schema version; expected 2");
   }
   const std::filesystem::path project_root =
@@ -100,7 +102,7 @@ void saveProjectAssetCatalog(const std::filesystem::path& parCatalogPath,
                              const ProjectAssetCatalog& parCatalog) {
   std::filesystem::create_directories(parCatalogPath.parent_path());
   json document;
-  document["version"] = 2;
+  document["version"] = ASSET_CATALOG_VERSION;
   document["assets"] = json::array();
   for (const ProjectAssetEntry& asset : parCatalog.assets) {
     json asset_json = {
@@ -130,6 +132,9 @@ void saveProjectAssetCatalog(const std::filesystem::path& parCatalogPath,
 
   std::ofstream output(parCatalogPath);
   output << document.dump(2);
+  if (!output) {
+    throw std::runtime_error("Could not write Asset Catalog");
+  }
 }
 
 }  // namespace kage::assets

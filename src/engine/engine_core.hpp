@@ -178,6 +178,7 @@ class EngineCore final {
   [[nodiscard]] glm::vec3 getPointInFrontOfCamera(float parDistance) const;
 
  private:
+  [[nodiscard]] float uploadLoadedAsset(std::size_t parAssetIndex);
   void attachLoadedAssetToInstances(std::size_t parAssetIndex);
   void pollAssetStreaming();
   [[nodiscard]] scene::SceneManager::SceneRecord& getActiveScene();
@@ -186,6 +187,11 @@ class EngineCore final {
       const camera::Camera& parCamera,
       const film::FilmFrameState* parFilmState = nullptr) const;
   void rebuildAssetInstanceCounts();
+  [[nodiscard]] std::optional<scene::EntityId> pickEntityForView(
+      const camera::Camera& parCamera,
+      const film::FilmFrameState* parFilmState,
+      const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize,
+      bool parUseHandleCenterDistance);
   friend class ProjectSerializer;
 
   platform::RuntimePaths m_runtime_paths;

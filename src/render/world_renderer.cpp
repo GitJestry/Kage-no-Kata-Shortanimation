@@ -40,11 +40,6 @@ constexpr kage::render::ShadowRenderSettings FINAL_SHADOW_SETTINGS{
 constexpr kage::render::ShadowRenderSettings MATERIAL_SHADOW_SETTINGS{
     2048, 70.0f, false};
 
-struct MeshCenterQuery final {
-  bool found = false;
-  glm::vec3 center{0.0f};
-};
-
 void addLine(std::vector<kage::render::DebugVertex>& parVertices,
              const glm::vec3& parStart, const glm::vec3& parEnd,
              const glm::vec3& parColor) {
@@ -280,13 +275,12 @@ void addFloorContactCue(std::vector<kage::render::DebugVertex>& parVertices,
   const bool intersects_floor = parBounds.min.y < 0.0f;
   const glm::vec3 color =
       intersects_floor ? FLOOR_INTERSECTION_COLOR : SELECTED_CONTACT_COLOR;
-  const glm::vec3 min(parBounds.min.x, 0.004f, parBounds.min.z);
-  const glm::vec3 max(parBounds.max.x, 0.004f, parBounds.max.z);
+  constexpr float CUE_HEIGHT = 0.004f;
   const std::array<glm::vec3, 4> footprint = {
-      glm::vec3(min.x, 0.004f, min.z),
-      glm::vec3(max.x, 0.004f, min.z),
-      glm::vec3(max.x, 0.004f, max.z),
-      glm::vec3(min.x, 0.004f, max.z),
+      glm::vec3(parBounds.min.x, CUE_HEIGHT, parBounds.min.z),
+      glm::vec3(parBounds.max.x, CUE_HEIGHT, parBounds.min.z),
+      glm::vec3(parBounds.max.x, CUE_HEIGHT, parBounds.max.z),
+      glm::vec3(parBounds.min.x, CUE_HEIGHT, parBounds.max.z),
   };
   for (std::size_t index = 0; index < footprint.size(); ++index) {
     addLine(parVertices, footprint[index],
@@ -310,34 +304,28 @@ void addTransformAxes(std::vector<kage::render::DebugVertex>& parVertices,
       parAxisSpace == kage::render::GizmoAxisSpace::World
           ? glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
           : parTransform.rotation;
-  const glm::vec3 right = rotation * glm::vec3(1.0f, 0.0f, 0.0f);
-  const glm::vec3 up = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
-  const glm::vec3 forward = rotation * glm::vec3(0.0f, 0.0f, 1.0f);
+  const std::array<glm::vec3, 3> axes{
+      rotation * glm::vec3(1.0f, 0.0f, 0.0f),
+      rotation * glm::vec3(0.0f, 1.0f, 0.0f),
+      rotation * glm::vec3(0.0f, 0.0f, 1.0f)};
+  constexpr std::array<glm::vec3, 3> COLORS{
+      kage::render::GIZMO_AXIS_X_COLOR, kage::render::GIZMO_AXIS_Y_COLOR,
+      kage::render::GIZMO_AXIS_Z_COLOR};
   const float shaft_radius = std::max(parLength * 0.012f, 0.01f);
   const float head_length = parLength * 0.16f;
   const float head_radius = parLength * 0.04f;
-  const glm::vec4 axis_x_fill(kage::render::GIZMO_AXIS_X_COLOR,
-                              GIZMO_AXIS_ALPHA);
-  const glm::vec4 axis_y_fill(kage::render::GIZMO_AXIS_Y_COLOR,
-                              GIZMO_AXIS_ALPHA);
-  const glm::vec4 axis_z_fill(kage::render::GIZMO_AXIS_Z_COLOR,
-                              GIZMO_AXIS_ALPHA);
-  addCylinder(parSolid, position, position + right * (parLength - head_length),
-              shaft_radius, axis_x_fill);
-  addCylinder(parSolid, position, position + up * (parLength - head_length),
-              shaft_radius, axis_y_fill);
-  addCylinder(parSolid, position, position + forward * (parLength - head_length),
-              shaft_radius, axis_z_fill);
-  addCone(parSolid, position + right * parLength, right, head_length,
-          head_radius, axis_x_fill);
-  addCone(parSolid, position + up * parLength, up, head_length, head_radius,
-          axis_y_fill);
-  addCone(parSolid, position + forward * parLength, forward, head_length,
-          head_radius, axis_z_fill);
+  for (std::size_t index = 0; index < axes.size(); ++index) {
+    const glm::vec4 fill(COLORS[index], GIZMO_AXIS_ALPHA);
+    addCylinder(parSolid, position,
+                position + axes[index] * (parLength - head_length),
+                shaft_radius, fill);
+    addCone(parSolid, position + axes[index] * parLength, axes[index],
+            head_length, head_radius, fill);
+  }
   addSolidSphere(parSolid, position, parLength * 0.055f, ROTATION_FILL);
-  addCircle(parVertices, position, right, forward, parLength * 0.24f,
+  addCircle(parVertices, position, axes[0], axes[2], parLength * 0.24f,
             ROTATION_COLOR);
-  const glm::vec3 handle_direction = glm::normalize(right + up);
+  const glm::vec3 handle_direction = glm::normalize(axes[0] + axes[1]);
   const glm::vec3 handle_position =
       position + handle_direction * parLength * 0.42f;
   addLine(parVertices, position, handle_position, ROTATION_COLOR);
@@ -420,10 +408,10 @@ void addSunOverlay(std::vector<kage::render::DebugVertex>& parVertices,
   }
 }
 
-[[nodiscard]] MeshCenterQuery findNearestMeshCenter(
+[[nodiscard]] std::optional<glm::vec3> findNearestMeshCenter(
     const kage::scene::SceneManager::SceneRecord& parScene,
     const glm::vec3& parPosition) {
-  MeshCenterQuery result;
+  std::optional<glm::vec3> result;
   float best_distance_squared = std::numeric_limits<float>::max();
   for (const kage::scene::EntityRecord& entity :
        parScene.world.getEntities()) {
@@ -441,9 +429,8 @@ void addSunOverlay(std::vector<kage::render::DebugVertex>& parVertices,
     const glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
     const float distance_squared = glm::dot(center - parPosition,
                                            center - parPosition);
-    if (!result.found || distance_squared < best_distance_squared) {
-      result.found = true;
-      result.center = center;
+    if (!result || distance_squared < best_distance_squared) {
+      result = center;
       best_distance_squared = distance_squared;
     }
   }
@@ -471,10 +458,10 @@ void addCameraGizmo(std::vector<kage::render::DebugVertex>& parVertices,
   for (const glm::vec3& corner : corners) {
     addLine(parVertices, position, corner, CAMERA_GIZMO_COLOR);
   }
-  addLine(parVertices, corners[0], corners[1], CAMERA_GIZMO_COLOR);
-  addLine(parVertices, corners[1], corners[2], CAMERA_GIZMO_COLOR);
-  addLine(parVertices, corners[2], corners[3], CAMERA_GIZMO_COLOR);
-  addLine(parVertices, corners[3], corners[0], CAMERA_GIZMO_COLOR);
+  for (std::size_t index = 0; index < corners.size(); ++index) {
+    addLine(parVertices, corners[index], corners[(index + 1) % corners.size()],
+            CAMERA_GIZMO_COLOR);
+  }
 }
 
 }  // namespace
@@ -902,15 +889,15 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                     axis_length * 0.07f);
     }
     if (selected_entity->light.has_value()) {
-      const MeshCenterQuery nearest_mesh = findNearestMeshCenter(
+      const std::optional<glm::vec3> nearest_mesh = findNearestMeshCenter(
           parScene, selected_entity->transform.transform.translation);
-      if (nearest_mesh.found) {
+      if (nearest_mesh) {
         const glm::vec3 color =
             glm::clamp(selected_entity->light->color, glm::vec3(0.0f),
                        glm::vec3(1.0f));
         addLine(m_line_vertices,
                 selected_entity->transform.transform.translation,
-                nearest_mesh.center, color);
+                *nearest_mesh, color);
       }
     }
   }
