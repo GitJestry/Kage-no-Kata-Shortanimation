@@ -49,40 +49,8 @@ void drawLightingPanel(engine::EngineCore& parEngine) {
   }
 
   ImGui::SeparatorText("Environment");
-  lighting::LightingState state = parEngine.getLightingSystem().getState();
-  glm::vec3 ambient_diffuse = state.ambient_diffuse;
-  glm::vec3 ambient_specular = state.ambient_specular;
-  float exposure = state.exposure;
-  bool ambient_enabled =
-      glm::length(ambient_diffuse) > 0.0001f ||
-      glm::length(ambient_specular) > 0.0001f;
-  if (ImGui::Checkbox("Ambient enabled", &ambient_enabled)) {
-    if (ambient_enabled) {
-      if (glm::length(ambient_diffuse) <= 0.0001f) {
-        ambient_diffuse = glm::vec3(0.04f);
-      }
-      if (glm::length(ambient_specular) <= 0.0001f) {
-        ambient_specular = glm::vec3(0.02f);
-      }
-    } else {
-      ambient_diffuse = glm::vec3(0.0f);
-      ambient_specular = glm::vec3(0.0f);
-    }
-    parEngine.setAmbientDiffuse(ambient_diffuse);
-    parEngine.setAmbientSpecular(ambient_specular);
-  }
-  if (!ambient_enabled) {
-    ImGui::BeginDisabled();
-  }
-  if (ImGui::ColorEdit3("Ambient diffuse", &ambient_diffuse.x)) {
-    parEngine.setAmbientDiffuse(ambient_diffuse);
-  }
-  if (ImGui::ColorEdit3("Ambient specular", &ambient_specular.x)) {
-    parEngine.setAmbientSpecular(ambient_specular);
-  }
-  if (!ambient_enabled) {
-    ImGui::EndDisabled();
-  }
+  float exposure = parEngine.getLightingState().exposure;
+  ImGui::TextDisabled("Illumination comes from the sky or panorama");
   if (ImGui::DragFloat("Exposure", &exposure, 0.02f, 0.0f, 8.0f)) {
     parEngine.setExposure(exposure);
   }

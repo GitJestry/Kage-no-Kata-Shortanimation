@@ -28,23 +28,11 @@ struct StaticMeshComponent final {
   std::size_t mesh_handle = INVALID_STATIC_MESH_HANDLE;
   std::size_t asset_library_index = INVALID_ASSET_LIBRARY_INDEX;
   math::Bounds3 local_bounds;
-  float opacity = 1.0f;
   bool visible = true;
 };
 
 struct RigComponent final {
   std::vector<std::vector<glm::mat4>> primitive_skin_matrices;
-};
-
-struct AnimationPlayerComponent final {
-  std::size_t clip_index = 0;
-  std::size_t blend_clip_index = 0;
-  float time_seconds = 0.0f;
-  float blend_time_seconds = 0.0f;
-  float blend_duration_seconds = 0.0f;
-  float playback_speed = 1.0f;
-  bool playing = false;
-  bool looping = true;
 };
 
 struct CameraComponent final {
@@ -66,6 +54,7 @@ struct LightComponent final {
   float intensity = 3.0f;
   float range = 9.0f;
   bool enabled = true;
+  bool casts_shadows = true;
 };
 
 struct SunLightSettings final {

@@ -48,25 +48,6 @@ void World::setRig(EntityId parEntity, RigComponent parRig) {
   entity->rig = std::move(parRig);
 }
 
-void World::setAnimationPlayer(
-    EntityId parEntity, AnimationPlayerComponent parAnimationPlayer) {
-  EntityRecord* entity = findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  entity->animation_player = parAnimationPlayer;
-}
-
-void World::clearAnimationPlayer(EntityId parEntity) {
-  EntityRecord* entity = findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  entity->animation_player.reset();
-}
-
 void World::setCamera(EntityId parEntity, CameraComponent parCamera) {
   EntityRecord* entity = findEntity(parEntity);
   if (entity == nullptr) {

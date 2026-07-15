@@ -3,6 +3,7 @@ build-*/
 cmake-build-*/
 out/
 .kage_local/
+.kage_cache/
 
 _deps/
 CMakeFiles/

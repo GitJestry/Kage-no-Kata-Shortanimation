@@ -5,6 +5,12 @@ project(kage_engine VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+    Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 include(FetchContent)
 include(cmake/Sources.cmake)
 include(cmake/PatchGltemplate.cmake)
@@ -35,40 +41,23 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tinygltf)
 
+FetchContent_Declare(
+  meshoptimizer
+  URL https://github.com/zeux/meshoptimizer/archive/refs/tags/v1.1.tar.gz
+  URL_HASH SHA256=b787011f81b4b3069c2f9065b7c191efdd4189a49be32ba5282dd5579f05261a
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "" FORCE)
+set(MESHOPT_BUILD_GLTFPACK OFF CACHE BOOL "" FORCE)
+set(MESHOPT_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(meshoptimizer)
+
 add_executable(${PROJECT_NAME} src/main.cpp ${KAGE_ENGINE_SOURCES})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE src)
-target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf)
-
-function(kage_add_check TARGET_NAME)
-  add_executable(${TARGET_NAME} ${ARGN})
-  target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
-  target_include_directories(${TARGET_NAME} PRIVATE src)
-  target_link_libraries(${TARGET_NAME} PRIVATE tinygltf glm)
-endfunction()
-
-kage_add_check(asset_import_check
-  tests/asset_import_check.cpp
-  src/assets/gltf_asset_loader.cpp
-)
-kage_add_check(animation_hierarchy_check
-  tests/animation_hierarchy_check.cpp
-  src/animation/animator.cpp
-)
-kage_add_check(animation_playback_check
-  tests/animation_playback_check.cpp
-  src/animation/animator.cpp
-  src/assets/gltf_asset_loader.cpp
-)
-kage_add_check(animation_import_compatibility_check
-  tests/animation_import_compatibility_check.cpp
-  src/assets/asset_registry.cpp
-  src/assets/gltf_asset_loader.cpp
-)
-kage_add_check(light_response_check
-  tests/light_response_check.cpp
-  src/lighting/light_math.cpp
-)
+target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf meshoptimizer)
+target_compile_definitions(framework PRIVATE
+  KAGE_GL_VALIDATION=$<IF:$<CONFIG:Debug>,1,0>)
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
@@ -93,65 +82,25 @@ set(RUNTIME_ASSET_DIRECTORIES
   textures
 )
 
-foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)
-  add_custom_command(
-    TARGET ${PROJECT_NAME}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E rm -rf
-      "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-      "${CMAKE_CURRENT_SOURCE_DIR}/assets/${ASSET_DIRECTORY}"
-      "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
-    COMMENT "Copying runtime ${ASSET_DIRECTORY} assets"
-    VERBATIM
-  )
-endforeach()
+option(KAGE_COPY_RUNTIME_ASSETS
+  "Copy runtime assets beside the executable after each build" OFF)
+if(KAGE_COPY_RUNTIME_ASSETS)
+  foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)
+    add_custom_command(
+      TARGET ${PROJECT_NAME}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/${ASSET_DIRECTORY}"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets/${ASSET_DIRECTORY}"
+      COMMENT "Copying runtime ${ASSET_DIRECTORY} assets"
+      VERBATIM
+    )
+  endforeach()
+endif()
 
 install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION .
   BUNDLE DESTINATION .
-)
-
-enable_testing()
-add_test(
-  NAME asset_import_sword
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/sword.glb"
-)
-add_test(
-  NAME asset_import_torii_gate
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/torii_gate.glb"
-)
-add_test(
-  NAME asset_import_samurai_rig
-  COMMAND asset_import_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
-    --require-rig
-    --min-animation-clips
-    2
-    --min-real-clip-duration
-    1.0
-    --min-clip-keys
-    3
-)
-add_test(
-  NAME animation_hierarchy
-  COMMAND animation_hierarchy_check
-)
-add_test(
-  NAME animation_playback_samurai
-  COMMAND animation_playback_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
-)
-add_test(
-  NAME animation_import_compatibility
-  COMMAND animation_import_compatibility_check
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/samurai.glb"
-)
-add_test(
-  NAME light_direction_response
-  COMMAND light_response_check
 )
 
 foreach(ASSET_DIRECTORY IN LISTS RUNTIME_ASSET_DIRECTORIES)

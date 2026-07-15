@@ -20,12 +20,12 @@ constexpr float FAR_PLANE_FOCUS_SCALE = 16.0f;
 namespace kage::camera {
 
 CameraSystem::CameraSystem() {
-  m_camera.lookAt(glm::vec3(0.0f, 0.7f, 0.0f));
-  m_fly_controller.syncFromCamera(m_camera);
+  m_editor_camera.lookAt(glm::vec3(0.0f, 0.7f, 0.0f));
+  m_fly_controller.syncFromCamera(m_editor_camera);
 }
 
 void CameraSystem::update(float parDeltaSeconds) {
-  m_fly_controller.update(m_camera, m_fly_input, parDeltaSeconds);
+  m_fly_controller.update(m_editor_camera, m_fly_input, parDeltaSeconds);
 }
 
 void CameraSystem::frameBounds(const math::Bounds3& parBounds) {
@@ -35,13 +35,13 @@ void CameraSystem::frameBounds(const math::Bounds3& parBounds) {
                          : glm::vec3(0.0f);
   const float frame_extent = std::max(extent, 0.1f);
   const float frame_distance = frame_extent * DEFAULT_FOCUS_DISTANCE_SCALE;
-  m_camera.position =
-      target - m_camera.getForward() * frame_distance;
-  m_camera.far_plane =
-      std::max(m_camera.near_plane * 2.0f,
+  m_editor_camera.position =
+      target - m_editor_camera.getForward() * frame_distance;
+  m_editor_camera.far_plane =
+      std::max(m_editor_camera.near_plane * 2.0f,
                frame_distance + frame_extent * FAR_PLANE_FOCUS_SCALE);
-  m_camera.lookAt(target);
-  m_fly_controller.syncFromCamera(m_camera);
+  m_editor_camera.lookAt(target);
+  m_fly_controller.syncFromCamera(m_editor_camera);
 }
 
 void CameraSystem::handleMouseMove(const glm::vec2& parPixelDelta,
@@ -52,7 +52,7 @@ void CameraSystem::handleMouseMove(const glm::vec2& parPixelDelta,
   static_cast<void>(parMiddleButton);
   static_cast<void>(parViewportSize);
   if (parRightButton) {
-    m_fly_controller.look(m_camera, parPixelDelta);
+    m_fly_controller.look(m_editor_camera, parPixelDelta);
   }
 }
 
@@ -84,19 +84,19 @@ void CameraSystem::setMovement(CameraMovement parMovement, bool parActive) {
 }
 
 void CameraSystem::syncFlyControllerFromCamera() {
-  m_fly_controller.syncFromCamera(m_camera);
+  m_fly_controller.syncFromCamera(m_editor_camera);
 }
 
 void CameraSystem::setFlyMoveSpeed(float parMoveSpeed) {
   m_fly_controller.setMoveSpeed(parMoveSpeed);
 }
 
-const Camera& CameraSystem::getCamera() const {
-  return m_camera;
+const Camera& CameraSystem::getEditorCamera() const {
+  return m_editor_camera;
 }
 
-Camera& CameraSystem::getCamera() {
-  return m_camera;
+Camera& CameraSystem::getEditorCamera() {
+  return m_editor_camera;
 }
 
 float CameraSystem::getFlyMoveSpeed() const {

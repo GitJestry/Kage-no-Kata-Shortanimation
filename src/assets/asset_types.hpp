@@ -83,6 +83,12 @@ struct MaterialTextureSlot final {
   [[nodiscard]] bool isValid() const;
 };
 
+enum class AlphaMode {
+  Opaque,
+  Mask,
+  Blend
+};
+
 struct StaticMaterial final {
   std::string name;
   glm::vec4 base_color_factor{1.0f};
@@ -95,8 +101,7 @@ struct StaticMaterial final {
   float normal_scale = 1.0f;
   float alpha_cutoff = 0.5f;
   glm::vec3 emissive_factor{0.0f};
-  bool alpha_blend = false;
-  bool alpha_mask = false;
+  AlphaMode alpha_mode = AlphaMode::Opaque;
   bool double_sided = false;
 };
 
@@ -195,7 +200,10 @@ struct AnimationChannel final {
   std::uint32_t sampler_index = 0;
 };
 
+using AnimationClipId = std::uint64_t;
+
 struct AnimationClip final {
+  AnimationClipId id = 0;
   std::string name;
   float duration_seconds = 0.0f;
   std::vector<AnimationSampler> samplers;
@@ -208,6 +216,11 @@ struct GltfMarker final {
   glm::mat4 transform{1.0f};
 };
 
+struct PrimitiveSkinBinding final {
+  std::uint32_t skin_index = INVALID_SKIN_INDEX;
+  glm::mat4 inverse_mesh_bind_transform{1.0f};
+};
+
 struct GltfDocument final {
   std::filesystem::path source_path;
   std::string scene_name;
@@ -216,6 +229,7 @@ struct GltfDocument final {
   std::vector<GltfNode> nodes;
   std::vector<std::uint32_t> root_nodes;
   std::vector<GltfSkin> skins;
+  std::vector<PrimitiveSkinBinding> primitive_skin_bindings;
   std::vector<AnimationClip> animation_clips;
   std::vector<GltfMarker> markers;
   GltfAssetStats stats;

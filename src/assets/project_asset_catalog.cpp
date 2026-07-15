@@ -80,6 +80,22 @@ ProjectAssetCatalog loadProjectAssetCatalog(
       catalog.assets.push_back(std::move(asset));
     }
   }
+  for (const json& environment_json :
+       document.value("environments", json::array())) {
+    EnvironmentAsset environment;
+    environment.id.value =
+        environment_json.value("id", AssetId{}.value);
+    environment.label = environment_json.value("label", "");
+    environment.path = readPath(environment_json, "path", project_root);
+    environment.hdr = environment_json.value("hdr", false);
+    if (!environment.id.isValid() && !environment.path.empty()) {
+      environment.id = makeStableAssetId("environment", environment.path);
+    }
+    if (environment.id.isValid() && !environment.label.empty() &&
+        !environment.path.empty()) {
+      catalog.environments.push_back(std::move(environment));
+    }
+  }
   return catalog;
 }
 
@@ -87,7 +103,7 @@ void saveProjectAssetCatalog(const std::filesystem::path& parCatalogPath,
                              const ProjectAssetCatalog& parCatalog) {
   std::filesystem::create_directories(parCatalogPath.parent_path());
   json document;
-  document["version"] = 1;
+  document["version"] = 2;
   document["assets"] = json::array();
   for (const ProjectAssetEntry& asset : parCatalog.assets) {
     json asset_json = {
@@ -105,6 +121,15 @@ void saveProjectAssetCatalog(const std::filesystem::path& parCatalogPath,
       });
     }
     document["assets"].push_back(std::move(asset_json));
+  }
+  document["environments"] = json::array();
+  for (const EnvironmentAsset& environment : parCatalog.environments) {
+    document["environments"].push_back({
+        {"id", environment.id.value},
+        {"label", environment.label},
+        {"path", environment.path.generic_string()},
+        {"hdr", environment.hdr},
+    });
   }
 
   std::ofstream output(parCatalogPath);

@@ -27,10 +27,6 @@ bool SelectionController::handleViewportLeftPress(
   m_last_left_click_seconds = m_elapsed_seconds;
   m_last_left_click_position = parCursorPixel;
 
-  if (elapsed_since_last > DOUBLE_CLICK_SECONDS || !near_last_click) {
-    return false;
-  }
-
   const std::optional<scene::EntityId> picked =
       parEngine.pickEntity(parCursorPixel, parViewportSize);
   if (!picked.has_value()) {
@@ -38,6 +34,9 @@ bool SelectionController::handleViewportLeftPress(
   }
 
   parEngine.selectEntity(*picked);
+  if (elapsed_since_last <= DOUBLE_CLICK_SECONDS && near_last_click) {
+    parEngine.frameEntity(*picked);
+  }
   return true;
 }
 

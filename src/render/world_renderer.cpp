@@ -8,8 +8,10 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <span>
 #include <utility>
 
@@ -18,7 +20,6 @@ namespace {
 constexpr glm::vec3 GRID_COLOR{0.115f, 0.12f, 0.13f};
 constexpr glm::vec3 GRID_AXIS_X_COLOR{0.34f, 0.12f, 0.12f};
 constexpr glm::vec3 GRID_AXIS_Z_COLOR{0.12f, 0.28f, 0.14f};
-constexpr glm::vec4 FLOOR_PLANE_COLOR{0.020f, 0.022f, 0.026f, 0.18f};
 constexpr glm::vec3 SELECTED_CONTACT_COLOR{1.0f, 1.0f, 1.0f};
 constexpr glm::vec3 FLOOR_INTERSECTION_COLOR{1.0f, 0.18f, 0.12f};
 constexpr glm::vec3 ROTATION_COLOR{1.0f, 0.18f, 0.14f};
@@ -35,50 +36,22 @@ struct MeshCenterQuery final {
   glm::vec3 center{0.0f};
 };
 
-[[nodiscard]] kage::math::Bounds3 makePointBounds(const glm::vec3& parPoint,
-                                                  float parExtent) {
-  kage::math::Bounds3 bounds;
-  const glm::vec3 extent(std::max(parExtent, 0.01f));
-  bounds.includePoint(parPoint - extent);
-  bounds.includePoint(parPoint + extent);
-  return bounds;
-}
-
-[[nodiscard]] kage::math::Bounds3 transformBounds(
-    const kage::math::Bounds3& parBounds, const glm::mat4& parTransform) {
-  kage::math::Bounds3 transformed;
-  if (!parBounds.is_valid) {
-    return transformed;
+[[nodiscard]] kage::math::Bounds3 getEntityWorldBounds(
+    const kage::scene::EntityRecord& parEntity,
+    const kage::math::Transform& parTransform) {
+  if (parEntity.static_mesh.has_value()) {
+    return kage::math::transformBounds(
+        parEntity.static_mesh->local_bounds,
+        parTransform.toMatrix());
   }
 
-  const std::array<glm::vec3, 8> corners = {
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.max.z),
-  };
-
-  for (const glm::vec3& corner : corners) {
-    transformed.includePoint(
-        glm::vec3(parTransform * glm::vec4(corner, 1.0f)));
-  }
-
-  return transformed;
+  return kage::math::makePointBounds(
+      parTransform.translation, ENTITY_HANDLE_EXTENT);
 }
 
 [[nodiscard]] kage::math::Bounds3 getEntityWorldBounds(
     const kage::scene::EntityRecord& parEntity) {
-  if (parEntity.static_mesh.has_value()) {
-    return transformBounds(parEntity.static_mesh->local_bounds,
-                           parEntity.transform.transform.toMatrix());
-  }
-
-  return makePointBounds(parEntity.transform.transform.translation,
-                         ENTITY_HANDLE_EXTENT);
+  return getEntityWorldBounds(parEntity, parEntity.transform.transform);
 }
 
 void addLine(std::vector<kage::render::LineVertex>& parVertices,
@@ -259,23 +232,36 @@ void addFloorGrid(std::vector<kage::render::LineVertex>& parVertices,
   }
 }
 
-void addFloorPlane(std::vector<kage::render::SolidGizmoVertex>& parVertices,
-                   const glm::vec3& parCameraPosition, int parRadius) {
-  const int radius = std::clamp(parRadius, 8, GRID_LINE_CAP / 2);
-  const int center_x = static_cast<int>(std::floor(parCameraPosition.x));
-  const int center_z = static_cast<int>(std::floor(parCameraPosition.z));
-  const float min_x = static_cast<float>(center_x - radius);
-  const float max_x = static_cast<float>(center_x + radius);
-  const float min_z = static_cast<float>(center_z - radius);
-  const float max_z = static_cast<float>(center_z + radius);
-  constexpr float FLOOR_Y = 0.0f;
-
-  const glm::vec3 a(min_x, FLOOR_Y, min_z);
-  const glm::vec3 b(max_x, FLOOR_Y, min_z);
-  const glm::vec3 c(max_x, FLOOR_Y, max_z);
-  const glm::vec3 d(min_x, FLOOR_Y, max_z);
-  addTriangle(parVertices, a, b, c, FLOOR_PLANE_COLOR);
-  addTriangle(parVertices, a, c, d, FLOOR_PLANE_COLOR);
+void addFilmMovementPath(
+    std::vector<kage::render::LineVertex>& parVertices,
+    const kage::film::FilmMovement& parMovement) {
+  constexpr glm::vec3 PATH_COLOR{0.24f, 0.72f, 1.0f};
+  constexpr glm::vec3 HANDLE_COLOR{1.0f, 0.72f, 0.20f};
+  const glm::vec3 delta =
+      parMovement.end.translation - parMovement.start.translation;
+  const glm::vec3 control_1 =
+      parMovement.automatic_position_controls
+          ? parMovement.start.translation + delta / 3.0f
+          : parMovement.position_control_1;
+  const glm::vec3 control_2 =
+      parMovement.automatic_position_controls
+          ? parMovement.end.translation - delta / 3.0f
+          : parMovement.position_control_2;
+  glm::vec3 previous = parMovement.start.translation;
+  for (int sample = 1; sample <= 32; ++sample) {
+    const float t = static_cast<float>(sample) / 32.0f;
+    const glm::vec3 current =
+        kage::film::sampleMovement(parMovement, t).translation;
+    addLine(parVertices, previous, current, PATH_COLOR);
+    previous = current;
+  }
+  addLine(parVertices, parMovement.start.translation, control_1,
+          HANDLE_COLOR);
+  addLine(parVertices, control_2, parMovement.end.translation, HANDLE_COLOR);
+  addCircle(parVertices, control_1, glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f), 0.08f, HANDLE_COLOR);
+  addCircle(parVertices, control_2, glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f), 0.08f, HANDLE_COLOR);
 }
 
 void addFloorContactCue(std::vector<kage::render::LineVertex>& parVertices,
@@ -369,21 +355,17 @@ void addOriginCore(std::vector<kage::render::LineVertex>& parVertices,
 
 void addLightGizmo(std::vector<kage::render::LineVertex>& parVertices,
                    std::vector<kage::render::SolidGizmoVertex>& parSolid,
-                   std::vector<kage::render::SolidGizmoVertex>& parGlow,
                    const kage::math::Transform& parTransform,
                    const kage::scene::LightComponent& parLight,
                    const glm::vec3& parCameraRight,
                    const glm::vec3& parCameraUp) {
   const glm::vec3 position = parTransform.translation;
-  const glm::vec3 color =
-      glm::clamp(parLight.color * (0.45f + parLight.intensity * 0.24f),
-                 glm::vec3(0.0f), glm::vec3(1.0f));
-  const float radius = 0.16f + std::min(parLight.intensity, 8.0f) * 0.045f;
-  addSolidSphere(parSolid, position, radius, glm::vec4(color, 0.95f));
-  addDisk(parGlow, position, parCameraRight, parCameraUp, radius * 1.35f,
-          glm::vec4(color, 0.16f));
+  const glm::vec3 color = glm::clamp(parLight.color, glm::vec3(0.0f),
+                                      glm::vec3(1.0f));
+  constexpr float SOURCE_RADIUS = 0.16f;
+  addSolidSphere(parSolid, position, SOURCE_RADIUS, glm::vec4(color, 1.0f));
   addCircle(parVertices, position, parCameraRight, parCameraUp,
-            std::max(parLight.range, radius * 2.0f), color * 0.42f);
+            std::max(parLight.range, SOURCE_RADIUS * 2.0f), color * 0.42f);
 }
 
 void addSunOverlay(std::vector<kage::render::LineVertex>& parVertices,
@@ -514,27 +496,177 @@ void addCameraGizmo(std::vector<kage::render::LineVertex>& parVertices,
 
 namespace kage::render {
 
+WorldRenderer::~WorldRenderer() {
+  if (m_gpu_timer_queries[0] != 0) {
+    glDeleteQueries(static_cast<GLsizei>(m_gpu_timer_queries.size()),
+                    m_gpu_timer_queries.data());
+  }
+  if (m_pick_depth != 0) {
+    glDeleteRenderbuffers(1, &m_pick_depth);
+  }
+  if (m_pick_texture != 0) {
+    glDeleteTextures(1, &m_pick_texture);
+  }
+  if (m_pick_framebuffer != 0) {
+    glDeleteFramebuffers(1, &m_pick_framebuffer);
+  }
+}
+
+void WorldRenderer::requestEnvironment(
+    assets::AssetId parAsset,
+    const std::filesystem::path& parPanoramaPath) {
+  m_environment_renderer.request(parAsset, parPanoramaPath);
+}
+
+EnvironmentLoadState WorldRenderer::getEnvironmentState() const {
+  return m_environment_renderer.getState();
+}
+
+const std::string& WorldRenderer::getEnvironmentError() const {
+  return m_environment_renderer.getError();
+}
+
 void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                            const MeshResourceCache& parMeshResources,
-                           const camera::CameraSystem& parCameraSystem,
+                           const ViewportView& parView,
                            const lighting::LightingState& parLighting,
                            const PlacementGhost& parGhost,
                            const GizmoGuide& parGizmoGuide,
                            const EditorRenderSettings& parSettings,
-                           const glm::vec2& parViewportSize) {
+                           const ViewportRect& parViewport,
+                           PerformanceSnapshot& parSnapshot) {
+  const glm::vec2 parViewportSize = parViewport.extent();
+  if (m_gpu_timer_queries[0] == 0) {
+    glGenQueries(static_cast<GLsizei>(m_gpu_timer_queries.size()),
+                 m_gpu_timer_queries.data());
+  }
+  const std::size_t timer_slot = m_gpu_timer_cursor;
+  bool timer_active = false;
+  if (m_gpu_timer_pending[timer_slot]) {
+    GLint available = GL_FALSE;
+    glGetQueryObjectiv(m_gpu_timer_queries[timer_slot],
+                       GL_QUERY_RESULT_AVAILABLE, &available);
+    if (available == GL_TRUE) {
+      GLuint64 nanoseconds = 0;
+      glGetQueryObjectui64v(m_gpu_timer_queries[timer_slot], GL_QUERY_RESULT,
+                            &nanoseconds);
+      const float milliseconds =
+          static_cast<float>(nanoseconds) / 1000000.0f;
+      m_gpu_frame_samples[m_gpu_frame_sample_cursor] = milliseconds;
+      m_gpu_frame_sample_cursor =
+          (m_gpu_frame_sample_cursor + 1) % m_gpu_frame_samples.size();
+      m_gpu_frame_sample_count = std::min(
+          m_gpu_frame_sample_count + 1, m_gpu_frame_samples.size());
+      std::array<float, 120> sorted_samples = m_gpu_frame_samples;
+      std::sort(sorted_samples.begin(),
+                sorted_samples.begin() + m_gpu_frame_sample_count);
+      const float total = std::accumulate(
+          sorted_samples.begin(),
+          sorted_samples.begin() + m_gpu_frame_sample_count, 0.0f);
+      parSnapshot.gpu_average_ms =
+          total / static_cast<float>(m_gpu_frame_sample_count);
+      const std::size_t p95_index = std::min(
+          m_gpu_frame_sample_count - 1,
+          (m_gpu_frame_sample_count * 95 + 99) / 100 - 1);
+      parSnapshot.gpu_p95_ms = sorted_samples[p95_index];
+      m_gpu_timer_pending[timer_slot] = false;
+    }
+  }
+  if (!m_gpu_timer_pending[timer_slot]) {
+    glBeginQuery(GL_TIME_ELAPSED, m_gpu_timer_queries[timer_slot]);
+    timer_active = true;
+  }
+  const auto bind_render_target = [&]() {
+    if (parView.use_film_framebuffer) {
+      m_film_framebuffer.resume();
+      return;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, parView.destination_framebuffer);
+    glViewport(parViewport.origin.x, parViewport.glViewportY(),
+               std::max(parViewport.size.x, 1),
+               std::max(parViewport.size.y, 1));
+  };
+  if (parView.use_film_framebuffer) {
+    m_film_framebuffer.begin(parViewport, parView.destination_framebuffer,
+                             parView.msaa_samples);
+  } else {
+    bind_render_target();
+  }
+  parSnapshot.visible_entities = 0;
+  parSnapshot.culled_entities = 0;
+  parSnapshot.draw_calls = 0;
+  parSnapshot.submitted_instances = 0;
+  parSnapshot.submitted_triangles = 0;
+  parSnapshot.shadow_render_ms = 0.0f;
+  parSnapshot.frame_binding_ms = 0.0f;
+  parSnapshot.material_submission_ms = 0.0f;
+  parSnapshot.shadows_reused = false;
   glEnable(GL_DEPTH_TEST);
   glDepthFunc(GL_LESS);
   glDepthMask(GL_TRUE);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  const glm::vec3 clear_color = getClearColor(parSettings.sky_preset);
+  const glm::vec3 clear_color = getClearColor(parSettings.scene.sky_preset);
   glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  const camera::Camera& camera = parCameraSystem.getCamera();
+  if (parView.camera == nullptr) {
+    return;
+  }
+  const camera::Camera& camera = *parView.camera;
+  static_cast<void>(m_environment_renderer.draw(
+      camera, parViewportSize, parSettings.scene.environment));
   const glm::mat4 view_projection =
       camera.getViewProjectionMatrix(parViewportSize);
+  const auto find_mesh = [&](std::size_t handle) {
+    return parMeshResources.getStaticMesh(handle);
+  };
+  const auto find_skin_matrices = [&](const scene::EntityRecord& entity)
+      -> std::span<const std::vector<glm::mat4>> {
+    const auto evaluated = std::find_if(
+        parView.skin_palettes.begin(), parView.skin_palettes.end(),
+        [&](const animation::EvaluatedSkinPalette& palette) {
+          return palette.entity == entity.id;
+        });
+    if (evaluated != parView.skin_palettes.end()) {
+      return evaluated->primitive_skin_matrices;
+    }
+    return entity.rig.has_value()
+               ? std::span<const std::vector<glm::mat4>>(
+                     entity.rig->primitive_skin_matrices)
+               : std::span<const std::vector<glm::mat4>>{};
+  };
+
+  struct FrameMesh final {
+    const scene::EntityRecord* entity = nullptr;
+    const GpuMesh* mesh = nullptr;
+    math::Transform transform;
+    glm::mat4 model{1.0f};
+    math::Bounds3 world_bounds;
+    std::span<const std::vector<glm::mat4>> skin_matrices;
+  };
+  struct VisibleMesh final {
+    const FrameMesh* source = nullptr;
+    float camera_distance = 0.0f;
+  };
+  thread_local std::vector<FrameMesh> frame_meshes;
+  frame_meshes.clear();
+  frame_meshes.reserve(parScene.world.getEntities().size());
+  thread_local std::vector<VisibleMesh> visible_meshes;
+  visible_meshes.clear();
+  visible_meshes.reserve(parScene.world.getEntities().size());
+
+  const auto display_transform_for = [&](const scene::EntityRecord& entity) {
+    math::Transform transform = entity.transform.transform;
+    if (parView.sequence != nullptr) {
+      if (const auto evaluated =
+              parView.sequence->evaluateTransform(entity.id, parView.frame)) {
+        transform = *evaluated;
+      }
+    }
+    return transform;
+  };
 
   for (const scene::EntityRecord& entity : parScene.world.getEntities()) {
     if (!entity.alive || !entity.static_mesh.has_value() ||
@@ -542,43 +674,136 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       continue;
     }
 
-    const GpuMesh* mesh =
-        parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle);
+    const GpuMesh* mesh = find_mesh(entity.static_mesh->mesh_handle);
     if (mesh == nullptr) {
       continue;
     }
-
-    std::span<const std::vector<glm::mat4>> skin_matrices;
-    if (entity.rig.has_value()) {
-      skin_matrices = entity.rig->primitive_skin_matrices;
-    }
-    m_mesh_renderer.draw(*mesh, view_projection,
-                                camera.position,
-                                entity.transform.transform.toMatrix(),
-                                parLighting, skin_matrices,
-                                entity.static_mesh->opacity,
-                                parSettings.material_debug_mode);
+    const math::Transform display_transform = display_transform_for(entity);
+    const math::Bounds3 world_bounds =
+        getEntityWorldBounds(entity, display_transform);
+    frame_meshes.push_back(
+        {&entity, mesh, display_transform, display_transform.toMatrix(),
+         world_bounds, find_skin_matrices(entity)});
   }
 
+  for (const FrameMesh& frame_mesh : frame_meshes) {
+    if (!isVisible(frame_mesh.world_bounds, view_projection)) {
+      ++parSnapshot.culled_entities;
+      continue;
+    }
+    ++parSnapshot.visible_entities;
+    if (parSettings.viewport.mode == ViewportMode::Bounds) {
+      continue;
+    }
+
+    const glm::vec3 center = frame_mesh.world_bounds.is_valid
+                                 ? (frame_mesh.world_bounds.min +
+                                    frame_mesh.world_bounds.max) * 0.5f
+                                 : frame_mesh.transform.translation;
+    visible_meshes.push_back(
+        {&frame_mesh, glm::length(center - camera.position)});
+    parSnapshot.draw_calls += frame_mesh.mesh->getPrimitiveCount();
+    ++parSnapshot.submitted_instances;
+    parSnapshot.submitted_triangles += frame_mesh.mesh->getIndexCount() / 3;
+  }
+
+  const auto draw_visible = [&](const VisibleMesh& item, MeshDrawPass pass) {
+    const FrameMesh& source = *item.source;
+    if (!source.mesh->hasPrimitivesForPass(
+            1.0f, parSettings.viewport.mode == ViewportMode::Solid, pass)) {
+      return;
+    }
+    m_mesh_renderer.draw(*source.mesh, camera.position, source.model,
+                         source.skin_matrices, 1.0f,
+                         parSettings.viewport.mode == ViewportMode::Solid, pass);
+  };
+
+  const ShadowFrame* shadows = nullptr;
+  if (parSettings.viewport.mode == ViewportMode::Material ||
+      parSettings.viewport.mode == ViewportMode::Final) {
+    thread_local std::vector<ShadowCaster> casters;
+    casters.clear();
+    casters.reserve(frame_meshes.size());
+    for (const FrameMesh& frame_mesh : frame_meshes) {
+      casters.push_back(
+          {frame_mesh.mesh, frame_mesh.model, frame_mesh.skin_matrices});
+    }
+    const bool final = parSettings.viewport.mode == ViewportMode::Final;
+    const auto shadow_start = std::chrono::steady_clock::now();
+    shadows = &m_shadow_renderer.render(casters, camera, parLighting,
+                                         final ? 4096 : 2048, final);
+    parSnapshot.shadow_render_ms = std::chrono::duration<float, std::milli>(
+        std::chrono::steady_clock::now() - shadow_start).count();
+    parSnapshot.shadows_reused = shadows->reused;
+    bind_render_target();
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+  }
+
+  const auto frame_binding_start = std::chrono::steady_clock::now();
+  m_mesh_renderer.beginFrame(
+      view_projection, camera.position, parLighting,
+      parSettings.viewport.material_debug_mode,
+      parSettings.viewport.mode == ViewportMode::Solid, shadows);
+  parSnapshot.frame_binding_ms = std::chrono::duration<float, std::milli>(
+      std::chrono::steady_clock::now() - frame_binding_start).count();
+
+  const auto material_submission_start = std::chrono::steady_clock::now();
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  for (const VisibleMesh& item : visible_meshes) {
+    draw_visible(item, MeshDrawPass::Opaque);
+  }
+
+  std::sort(visible_meshes.begin(), visible_meshes.end(),
+            [](const VisibleMesh& left, const VisibleMesh& right) {
+              return left.camera_distance > right.camera_distance;
+            });
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDepthMask(GL_FALSE);
+  for (const VisibleMesh& item : visible_meshes) {
+    draw_visible(item, MeshDrawPass::Blend);
+  }
+  glDepthMask(GL_TRUE);
+  parSnapshot.material_submission_ms =
+      std::chrono::duration<float, std::milli>(
+          std::chrono::steady_clock::now() - material_submission_start)
+          .count();
+
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset) {
-    const GpuMesh* mesh = parMeshResources.getStaticMesh(parGhost.mesh_handle);
+    const GpuMesh* mesh = find_mesh(parGhost.mesh_handle);
     if (mesh != nullptr) {
-      m_mesh_renderer.draw(*mesh, view_projection,
-                                  camera.position,
-                                  parGhost.transform.toMatrix(),
-                                  parLighting, {}, parGhost.opacity,
-                                  parSettings.material_debug_mode);
+      glEnable(GL_BLEND);
+      glDepthMask(GL_FALSE);
+      m_mesh_renderer.beginFrame(
+          view_projection, camera.position, parLighting,
+          parSettings.viewport.material_debug_mode,
+          parSettings.viewport.mode == ViewportMode::Solid);
+      m_mesh_renderer.draw(*mesh, camera.position,
+                           parGhost.transform.toMatrix(), {}, parGhost.opacity,
+                           parSettings.viewport.mode == ViewportMode::Solid);
+      glDepthMask(GL_TRUE);
     }
   }
 
   const scene::EntityRecord* selected_entity =
       parScene.world.findEntity(parScene.selected_entity);
-  if (selected_entity != nullptr && selected_entity->static_mesh.has_value() &&
+  if (parSettings.viewport.show_overlays && selected_entity != nullptr &&
+      selected_entity->static_mesh.has_value() &&
       selected_entity->static_mesh->visible) {
     const GpuMesh* mesh =
-        parMeshResources.getStaticMesh(selected_entity->static_mesh->mesh_handle);
+        find_mesh(selected_entity->static_mesh->mesh_handle);
     if (mesh != nullptr) {
-      const math::Bounds3 selected_bounds = getEntityWorldBounds(*selected_entity);
+      math::Transform selected_transform = selected_entity->transform.transform;
+      if (parView.sequence != nullptr) {
+        if (const auto evaluated = parView.sequence->evaluateTransform(
+                selected_entity->id, parView.frame)) {
+          selected_transform = *evaluated;
+        }
+      }
+      const math::Bounds3 selected_bounds =
+          getEntityWorldBounds(*selected_entity, selected_transform);
       const float outline_thickness =
           std::clamp(std::max({selected_bounds.getSize().x,
                                selected_bounds.getSize().y,
@@ -586,18 +811,13 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                          0.0016f,
                      0.0018f, 0.009f);
       m_mesh_renderer.drawOutline(
-          *mesh, view_projection,
-          selected_entity->transform.transform.toMatrix(),
-          selected_entity->rig.has_value()
-              ? std::span<const std::vector<glm::mat4>>(
-                    selected_entity->rig->primitive_skin_matrices)
-              : std::span<const std::vector<glm::mat4>>{},
+          *mesh, view_projection, selected_transform.toMatrix(),
+          find_skin_matrices(*selected_entity),
           glm::vec4(1.0f), outline_thickness);
     }
   }
 
-  m_floor_vertices.clear();
-  m_floor_vertices.reserve(6);
+  if (parSettings.viewport.show_overlays) {
   m_grid_line_vertices.clear();
   m_grid_line_vertices.reserve(512);
   m_line_vertices.clear();
@@ -608,14 +828,12 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   m_glow_vertices.reserve(256);
   addSunOverlay(m_line_vertices, m_solid_vertices, m_glow_vertices, camera,
                 parViewportSize, parLighting.sun);
-  if (parSettings.floor_grid_visible) {
-    addFloorPlane(m_floor_vertices, camera.position,
-                  parSettings.floor_grid_radius);
+  if (parSettings.viewport.floor_grid_visible) {
     addFloorGrid(m_grid_line_vertices, camera.position,
-                 parSettings.floor_grid_radius);
+                 parSettings.viewport.floor_grid_radius);
   }
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset &&
-      parMeshResources.getStaticMesh(parGhost.mesh_handle) == nullptr) {
+      find_mesh(parGhost.mesh_handle) == nullptr) {
     addCube(m_solid_vertices,
             parGhost.transform.translation + glm::vec3(0.0f, 0.5f, 0.0f),
             1.0f, glm::vec4(0.55f, 0.68f, 0.82f, parGhost.opacity));
@@ -624,9 +842,20 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     if (!entity.alive) {
       continue;
     }
+    if (parSettings.viewport.mode == ViewportMode::Bounds &&
+        entity.static_mesh.has_value() && entity.static_mesh->visible) {
+      const math::Bounds3 bounds = getEntityWorldBounds(entity);
+      if (bounds.is_valid &&
+          isVisible(bounds, view_projection)) {
+        const glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
+        const glm::vec3 size = bounds.getSize();
+        addCube(m_solid_vertices, center,
+                std::max({size.x, size.y, size.z, 0.05f}),
+                glm::vec4(0.42f, 0.68f, 0.92f, 0.16f));
+      }
+    }
     if (entity.static_mesh.has_value() && entity.static_mesh->visible &&
-        parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle) ==
-            nullptr) {
+        find_mesh(entity.static_mesh->mesh_handle) == nullptr) {
       const math::Bounds3 bounds = getEntityWorldBounds(entity);
       const glm::vec3 center =
           bounds.is_valid ? (bounds.min + bounds.max) * 0.5f
@@ -639,12 +868,12 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     }
     if (entity.light.has_value()) {
       if (entity.light->type == scene::LightType::Point) {
-        addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
+        addLightGizmo(m_line_vertices, m_solid_vertices,
                       entity.transform.transform, *entity.light,
                       camera.getRight(), camera.getUp());
       }
     }
-    if (entity.camera.has_value() && entity.id != parScene.editor_camera_entity) {
+    if (entity.camera.has_value()) {
       addCameraGizmo(m_line_vertices, entity.transform.transform);
     }
   }
@@ -653,15 +882,33 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     light.type = scene::LightType::Point;
     light.color = parGhost.light_color;
     light.intensity = parGhost.light_intensity;
-    addLightGizmo(m_line_vertices, m_solid_vertices, m_glow_vertices,
-                  parGhost.transform, light, camera.getRight(),
-                  camera.getUp());
+    addLightGizmo(m_line_vertices, m_solid_vertices, parGhost.transform,
+                  light, camera.getRight(), camera.getUp());
   }
   if (parGhost.kind == PlacementGhost::Kind::Camera) {
     addCameraGizmo(m_line_vertices, parGhost.transform);
   }
 
-  if (selected_entity != nullptr) {
+  if (parView.sequence != nullptr && parView.selected_film_clip != 0) {
+    for (const film::FilmTrack& track : parView.sequence->tracks) {
+      const auto clip = std::find_if(
+          track.clips.begin(), track.clips.end(),
+          [&](const film::FilmClip& item) {
+            return item.id == parView.selected_film_clip;
+          });
+      if (clip == track.clips.end()) {
+        continue;
+      }
+      if (const auto* movement =
+              std::get_if<film::FilmMovement>(&clip->payload)) {
+        addFilmMovementPath(m_line_vertices, *movement);
+      }
+      break;
+    }
+  }
+
+  if (selected_entity != nullptr &&
+      parSettings.viewport.show_world_edit_gizmos) {
     const math::Bounds3 world_bounds = getEntityWorldBounds(*selected_entity);
     addFloorContactCue(m_grid_line_vertices, world_bounds,
                        selected_entity->transform.transform.translation);
@@ -669,7 +916,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                                              *selected_entity, world_bounds);
     addTransformAxes(m_line_vertices, m_solid_vertices,
                      selected_entity->transform.transform, axis_length,
-                     parSettings.gizmo_axis_space);
+                     parSettings.viewport.gizmo_axis_space);
     if (!selected_entity->static_mesh.has_value()) {
       addOriginCore(m_line_vertices,
                     selected_entity->transform.transform.translation,
@@ -697,13 +944,11 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
             parGizmoGuide.color);
   }
 
-  if (!m_floor_vertices.empty()) {
-    glDepthMask(GL_FALSE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    m_solid_gizmo_renderer.draw(m_floor_vertices, view_projection);
-    glDepthMask(GL_TRUE);
-  }
+  // The editor grid is a depth-tested overlay. It never writes depth and is
+  // omitted entirely from film output by the overlay gate above.
+  glDepthMask(GL_FALSE);
   m_line_renderer.draw(m_grid_line_vertices, view_projection);
+  glDepthMask(GL_TRUE);
   glDisable(GL_DEPTH_TEST);
   m_solid_gizmo_renderer.draw(m_solid_vertices, view_projection);
   m_line_renderer.draw(m_line_vertices, view_projection);
@@ -715,23 +960,98 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     glDepthMask(GL_TRUE);
   }
   glEnable(GL_DEPTH_TEST);
+  }
+  if (parView.use_film_framebuffer) {
+    m_film_framebuffer.present();
+  }
+  if (timer_active) {
+    glEndQuery(GL_TIME_ELAPSED);
+    m_gpu_timer_pending[timer_slot] = true;
+    m_gpu_timer_cursor =
+        (m_gpu_timer_cursor + 1) % m_gpu_timer_queries.size();
+  }
 }
 
-const char* WorldRenderer::getSkyPresetName(SkyPreset parPreset) {
-  switch (parPreset) {
-    case SkyPreset::ClearDay:
-      return "Clear day";
-    case SkyPreset::MountainDawn:
-      return "Mountain dawn";
-    case SkyPreset::WarmDusk:
-      return "Warm dusk";
-    case SkyPreset::DarkStudio:
-      return "Dark studio";
-    case SkyPreset::DarkVoid:
-      return "Dark void";
+std::optional<scene::EntityId> WorldRenderer::pickEntity(
+    const scene::SceneManager::SceneRecord& parScene,
+    const MeshResourceCache& parMeshResources,
+    const camera::Camera& parCamera,
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
+  if (m_pick_framebuffer == 0) {
+    glGenFramebuffers(1, &m_pick_framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pick_framebuffer);
+    glGenTextures(1, &m_pick_texture);
+    glBindTexture(GL_TEXTURE_2D, m_pick_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, 1, 1, 0, GL_RED_INTEGER,
+                 GL_UNSIGNED_INT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, m_pick_texture, 0);
+    glGenRenderbuffers(1, &m_pick_depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_pick_depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 1, 1);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                              GL_RENDERBUFFER, m_pick_depth);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      return std::nullopt;
+    }
+  } else {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pick_framebuffer);
   }
 
-  return "Unknown";
+  constexpr GLuint NO_ENTITY = std::numeric_limits<GLuint>::max();
+  const GLuint clear_value = NO_ENTITY;
+  glViewport(0, 0, 1, 1);
+  glClearBufferuiv(GL_COLOR, 0, &clear_value);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LESS);
+  glDepthMask(GL_TRUE);
+  glDisable(GL_BLEND);
+
+  const glm::vec2 viewport = glm::max(parViewportSize, glm::vec2(1.0f));
+  const glm::vec2 ndc(
+      (2.0f * parCursorPixel.x / viewport.x) - 1.0f,
+      1.0f - (2.0f * parCursorPixel.y / viewport.y));
+  glm::mat4 pick_transform(1.0f);
+  pick_transform[0][0] = viewport.x;
+  pick_transform[1][1] = viewport.y;
+  pick_transform[3][0] = -ndc.x * viewport.x;
+  pick_transform[3][1] = -ndc.y * viewport.y;
+  const glm::mat4 pick_view_projection =
+      pick_transform *
+      parCamera.getViewProjectionMatrix(viewport);
+
+  for (const scene::EntityRecord& entity : parScene.world.getEntities()) {
+    if (!entity.alive || !entity.static_mesh.has_value() ||
+        !entity.static_mesh->visible) {
+      continue;
+    }
+    const GpuMesh* mesh =
+        parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle);
+    if (mesh == nullptr) {
+      continue;
+    }
+    std::span<const std::vector<glm::mat4>> skin_matrices;
+    if (entity.rig.has_value()) {
+      skin_matrices = entity.rig->primitive_skin_matrices;
+    }
+    m_mesh_renderer.drawPicking(
+        *mesh, pick_view_projection, entity.transform.transform.toMatrix(),
+        skin_matrices, entity.id.value);
+  }
+
+  GLuint entity_id = NO_ENTITY;
+  glReadPixels(0, 0, 1, 1, GL_RED_INTEGER, GL_UNSIGNED_INT, &entity_id);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, static_cast<GLsizei>(viewport.x),
+             static_cast<GLsizei>(viewport.y));
+  glEnable(GL_BLEND);
+  return entity_id == NO_ENTITY
+             ? std::nullopt
+             : std::optional<scene::EntityId>{scene::EntityId{entity_id}};
 }
 
 glm::vec3 WorldRenderer::getClearColor(SkyPreset parPreset) {

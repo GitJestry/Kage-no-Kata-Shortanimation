@@ -2,6 +2,7 @@
 
 #include "assets/asset_registry.hpp"
 #include "render/gpu_mesh.hpp"
+#include "render/texture_resource_cache.hpp"
 
 #include <cstddef>
 #include <vector>
@@ -15,8 +16,10 @@ class MeshResourceCache final {
   [[nodiscard]] const GpuMesh* getStaticMesh(
       assets::AssetRegistry::StaticMeshHandle parHandle) const;
   void clear();
+  [[nodiscard]] std::size_t getEstimatedTextureBytes() const;
 
  private:
+  TextureResourceCache m_texture_cache;
   std::vector<GpuMesh> m_static_meshes;
 };
 

@@ -7,9 +7,12 @@
 
 namespace kage::editor {
 
+enum class FileBrowserFilter { Gltf, Panorama };
+
 class FileBrowserDialog final {
  public:
-  void open(std::string parTitle, std::filesystem::path parStartDirectory);
+  void open(std::string parTitle, std::filesystem::path parStartDirectory,
+            FileBrowserFilter parFilter = FileBrowserFilter::Gltf);
   [[nodiscard]] std::optional<std::filesystem::path> draw();
   [[nodiscard]] bool isOpen() const;
 
@@ -27,6 +30,7 @@ class FileBrowserDialog final {
   std::filesystem::path m_asset_directory;
   std::optional<std::filesystem::path> m_selected_file;
   std::vector<Entry> m_entries;
+  FileBrowserFilter m_filter = FileBrowserFilter::Gltf;
   bool m_open = false;
   bool m_open_requested = false;
 };

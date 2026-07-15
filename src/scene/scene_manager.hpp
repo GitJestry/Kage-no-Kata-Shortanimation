@@ -2,6 +2,7 @@
 
 #include "scene/entity_id.hpp"
 #include "scene/world.hpp"
+#include "film/film_sequence.hpp"
 
 #include <cstddef>
 #include <span>
@@ -16,8 +17,8 @@ class SceneManager final {
     std::string name;
     World world;
     EntityId selected_entity;
-    EntityId editor_camera_entity;
     SunLightSettings sun_light;
+    film::FilmSequence film_sequence;
     bool local_only = false;
   };
 
@@ -36,7 +37,6 @@ class SceneManager final {
   [[nodiscard]] std::span<const SceneRecord> getScenes() const;
   [[nodiscard]] std::size_t getActiveSceneIndex() const;
   [[nodiscard]] EntityId getSelectedEntity() const;
-  [[nodiscard]] EntityId getEditorCameraEntity() const;
 
  private:
   std::vector<SceneRecord> m_scenes;

@@ -1,7 +1,3 @@
-assets/models/samurai.glb filter=lfs diff=lfs merge=lfs -text
-assets/animations/samurai_bow.glb filter=lfs diff=lfs merge=lfs -text
-assets/animations/samurai_stand_to_sit.glb filter=lfs diff=lfs merge=lfs -text
-assets/animations/samurai_walk_no_sword.glb filter=lfs diff=lfs merge=lfs -text
-assets/animations/samurai_cut.glb filter=lfs diff=lfs merge=lfs -text
-
-assets/source_blender/samurai_rig/samurai.blend filter=lfs diff=lfs merge=lfs -text
+assets/**/*.glb filter=lfs diff=lfs merge=lfs -text
+assets/**/*.gltf filter=lfs diff=lfs merge=lfs -text
+assets/**/*.blend filter=lfs diff=lfs merge=lfs -text

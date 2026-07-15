@@ -1,6 +1,7 @@
 #include "engine/engine_core.hpp"
 
-#include "engine/editor_camera_bridge.hpp"
+#include "film/film_exporter.hpp"
+
 #include "engine/project_serializer.hpp"
 #include "math/screen_projection.hpp"
 #include "scene/components.hpp"
@@ -14,10 +15,15 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#endif
 
 namespace {
 
@@ -32,41 +38,6 @@ using Clock = std::chrono::steady_clock;
 [[nodiscard]] float elapsedMilliseconds(Clock::time_point parStart,
                                         Clock::time_point parEnd) {
   return std::chrono::duration<float, std::milli>(parEnd - parStart).count();
-}
-
-[[nodiscard]] kage::math::Bounds3 makePointBounds(const glm::vec3& parPoint,
-                                                  float parExtent) {
-  kage::math::Bounds3 bounds;
-  const glm::vec3 extent(std::max(parExtent, 0.01f));
-  bounds.includePoint(parPoint - extent);
-  bounds.includePoint(parPoint + extent);
-  return bounds;
-}
-
-[[nodiscard]] kage::math::Bounds3 transformBounds(
-    const kage::math::Bounds3& parBounds, const glm::mat4& parTransform) {
-  kage::math::Bounds3 transformed;
-  if (!parBounds.is_valid) {
-    return transformed;
-  }
-
-  const std::array<glm::vec3, 8> corners = {
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.max.z),
-  };
-
-  for (const glm::vec3& corner : corners) {
-    transformed.includePoint(
-        glm::vec3(parTransform * glm::vec4(corner, 1.0f)));
-  }
-
-  return transformed;
 }
 
 [[nodiscard]] bool intersectBounds(
@@ -135,74 +106,10 @@ using Clock = std::chrono::steady_clock;
   return result.ec == std::errc{} && result.ptr == end ? suffix : 0;
 }
 
-[[nodiscard]] bool intersectTriangle(
-    const kage::engine::EngineCore::CameraRay& parRay, const glm::vec3& parA,
-    const glm::vec3& parB, const glm::vec3& parC, float& parDistance) {
-  const glm::vec3 edge_ab = parB - parA;
-  const glm::vec3 edge_ac = parC - parA;
-  const glm::vec3 p = glm::cross(parRay.direction, edge_ac);
-  const float determinant = glm::dot(edge_ab, p);
-  if (std::abs(determinant) <= RAY_EPSILON) {
-    return false;
-  }
-
-  const float inverse_determinant = 1.0f / determinant;
-  const glm::vec3 origin_to_a = parRay.origin - parA;
-  const float u = glm::dot(origin_to_a, p) * inverse_determinant;
-  if (u < 0.0f || u > 1.0f) {
-    return false;
-  }
-
-  const glm::vec3 q = glm::cross(origin_to_a, edge_ab);
-  const float v = glm::dot(parRay.direction, q) * inverse_determinant;
-  if (v < 0.0f || u + v > 1.0f) {
-    return false;
-  }
-
-  const float distance = glm::dot(edge_ac, q) * inverse_determinant;
-  if (distance <= RAY_EPSILON) {
-    return false;
-  }
-
-  parDistance = distance;
-  return true;
-}
-
-[[nodiscard]] std::optional<float> pickMeshTriangles(
-    const kage::engine::EngineCore::CameraRay& parRay,
-    const kage::assets::StaticModel& parModel,
-    const kage::math::Transform& parEntityTransform) {
-  std::optional<float> closest_distance;
-  const glm::mat4 entity_matrix = parEntityTransform.toMatrix();
-  for (const kage::assets::StaticPrimitive& primitive : parModel.primitives) {
-    const glm::mat4 primitive_matrix = entity_matrix * primitive.transform;
-    for (std::size_t index = 0; index + 2 < primitive.indices.size();
-         index += 3) {
-      const std::uint32_t i0 = primitive.indices[index];
-      const std::uint32_t i1 = primitive.indices[index + 1];
-      const std::uint32_t i2 = primitive.indices[index + 2];
-      if (i0 >= primitive.vertices.size() || i1 >= primitive.vertices.size() ||
-          i2 >= primitive.vertices.size()) {
-        continue;
-      }
-
-      const glm::vec3 a = glm::vec3(
-          primitive_matrix *
-          glm::vec4(primitive.vertices[i0].position, 1.0f));
-      const glm::vec3 b = glm::vec3(
-          primitive_matrix *
-          glm::vec4(primitive.vertices[i1].position, 1.0f));
-      const glm::vec3 c = glm::vec3(
-          primitive_matrix *
-          glm::vec4(primitive.vertices[i2].position, 1.0f));
-      float distance = 0.0f;
-      if (intersectTriangle(parRay, a, b, c, distance) &&
-          (!closest_distance.has_value() || distance < *closest_distance)) {
-        closest_distance = distance;
-      }
-    }
-  }
-  return closest_distance;
+void releaseTransientAllocatorPages() {
+#if defined(__APPLE__)
+  static_cast<void>(malloc_zone_pressure_relief(nullptr, 0));
+#endif
 }
 
 }  // namespace
@@ -237,14 +144,31 @@ std::size_t EngineCore::registerModelAsset(std::string parLabel,
     const Clock::time_point upload_begin = Clock::now();
     m_mesh_resource_cache.uploadStaticMesh(asset->mesh_handle,
                                            asset->document->static_model);
-    m_frame_timings.gpu_upload_ms =
+    m_performance_snapshot.gpu_upload_ms =
         elapsedMilliseconds(upload_begin, Clock::now());
+    m_asset_registry.releaseStaticGeometryPayload(asset_index);
   }
   return asset_index;
 }
 
 void EngineCore::requestAssetLoad(std::size_t parAssetIndex) {
+  const assets::AssetRegistry::AssetLibraryEntry* entry =
+      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
+  if (entry == nullptr) {
+    return;
+  }
+  if (m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) != nullptr) {
+    return;
+  }
+  if (entry->load_state == assets::AssetLoadState::Queued ||
+      entry->load_state == assets::AssetLoadState::CpuLoading ||
+      entry->load_state == assets::AssetLoadState::GpuUploading) {
+    return;
+  }
   m_asset_registry.requestLoad(parAssetIndex);
+  m_asset_registry.beginCpuLoad(parAssetIndex);
+  m_asset_streamer.request(parAssetIndex, entry->path,
+                           assets::AssetLoadPriority::Visible);
 }
 
 void EngineCore::attachLoadedAssetToInstances(std::size_t parAssetIndex) {
@@ -269,7 +193,7 @@ void EngineCore::attachLoadedAssetToInstances(std::size_t parAssetIndex) {
       if (!document->skins.empty() && !entity.rig.has_value()) {
         scene::RigComponent rig;
         rig.primitive_skin_matrices.resize(
-            document->static_model.primitives.size());
+            document->primitive_skin_bindings.size());
         scene_record.world.setRig(entity.id, std::move(rig));
       }
     }
@@ -277,12 +201,14 @@ void EngineCore::attachLoadedAssetToInstances(std::size_t parAssetIndex) {
 }
 
 void EngineCore::pollAssetStreaming() {
-  m_frame_timings.asset_load_ms = 0.0f;
-  m_frame_timings.gpu_upload_ms = 0.0f;
-  const auto assets = m_asset_registry.getAssetLibrary();
-  for (std::size_t asset_index = 0; asset_index < assets.size();
-       ++asset_index) {
-    if (!m_asset_registry.pollLoad(asset_index)) {
+  m_performance_snapshot.asset_load_ms = 0.0f;
+  m_performance_snapshot.gpu_upload_ms = 0.0f;
+  while (std::optional<assets::AssetStreamer::Result> result =
+             m_asset_streamer.poll()) {
+    const std::size_t asset_index = result->asset_index;
+    if (!m_asset_registry.completeCpuLoad(
+            asset_index, std::move(result->document), std::move(result->error),
+            result->cpu_ms)) {
       continue;
     }
 
@@ -294,16 +220,31 @@ void EngineCore::pollAssetStreaming() {
       continue;
     }
 
-    m_frame_timings.asset_load_ms += entry->last_cpu_import_ms;
-    if (m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) == nullptr) {
-      const Clock::time_point upload_begin = Clock::now();
-      m_mesh_resource_cache.uploadStaticMesh(entry->mesh_handle,
-                                             document->static_model);
-      m_frame_timings.gpu_upload_ms +=
-          elapsedMilliseconds(upload_begin, Clock::now());
+    m_performance_snapshot.asset_load_ms += entry->last_cpu_import_ms;
+    try {
+      if (m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) == nullptr) {
+        const Clock::time_point upload_begin = Clock::now();
+        m_mesh_resource_cache.uploadStaticMesh(entry->mesh_handle,
+                                               document->static_model);
+        m_performance_snapshot.gpu_upload_ms +=
+            elapsedMilliseconds(upload_begin, Clock::now());
+      }
+    } catch (const std::exception& error) {
+      m_asset_registry.failLoad(asset_index, error.what());
+      continue;
     }
     attachLoadedAssetToInstances(asset_index);
+    m_asset_registry.completeGpuUpload(asset_index);
+    m_asset_registry.releaseStaticGeometryPayload(asset_index);
   }
+  const bool streaming_active = m_asset_streamer.getPendingCount() > 0;
+  m_performance_snapshot.streaming_work_items =
+      m_asset_streamer.getPendingCount();
+  if (m_streaming_was_active && !streaming_active) {
+    m_allocator_relief_passes_remaining = 3;
+    m_allocator_relief_timer_seconds = 0.0f;
+  }
+  m_streaming_was_active = streaming_active;
 }
 
 void EngineCore::createDefaultProject() {
@@ -319,8 +260,8 @@ void EngineCore::createDefaultProject() {
   createDefaultSceneEntities(*scene);
   if (m_asset_registry.getAssetLibrary().size() >= 2) {
     const scene::EntityId torii =
-        instantiateAssetAt(1, glm::vec3(0.0f), 1.0f);
-    instantiateAssetAt(0, glm::vec3(-1.4f, 0.0f, 0.0f), 1.0f);
+        instantiateAssetAt(1, glm::vec3(0.0f));
+    instantiateAssetAt(0, glm::vec3(-1.4f, 0.0f, 0.0f));
     frameEntity(torii);
     clearSelection();
   }
@@ -336,21 +277,34 @@ void EngineCore::saveProject() {
 }
 
 bool EngineCore::loadLocalSession() {
-  return ProjectSerializer::loadLocalSession(*this);
+  const bool loaded = ProjectSerializer::loadLocalSession(*this);
+  m_last_session_fly_speed = m_camera_system.getFlyMoveSpeed();
+  if (loaded && m_local_session_dirty) {
+    saveLocalSession();
+  }
+  return loaded;
 }
 
-void EngineCore::saveLocalSession() const {
+void EngineCore::saveLocalSession() {
+  if (!m_local_session_dirty) {
+    return;
+  }
   ProjectSerializer::saveLocalSession(*this);
+  m_local_session_dirty = false;
 }
 
 void EngineCore::markProjectDirty() {
   const auto scenes = m_scene_manager.getScenes();
   const std::size_t active_scene = m_scene_manager.getActiveSceneIndex();
   if (active_scene < scenes.size() && scenes[active_scene].local_only) {
-    saveLocalSession();
+    m_local_session_dirty = true;
     return;
   }
   m_project_dirty = true;
+}
+
+void EngineCore::markLocalSessionDirty() {
+  m_local_session_dirty = true;
 }
 
 bool EngineCore::isProjectDirty() const {
@@ -369,31 +323,176 @@ std::filesystem::path EngineCore::getLocalSessionSavePath() const {
   return m_runtime_paths.getLocalSessionPath();
 }
 
-void EngineCore::update(float parDeltaSeconds) {
+std::optional<camera::Camera> EngineCore::evaluateFilmCamera(
+    double parFrame) const {
+  const auto sample = getActiveScene().film_sequence.evaluateCamera(parFrame);
+  if (!sample.has_value()) {
+    return std::nullopt;
+  }
+  const scene::EntityRecord* entity =
+      getActiveScene().world.findEntity(sample->camera);
+  if (entity == nullptr || !entity->camera.has_value()) {
+    return std::nullopt;
+  }
+  camera::Camera result;
+  result.position = entity->transform.transform.translation;
+  result.orientation = glm::normalize(entity->transform.transform.rotation);
+  result.vertical_fov_degrees = entity->camera->vertical_fov_degrees;
+  result.near_plane = entity->camera->near_plane;
+  result.far_plane = entity->camera->far_plane;
+  if (sample->transform.has_value()) {
+    result.position = sample->transform->translation;
+    result.orientation = glm::normalize(sample->transform->rotation);
+  }
+  if (sample->vertical_fov_degrees.has_value()) {
+    result.vertical_fov_degrees = *sample->vertical_fov_degrees;
+  }
+  return result;
+}
+
+bool EngineCore::exportFilmSequence(std::string& parError) {
+  const std::string& name = getActiveScene().film_sequence.name;
+  return m_final_render_job.start(
+      getActiveScene().film_sequence,
+      std::filesystem::path("output") / "frames" / name,
+      std::filesystem::path("output") / (name + ".mp4"),
+      film::findFfmpegExecutable(), parError);
+}
+
+void EngineCore::advanceFilmExport() {
+  if (!m_final_render_job.isActive()) {
+    return;
+  }
+  m_final_render_job.advance(
+      getActiveScene().film_sequence,
+      [&](int frame, int width, int height,
+          unsigned int destination_framebuffer) {
+        render(render::ViewportRect{{0, 0}, {width, height}, height},
+               true, true, frame, false, destination_framebuffer, 0, 0, 4);
+      });
+}
+
+void EngineCore::cancelFilmExport() { m_final_render_job.cancel(); }
+
+const film::FinalRenderJob& EngineCore::getFinalRenderJob() const {
+  return m_final_render_job;
+}
+
+void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace) {
   pollAssetStreaming();
+  if (m_allocator_relief_passes_remaining > 0) {
+    m_allocator_relief_timer_seconds += parDeltaSeconds;
+    if (m_allocator_relief_timer_seconds >= 1.0f) {
+      releaseTransientAllocatorPages();
+      --m_allocator_relief_passes_remaining;
+      m_allocator_relief_timer_seconds = 0.0f;
+    }
+  }
   m_camera_system.update(parDeltaSeconds);
-  syncEditorCameraEntity();
-  const Clock::time_point animation_begin = Clock::now();
-  m_animation_system.update(getActiveScene().world, m_asset_registry,
-                            parDeltaSeconds);
-  m_frame_timings.animation_update_ms =
-      elapsedMilliseconds(animation_begin, Clock::now());
-  m_lighting_system.setState(buildLightingState());
+  if (parMovieWorkspace) {
+    m_film_playback.update(parDeltaSeconds, getActiveScene().film_sequence);
+  } else {
+    m_film_playback.playing = false;
+  }
+  const float fly_speed = m_camera_system.getFlyMoveSpeed();
+  if (std::abs(fly_speed - m_last_session_fly_speed) > 0.0001f) {
+    m_last_session_fly_speed = fly_speed;
+    m_local_session_dirty = true;
+  }
+  if (!parMovieWorkspace) {
+    m_performance_snapshot.animation_update_ms = 0.0f;
+  }
+  m_lighting_state = buildLightingState(m_camera_system.getEditorCamera());
 
   m_local_session_autosave_timer_seconds += parDeltaSeconds;
-  if (m_local_session_autosave_timer_seconds >= AUTOSAVE_INTERVAL_SECONDS) {
+  if (m_local_session_dirty &&
+      m_local_session_autosave_timer_seconds >= AUTOSAVE_INTERVAL_SECONDS) {
     saveLocalSession();
     m_local_session_autosave_timer_seconds = 0.0f;
   }
 }
 
-void EngineCore::render(const glm::vec2& parViewportSize) {
+void EngineCore::render(const render::ViewportRect& parViewport,
+                        bool parMovieWorkspace, bool parShotPreview,
+                        double parFilmFrame, bool parShowOverlays,
+                        unsigned int parDestinationFramebuffer,
+                        film::FilmClipId parSelectedFilmClip,
+                        film::FilmClipId parSoloFilmClip,
+                        int parMsaaSamples) {
   const Clock::time_point render_begin = Clock::now();
+  const double film_frame =
+      parFilmFrame >= 0.0 ? parFilmFrame : m_film_playback.playhead_frame;
+  const std::optional<camera::Camera> film_camera =
+      parShotPreview ? evaluateFilmCamera(film_frame)
+                     : std::nullopt;
+  const camera::Camera& view_camera =
+      film_camera.has_value() ? *film_camera : m_camera_system.getEditorCamera();
+  const film::FilmFrameState* film_state = nullptr;
+  if (parMovieWorkspace) {
+    if (parSoloFilmClip != 0) {
+      getActiveScene().film_sequence.evaluateClip(
+          parSoloFilmClip, film_frame, m_film_frame_state);
+    } else {
+      getActiveScene().film_sequence.evaluate(film_frame, m_film_frame_state);
+    }
+    film_state = &m_film_frame_state;
+    const Clock::time_point animation_begin = Clock::now();
+    m_animation_system.evaluateFilmFrame(getActiveScene().world,
+                                         m_asset_registry, *film_state,
+                                         m_film_skin_palettes);
+    m_performance_snapshot.animation_update_ms =
+        elapsedMilliseconds(animation_begin, Clock::now());
+  }
+  const lighting::LightingState frame_lighting = buildLightingState(
+      view_camera, film_state);
+  const render::ViewportView view{
+      &view_camera,
+      parMovieWorkspace ? &getActiveScene().film_sequence : nullptr,
+      film_frame,
+      parDestinationFramebuffer,
+      parDestinationFramebuffer != 0,
+      parMovieWorkspace
+          ? std::span<const animation::EvaluatedSkinPalette>(
+                m_film_skin_palettes)
+          : std::span<const animation::EvaluatedSkinPalette>{},
+      parSelectedFilmClip,
+      parMsaaSamples,
+  };
+  render::EditorRenderSettings settings = m_render_settings;
+  settings.viewport.show_overlays = parShowOverlays;
+  settings.viewport.show_world_edit_gizmos = !parMovieWorkspace;
+  if (!parShowOverlays) {
+    settings.viewport.floor_grid_visible = false;
+  }
   m_world_renderer.render(getActiveScene(), m_mesh_resource_cache,
-                          m_camera_system,
-                          m_lighting_system.getState(), m_placement_ghost,
-                          m_gizmo_guide, m_render_settings, parViewportSize);
-  m_frame_timings.render_ms = elapsedMilliseconds(render_begin, Clock::now());
+                          view,
+                          frame_lighting, m_placement_ghost,
+                          m_gizmo_guide, settings, parViewport,
+                          m_performance_snapshot);
+  m_performance_snapshot.render_ms =
+      elapsedMilliseconds(render_begin, Clock::now());
+  m_performance_snapshot.estimated_texture_bytes =
+      m_mesh_resource_cache.getEstimatedTextureBytes();
+  const float cpu_frame_ms = m_performance_snapshot.animation_update_ms +
+                             m_performance_snapshot.render_ms +
+                             m_performance_snapshot.gpu_upload_ms;
+  m_cpu_frame_samples[m_cpu_frame_sample_cursor] = cpu_frame_ms;
+  m_cpu_frame_sample_cursor =
+      (m_cpu_frame_sample_cursor + 1) % m_cpu_frame_samples.size();
+  m_cpu_frame_sample_count =
+      std::min(m_cpu_frame_sample_count + 1, m_cpu_frame_samples.size());
+  std::array<float, 120> sorted_samples = m_cpu_frame_samples;
+  std::sort(sorted_samples.begin(),
+            sorted_samples.begin() + m_cpu_frame_sample_count);
+  const float total = std::accumulate(
+      sorted_samples.begin(),
+      sorted_samples.begin() + m_cpu_frame_sample_count, 0.0f);
+  m_performance_snapshot.cpu_average_ms =
+      total / static_cast<float>(m_cpu_frame_sample_count);
+  const std::size_t p95_index =
+      std::min(m_cpu_frame_sample_count - 1,
+               (m_cpu_frame_sample_count * 95 + 99) / 100 - 1);
+  m_performance_snapshot.cpu_p95_ms = sorted_samples[p95_index];
 }
 
 scene::World& EngineCore::getWorld() {
@@ -412,12 +511,8 @@ const camera::CameraSystem& EngineCore::getCameraSystem() const {
   return m_camera_system;
 }
 
-lighting::LightingSystem& EngineCore::getLightingSystem() {
-  return m_lighting_system;
-}
-
-const lighting::LightingSystem& EngineCore::getLightingSystem() const {
-  return m_lighting_system;
+const lighting::LightingState& EngineCore::getLightingState() const {
+  return m_lighting_state;
 }
 
 assets::AssetRegistry& EngineCore::getAssetRegistry() {
@@ -431,6 +526,11 @@ const assets::AssetRegistry& EngineCore::getAssetRegistry() const {
 std::span<const assets::AssetRegistry::AssetLibraryEntry>
 EngineCore::getAssetLibrary() const {
   return m_asset_registry.getAssetLibrary();
+}
+
+std::span<const assets::EnvironmentAsset>
+EngineCore::getEnvironmentAssets() const {
+  return m_environment_assets;
 }
 
 std::span<const scene::SceneManager::SceneRecord> EngineCore::getScenes() const {
@@ -455,10 +555,6 @@ scene::EntityId EngineCore::getSelectedEntity() const {
   return m_scene_manager.getSelectedEntity();
 }
 
-scene::EntityId EngineCore::getEditorCameraEntity() const {
-  return m_scene_manager.getEditorCameraEntity();
-}
-
 const scene::SunLightSettings& EngineCore::getSunLightSettings() const {
   return getActiveScene().sun_light;
 }
@@ -468,35 +564,55 @@ std::size_t EngineCore::getActiveSceneIndex() const {
 }
 
 render::SkyPreset EngineCore::getSkyPreset() const {
-  return m_render_settings.sky_preset;
+  return m_render_settings.scene.sky_preset;
 }
 
-const char* EngineCore::getSkyPresetName() const {
-  return render::WorldRenderer::getSkyPresetName(m_render_settings.sky_preset);
+const render::EnvironmentSettings& EngineCore::getEnvironmentSettings() const {
+  return m_render_settings.scene.environment;
+}
+
+render::EnvironmentLoadState EngineCore::getEnvironmentLoadState() const {
+  return m_world_renderer.getEnvironmentState();
+}
+
+const std::string& EngineCore::getEnvironmentError() const {
+  return m_world_renderer.getEnvironmentError();
 }
 
 bool EngineCore::isFloorGridVisible() const {
-  return m_render_settings.floor_grid_visible;
+  return m_render_settings.viewport.floor_grid_visible;
 }
 
 int EngineCore::getFloorGridRadius() const {
-  return m_render_settings.floor_grid_radius;
+  return m_render_settings.viewport.floor_grid_radius;
 }
 
 float EngineCore::getEditorViewDistance() const {
-  return m_camera_system.getCamera().far_plane;
+  return m_camera_system.getEditorCamera().far_plane;
 }
 
 render::MaterialDebugMode EngineCore::getMaterialDebugMode() const {
-  return m_render_settings.material_debug_mode;
+  return m_render_settings.viewport.material_debug_mode;
 }
 
 render::GizmoAxisSpace EngineCore::getGizmoAxisSpace() const {
-  return m_render_settings.gizmo_axis_space;
+  return m_render_settings.viewport.gizmo_axis_space;
 }
 
-const EngineCore::FrameTimings& EngineCore::getFrameTimings() const {
-  return m_frame_timings;
+render::ViewportMode EngineCore::getViewportMode() const {
+  return m_render_settings.viewport.mode;
+}
+
+film::FilmSequence& EngineCore::getFilmSequence() {
+  return getActiveScene().film_sequence;
+}
+
+film::FilmPlayback& EngineCore::getFilmPlayback() {
+  return m_film_playback;
+}
+
+const render::PerformanceSnapshot& EngineCore::getPerformanceSnapshot() const {
+  return m_performance_snapshot;
 }
 
 math::Bounds3 EngineCore::getEntityWorldBounds(scene::EntityId parEntity) const {
@@ -507,22 +623,29 @@ math::Bounds3 EngineCore::getEntityWorldBounds(scene::EntityId parEntity) const 
   }
 
   if (entity->static_mesh.has_value()) {
-    return transformBounds(entity->static_mesh->local_bounds,
-                           entity->transform.transform.toMatrix());
+    return math::transformBounds(entity->static_mesh->local_bounds,
+                                 entity->transform.transform.toMatrix());
   }
 
-  return makePointBounds(entity->transform.transform.translation,
-                         ENTITY_HANDLE_EXTENT);
+  return math::makePointBounds(entity->transform.transform.translation,
+                               ENTITY_HANDLE_EXTENT);
 }
 
 std::optional<scene::EntityId> EngineCore::pickEntity(
-    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
+  if (m_render_settings.viewport.mode != render::ViewportMode::Bounds) {
+    if (std::optional<scene::EntityId> gpu_pick = m_world_renderer.pickEntity(
+        getActiveScene(), m_mesh_resource_cache,
+        m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize)) {
+      return gpu_pick;
+    }
+  }
   const CameraRay ray = makeCameraRay(parCursorPixel, parViewportSize);
   float closest_distance = std::numeric_limits<float>::max();
   std::optional<scene::EntityId> closest_entity;
   for (const scene::EntityRecord& entity :
        getActiveScene().world.getEntities()) {
-    if (!entity.alive || entity.id == getActiveScene().editor_camera_entity) {
+    if (!entity.alive) {
       continue;
     }
 
@@ -533,17 +656,6 @@ std::optional<scene::EntityId> EngineCore::pickEntity(
       if (!intersectBounds(ray, world_bounds, distance)) {
         continue;
       }
-      const assets::StaticModel* model =
-          getStaticMeshSource(entity.static_mesh->mesh_handle);
-      if (model == nullptr) {
-        continue;
-      }
-      const std::optional<float> triangle_distance =
-          pickMeshTriangles(ray, *model, entity.transform.transform);
-      if (!triangle_distance.has_value()) {
-        continue;
-      }
-      distance = *triangle_distance;
       hit = true;
     } else {
       hit = intersectSphere(ray, entity.transform.transform.translation,
@@ -577,7 +689,7 @@ bool EngineCore::isCursorOverEntityCore(
 
   const math::Bounds3 bounds = getEntityWorldBounds(parEntity);
   const glm::mat4 view_projection =
-      m_camera_system.getCamera().getViewProjectionMatrix(parViewportSize);
+      m_camera_system.getEditorCamera().getViewProjectionMatrix(parViewportSize);
   const math::ScreenPoint origin =
       math::projectPoint(entity->transform.transform.translation,
                          view_projection, parViewportSize);
@@ -613,7 +725,7 @@ glm::vec3 EngineCore::getPlacementPointOnFloor(
 }
 
 glm::vec3 EngineCore::getPointInFrontOfCamera(float parDistance) const {
-  const camera::Camera& camera = m_camera_system.getCamera();
+  const camera::Camera& camera = m_camera_system.getEditorCamera();
   return camera.position + camera.getForward() * std::max(parDistance, 0.1f);
 }
 
@@ -632,7 +744,7 @@ const scene::SceneManager::SceneRecord& EngineCore::getActiveScene() const {
 
 EngineCore::CameraRay EngineCore::makeCameraRay(
     const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
-  const camera::Camera& camera = m_camera_system.getCamera();
+  const camera::Camera& camera = m_camera_system.getEditorCamera();
   const glm::vec2 viewport_size = glm::max(parViewportSize, glm::vec2(1.0f));
   const glm::vec2 normalized_device_coordinate{
       (parCursorPixel.x / viewport_size.x) * 2.0f - 1.0f,
@@ -652,81 +764,24 @@ EngineCore::CameraRay EngineCore::makeCameraRay(
   return ray;
 }
 
-lighting::LightingState EngineCore::buildLightingState() const {
-  lighting::LightingState state = m_lighting_system.getState();
-  const scene::SunLightSettings& sun = getActiveScene().sun_light;
-  state.sun.enabled = sun.enabled && sun.intensity > 0.0f;
-  const float sun_direction_length = glm::length(sun.direction_to_sun);
-  state.sun.direction_to_light =
-      sun_direction_length > 0.0001f
-          ? sun.direction_to_sun / sun_direction_length
-          : glm::vec3(0.35f, 0.85f, 0.45f);
-  state.sun.color = sun.color;
-  state.sun.intensity = sun.intensity;
-  state.point_light_count = 0;
-  for (lighting::PointLight& light : state.point_lights) {
-    light.enabled = false;
-  }
-  for (const scene::EntityRecord& entity :
-       getActiveScene().world.getEntities()) {
-    if (!entity.alive || !entity.light.has_value() ||
-        entity.light->type != scene::LightType::Point ||
-        !entity.light->enabled) {
-      continue;
-    }
-
-    if (state.point_light_count >= state.point_lights.size()) {
-      break;
-    }
-
-    lighting::PointLight& point =
-        state.point_lights[state.point_light_count++];
-    point.enabled = true;
-    point.position = entity.transform.transform.translation;
-    point.color = entity.light->color;
-    point.intensity = entity.light->intensity;
-    point.range = entity.light->range;
-  }
-
-  return state;
+lighting::LightingState EngineCore::buildLightingState(
+    const camera::Camera& parCamera,
+    const film::FilmFrameState* parFilmState) const {
+  lighting::EnvironmentIllumination environment;
+  const glm::vec3 sky = render::WorldRenderer::getClearColor(
+      m_render_settings.scene.sky_preset);
+  environment.diffuse = glm::max(sky * 0.28f, glm::vec3(0.025f));
+  environment.specular = glm::max(sky * 0.16f, glm::vec3(0.012f));
+  environment.exposure = m_lighting_state.exposure;
+  return m_lighting_system.extract(
+      getActiveScene().world, getActiveScene().sun_light,
+      parCamera.position, environment, parFilmState);
 }
 
 void EngineCore::createDefaultSceneEntities(
     scene::SceneManager::SceneRecord& parScene) {
-  parScene.editor_camera_entity = parScene.world.createEntity("Editor Camera");
-  scene::EntityRecord* camera_entity =
-      parScene.world.findEntity(parScene.editor_camera_entity);
-  if (camera_entity != nullptr) {
-    camera_entity->transform.transform.translation =
-        m_camera_system.getCamera().position;
-    camera_entity->transform.transform.rotation =
-        m_camera_system.getCamera().orientation;
-  }
-  scene::CameraComponent camera;
-  camera.active = true;
-  camera.vertical_fov_degrees =
-      m_camera_system.getCamera().vertical_fov_degrees;
-  camera.near_plane = m_camera_system.getCamera().near_plane;
-  camera.far_plane = m_camera_system.getCamera().far_plane;
-  parScene.world.setCamera(parScene.editor_camera_entity, camera);
   parScene.sun_light = {};
   parScene.selected_entity = {};
-}
-
-void EngineCore::syncEditorCameraEntity() {
-  if (m_scene_manager.getScenes().empty()) {
-    return;
-  }
-
-  EditorCameraBridge::syncEntityFromCamera(getActiveScene(), m_camera_system);
-}
-
-void EngineCore::syncCameraFromEditorEntity() {
-  if (m_scene_manager.getScenes().empty()) {
-    return;
-  }
-
-  EditorCameraBridge::syncCameraFromEntity(getActiveScene(), m_camera_system);
 }
 
 void EngineCore::rebuildAssetInstanceCounts() {
