@@ -41,9 +41,11 @@ flowchart TD
 
 Solid, Material, and Final use the complete authored geometry. Bounds is the
 only geometry-free mode. Material uses full textures, lighting, and a 2048²
-sun shadow. Final uses a stabilized 4096² sun shadow and up to two 1024²
-point-light cubemap shadows before HDR tone mapping. Shadow casters are
-extracted independently from the camera-visible draw list.
+sun shadow. Final mode uses a stabilized, tighter 4096² Sun-shadow footprint
+with a comparable nominal world-space texel density to the authored Point
+lights, plus up to two 1024² point-light cubemap shadows before HDR tone
+mapping.
+Shadow casters are extracted independently from the camera-visible draw list.
 
 Opaque and masked primitives write depth. Blended primitives render afterwards,
 back-to-front, without depth writes. Solid treats every surface as opaque.

@@ -755,10 +755,13 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       casters.push_back(
           {frame_mesh.mesh, frame_mesh.model, frame_mesh.skin_matrices});
     }
-    const bool final = parSettings.viewport.mode == ViewportMode::Final;
+    const ShadowRenderSettings shadow_settings =
+        parSettings.viewport.mode == ViewportMode::Final
+            ? ShadowRenderSettings{4096, 36.0f, true}
+            : ShadowRenderSettings{2048, 70.0f, false};
     const auto shadow_start = std::chrono::steady_clock::now();
     shadows = &m_shadow_renderer.render(casters, camera, parLighting,
-                                         final ? 4096 : 2048, final);
+                                         shadow_settings);
     parSnapshot.shadow_render_ms = std::chrono::duration<float, std::milli>(
         std::chrono::steady_clock::now() - shadow_start).count();
     parSnapshot.shadows_reused = shadows->reused;

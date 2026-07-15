@@ -16,6 +16,12 @@ struct ShadowCaster final {
   std::span<const std::vector<glm::mat4>> skin_matrices;
 };
 
+struct ShadowRenderSettings final {
+  int sun_resolution = 2048;
+  float sun_half_extent = 70.0f;
+  bool render_point_shadows = false;
+};
+
 struct ShadowFrame final {
   bool sun_enabled = false;
   bool reused = false;
@@ -36,14 +42,14 @@ class ShadowRenderer final {
 
   [[nodiscard]] const ShadowFrame& render(
       std::span<const ShadowCaster> parCasters, const camera::Camera& parCamera,
-      const lighting::LightingState& parLighting, int parSunResolution,
-      bool parRenderPointShadows);
+      const lighting::LightingState& parLighting,
+      const ShadowRenderSettings& parSettings);
 
  private:
   [[nodiscard]] std::size_t getInputHash(
       std::span<const ShadowCaster> parCasters, const camera::Camera& parCamera,
-      const lighting::LightingState& parLighting, int parSunResolution,
-      bool parRenderPointShadows) const;
+      const lighting::LightingState& parLighting,
+      const ShadowRenderSettings& parSettings) const;
   void createResources();
   [[nodiscard]] bool resizeSunDepth(int parResolution);
   void drawCasters(std::span<const ShadowCaster> parCasters,

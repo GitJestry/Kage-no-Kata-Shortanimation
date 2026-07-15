@@ -13,7 +13,7 @@
 namespace {
 
 constexpr int POINT_RESOLUTION = 1024;
-constexpr float SUN_RADIUS = 70.0f;
+constexpr float SUN_VIEW_DISTANCE = 70.0f;
 
 template <typename Value>
 void hashCombine(std::size_t& parHash, const Value& parValue) {
@@ -210,11 +210,12 @@ void ShadowRenderer::drawCasters(
 
 std::size_t ShadowRenderer::getInputHash(
     std::span<const ShadowCaster> parCasters, const camera::Camera& parCamera,
-    const lighting::LightingState& parLighting, int parSunResolution,
-    bool parRenderPointShadows) const {
+    const lighting::LightingState& parLighting,
+    const ShadowRenderSettings& parSettings) const {
   std::size_t hash = 0;
-  hashCombine(hash, parSunResolution);
-  hashCombine(hash, parRenderPointShadows);
+  hashCombine(hash, parSettings.sun_resolution);
+  hashCombine(hash, parSettings.sun_half_extent);
+  hashCombine(hash, parSettings.render_point_shadows);
   hashCombine(hash, parLighting.sun.enabled);
   hashVec3(hash, parLighting.sun.direction_to_light);
   hashVec3(hash, parCamera.position);
@@ -244,18 +245,17 @@ std::size_t ShadowRenderer::getInputHash(
 
 const ShadowFrame& ShadowRenderer::render(
     std::span<const ShadowCaster> parCasters, const camera::Camera& parCamera,
-    const lighting::LightingState& parLighting, int parSunResolution,
-    bool parRenderPointShadows) {
-  const std::size_t input_hash = getInputHash(
-      parCasters, parCamera, parLighting, parSunResolution,
-      parRenderPointShadows);
+    const lighting::LightingState& parLighting,
+    const ShadowRenderSettings& parSettings) {
+  const std::size_t input_hash =
+      getInputHash(parCasters, parCamera, parLighting, parSettings);
   if (m_has_cached_frame && m_sun_depth_valid &&
       input_hash == m_last_input_hash) {
     m_frame.reused = true;
     return m_frame;
   }
   m_frame.reused = false;
-  const bool sun_depth_ready = resizeSunDepth(parSunResolution);
+  const bool sun_depth_ready = resizeSunDepth(parSettings.sun_resolution);
   m_frame.sun_enabled = parLighting.sun.enabled && sun_depth_ready;
   m_frame.point_count = 0;
   glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
@@ -279,10 +279,11 @@ const ShadowFrame& ShadowRenderer::render(
                              ? glm::vec3(0.0f, 0.0f, 1.0f)
                              : glm::vec3(0.0f, 1.0f, 0.0f);
     const glm::mat4 view =
-        glm::lookAt(center + direction * SUN_RADIUS, center, up);
+        glm::lookAt(center + direction * SUN_VIEW_DISTANCE, center, up);
     glm::mat4 projection =
-        glm::ortho(-SUN_RADIUS, SUN_RADIUS, -SUN_RADIUS, SUN_RADIUS,
-                   0.1f, SUN_RADIUS * 3.0f);
+        glm::ortho(-parSettings.sun_half_extent, parSettings.sun_half_extent,
+                   -parSettings.sun_half_extent, parSettings.sun_half_extent,
+                   0.1f, SUN_VIEW_DISTANCE * 3.0f);
     // Snap the projection origin to shadow texels to prevent camera shimmer.
     glm::vec4 origin = projection * view * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     origin *= static_cast<float>(m_sun_resolution) * 0.5f;
@@ -327,7 +328,7 @@ const ShadowFrame& ShadowRenderer::render(
   constexpr std::array<glm::vec3, 6> UPS = {
       glm::vec3(0, -1, 0), glm::vec3(0, -1, 0), glm::vec3(0, 0, 1),
       glm::vec3(0, 0, -1), glm::vec3(0, -1, 0), glm::vec3(0, -1, 0)};
-  for (std::size_t light_index = 0; parRenderPointShadows &&
+  for (std::size_t light_index = 0; parSettings.render_point_shadows &&
        light_index < parLighting.point_light_count &&
        m_frame.point_count < lighting::MAX_POINT_SHADOWS;
        ++light_index) {
