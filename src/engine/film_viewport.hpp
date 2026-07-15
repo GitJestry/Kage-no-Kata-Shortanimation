@@ -26,13 +26,11 @@ struct FilmViewportCamera final {
   if (!parUseFilmCamera) {
     return {parEditorCamera, true, false};
   }
-  if (parFilmState->camera_output.kind != film::FilmOutputKind::Camera ||
-      !parFilmState->camera_output.camera.has_value()) {
+  if (!parFilmState->camera.has_value()) {
     return {std::nullopt, true, true};
   }
 
-  const film::EvaluatedCameraState& sample =
-      *parFilmState->camera_output.camera;
+  const film::EvaluatedCameraState& sample = *parFilmState->camera;
   const scene::EntityRecord* entity = parWorld.findEntity(sample.source_entity);
   if (entity == nullptr || !entity->camera.has_value()) {
     return {std::nullopt, true, true};

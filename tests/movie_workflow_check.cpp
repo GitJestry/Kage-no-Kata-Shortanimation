@@ -298,11 +298,11 @@ using kage::test::fail;
       requiresFilmFrameState(true, -1.0, FilmPlayback{}) ||
       requiresFilmFrameState(false, 10.0, FilmPlayback{}) ||
       !requiresFilmFrameState(true, 10.0, FilmPlayback{}) ||
-      !preview.camera_output.camera || !exported.camera_output.camera ||
-      preview.camera_output.camera->source_entity != second_camera ||
-      exported.camera_output.camera->source_entity != second_camera ||
-      !close(preview.camera_output.camera->vertical_fov_degrees,
-             exported.camera_output.camera->vertical_fov_degrees)) {
+      !preview.camera || !exported.camera ||
+      preview.camera->source_entity != second_camera ||
+      exported.camera->source_entity != second_camera ||
+      !close(preview.camera->vertical_fov_degrees,
+             exported.camera->vertical_fov_degrees)) {
     return false;
   }
   camera::Camera editor_camera;
@@ -311,6 +311,13 @@ using kage::test::fail;
       engine::resolveFilmViewportCamera(editor_camera, world, &preview);
   const engine::FilmViewportCamera stopped_view =
       engine::resolveFilmViewportCamera(editor_camera, world, nullptr);
+  FilmFrameState black_state;
+  const engine::FilmViewportCamera black_view =
+      engine::resolveFilmViewportCamera(editor_camera, world, &black_state);
+  FilmFrameState orphan_camera_state = preview;
+  orphan_camera_state.camera->source_entity = {9999};
+  const engine::FilmViewportCamera orphan_camera_view =
+      engine::resolveFilmViewportCamera(editor_camera, world, &orphan_camera_state);
   FilmFrameState non_camera_state;
   const engine::FilmViewportCamera non_camera_view =
       engine::resolveFilmViewportCamera(editor_camera, world, &non_camera_state, false);
@@ -321,6 +328,9 @@ using kage::test::fail;
          !stopped_view.consumes_film_state && stopped_view.camera &&
          stopped_view.camera->position == editor_camera.position &&
          engine::shouldShowEditorOverlays(true, stopped_view, true) &&
+         black_view.consumes_film_state && black_view.black_output &&
+         !black_view.camera && orphan_camera_view.consumes_film_state &&
+         orphan_camera_view.black_output && !orphan_camera_view.camera &&
          non_camera_view.consumes_film_state && non_camera_view.camera &&
          non_camera_view.camera->position == editor_camera.position &&
          engine::shouldShowEditorOverlays(true, non_camera_view, false);

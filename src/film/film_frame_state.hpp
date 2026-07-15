@@ -9,15 +9,6 @@
 
 namespace kage::film {
 
-enum class FilmPropertyKind {
-  CameraFov,
-  LightEnabled,
-  LightIntensity,
-  LightColor,
-  LightRange,
-  LightCastsShadows,
-};
-
 struct RigAnimationPlayback final {
   assets::AnimationClipId clip_id = 0;
   float source_in = 0.0f;
@@ -31,12 +22,6 @@ struct TransformOverride final {
   math::Transform transform;
 };
 
-struct PropertyOverride final {
-  scene::EntityId entity;
-  FilmPropertyKind kind = FilmPropertyKind::CameraFov;
-  glm::vec4 value{0.0f};
-};
-
 struct RigAnimationOverride final {
   scene::EntityId entity;
   RigAnimationPlayback animation;
@@ -44,8 +29,6 @@ struct RigAnimationOverride final {
   float weight = 1.0f;
   bool final_pose = false;
 };
-
-enum class FilmOutputKind { Camera, Black };
 
 struct EvaluatedCameraState final {
   scene::EntityId source_entity;
@@ -55,9 +38,13 @@ struct EvaluatedCameraState final {
   float far_plane = 1000.0f;
 };
 
-struct FilmCameraOutput final {
-  FilmOutputKind kind = FilmOutputKind::Black;
-  std::optional<EvaluatedCameraState> camera;
+struct EvaluatedPointLightState final {
+  scene::EntityId source_entity;
+  bool enabled = true;
+  glm::vec3 color{1.0f};
+  float intensity = 1.0f;
+  float range = 10.0f;
+  bool casts_shadows = false;
 };
 
 struct EvaluatedSunState final {
@@ -68,9 +55,9 @@ struct EvaluatedSunState final {
 
 struct FilmFrameState final {
   std::vector<TransformOverride> transforms;
-  std::vector<PropertyOverride> properties;
   std::vector<RigAnimationOverride> rig_animations;
-  FilmCameraOutput camera_output;
+  std::optional<EvaluatedCameraState> camera;
+  std::vector<EvaluatedPointLightState> point_lights;
   std::optional<EvaluatedSunState> sun;
 };
 

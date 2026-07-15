@@ -73,34 +73,19 @@ void setTransform(FilmFrameState& parState, scene::EntityId parEntity,
   }
 }
 
-[[nodiscard]] std::optional<FilmPropertyKind> framePropertyKind(
-    PropertyKind parKind) {
-  switch (parKind) {
-    case PropertyKind::CameraFov:
-      return FilmPropertyKind::CameraFov;
-    case PropertyKind::PointLightIntensity:
-      return FilmPropertyKind::LightIntensity;
-    case PropertyKind::PointLightColor:
-      return FilmPropertyKind::LightColor;
-    case PropertyKind::SunDirection:
-    case PropertyKind::SunIntensity:
-    case PropertyKind::SunColor:
-      return std::nullopt;
+EvaluatedPointLightState& setPointLight(
+    FilmFrameState& parState, const EvaluatedPointLightState& parLight) {
+  auto found = std::find_if(
+      parState.point_lights.begin(), parState.point_lights.end(),
+      [entity = parLight.source_entity](const EvaluatedPointLightState& item) {
+        return item.source_entity == entity;
+      });
+  if (found == parState.point_lights.end()) {
+    parState.point_lights.push_back(parLight);
+    return parState.point_lights.back();
   }
-  return std::nullopt;
-}
-
-void setProperty(FilmFrameState& parState, scene::EntityId parEntity,
-                 FilmPropertyKind parKind, const glm::vec4& parValue) {
-  auto found = std::find_if(parState.properties.begin(), parState.properties.end(),
-                            [parEntity, parKind](const PropertyOverride& item) {
-                              return item.entity == parEntity && item.kind == parKind;
-                            });
-  if (found == parState.properties.end()) {
-    parState.properties.push_back({parEntity, parKind, parValue});
-  } else {
-    found->value = parValue;
-  }
+  *found = parLight;
+  return *found;
 }
 
 [[nodiscard]] RigAnimationPlayback asPlaybackAnimation(
@@ -332,30 +317,24 @@ bool isPayloadCompatibleWithTarget(TimelineTargetKind parTargetKind,
 namespace {
 
 void evaluateTargetSequence(const TargetSequence& parSequence,
-                            FilmFrame parLocalFrame, FilmFrameState& parState) {
+                            FilmFrame parLocalFrame, FilmFrameState& parState,
+                            bool parEmitCamera) {
+  EvaluatedPointLightState* evaluated_light = nullptr;
   if (const auto* entity = std::get_if<CapturedEntityBaseState>(&parSequence.captured_base)) {
     setTransform(parState, parSequence.target.entity, entity->transform);
-    if (entity->camera.has_value()) {
-      setProperty(parState, parSequence.target.entity, FilmPropertyKind::CameraFov,
-                  glm::vec4(entity->camera->vertical_fov_degrees));
-      parState.camera_output = {FilmOutputKind::Camera,
-                                 {{parSequence.target.entity, entity->transform,
-                                   entity->camera->vertical_fov_degrees,
-                                   entity->camera->near_plane,
-                                   entity->camera->far_plane}}};
+    if (parEmitCamera && entity->camera.has_value()) {
+      parState.camera =
+          EvaluatedCameraState{parSequence.target.entity, entity->transform,
+                               entity->camera->vertical_fov_degrees,
+                               entity->camera->near_plane,
+                               entity->camera->far_plane};
     }
     if (entity->point_light.has_value()) {
-      setProperty(parState, parSequence.target.entity, FilmPropertyKind::LightEnabled,
-                  glm::vec4(entity->point_light->enabled ? 1.0f : 0.0f));
-      setProperty(parState, parSequence.target.entity, FilmPropertyKind::LightColor,
-                  glm::vec4(entity->point_light->color, 1.0f));
-      setProperty(parState, parSequence.target.entity, FilmPropertyKind::LightIntensity,
-                  glm::vec4(entity->point_light->intensity));
-      setProperty(parState, parSequence.target.entity, FilmPropertyKind::LightRange,
-                  glm::vec4(entity->point_light->range));
-      setProperty(parState, parSequence.target.entity,
-                  FilmPropertyKind::LightCastsShadows,
-                  glm::vec4(entity->point_light->casts_shadows ? 1.0f : 0.0f));
+      evaluated_light = &setPointLight(
+          parState, {parSequence.target.entity, entity->point_light->enabled,
+                     entity->point_light->color, entity->point_light->intensity,
+                     entity->point_light->range,
+                     entity->point_light->casts_shadows});
     }
   } else if (const auto* sun = std::get_if<CapturedSunBaseState>(&parSequence.captured_base)) {
     parState.sun = {{sun->direction_to_sun, sun->color, sun->intensity}};
@@ -394,6 +373,10 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
       previous_end = clip->end_frame;
     }
     setTransform(parState, parSequence.target.entity, current);
+    if (parEmitCamera && parState.camera.has_value() &&
+        parState.camera->source_entity == parSequence.target.entity) {
+      parState.camera->transform = current;
+    }
   }
 
   for (int lane = 2; lane < 2 + static_cast<int>(PropertyKind::SunColor) + 1;
@@ -417,19 +400,37 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
                                               clipT(parLocalFrame, selected->start_frame,
                                                     selected->end_frame))
                                 : property.end_value;
-    if (const auto kind = framePropertyKind(property.kind); kind.has_value()) {
-      setProperty(parState, parSequence.target.entity, *kind, value);
-    } else {
-      if (!parState.sun.has_value()) {
-        parState.sun = EvaluatedSunState{};
-      }
-      if (property.kind == PropertyKind::SunDirection) {
-        parState.sun->direction_to_sun = glm::vec3(value);
-      } else if (property.kind == PropertyKind::SunColor) {
-        parState.sun->color = glm::vec3(value);
-      } else if (property.kind == PropertyKind::SunIntensity) {
-        parState.sun->intensity = value.x;
-      }
+    switch (property.kind) {
+      case PropertyKind::CameraFov:
+        if (parEmitCamera && parState.camera.has_value() &&
+            parState.camera->source_entity == parSequence.target.entity) {
+          parState.camera->vertical_fov_degrees = value.x;
+        }
+        break;
+      case PropertyKind::PointLightIntensity:
+        if (evaluated_light != nullptr) {
+          evaluated_light->intensity = value.x;
+        }
+        break;
+      case PropertyKind::PointLightColor:
+        if (evaluated_light != nullptr) {
+          evaluated_light->color = glm::vec3(value);
+        }
+        break;
+      case PropertyKind::SunDirection:
+      case PropertyKind::SunIntensity:
+      case PropertyKind::SunColor:
+        if (!parState.sun.has_value()) {
+          parState.sun = EvaluatedSunState{};
+        }
+        if (property.kind == PropertyKind::SunDirection) {
+          parState.sun->direction_to_sun = glm::vec3(value);
+        } else if (property.kind == PropertyKind::SunColor) {
+          parState.sun->color = glm::vec3(value);
+        } else {
+          parState.sun->intensity = value.x;
+        }
+        break;
     }
   }
 
@@ -468,25 +469,6 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
       *found = override;
     }
   }
-
-  if (parState.camera_output.camera.has_value() &&
-      parState.camera_output.camera->source_entity == parSequence.target.entity) {
-    const auto transform = std::find_if(parState.transforms.begin(), parState.transforms.end(),
-                                        [&parSequence](const TransformOverride& item) {
-                                          return item.entity == parSequence.target.entity;
-                                        });
-    const auto fov = std::find_if(parState.properties.begin(), parState.properties.end(),
-                                  [&parSequence](const PropertyOverride& item) {
-                                    return item.entity == parSequence.target.entity &&
-                                           item.kind == FilmPropertyKind::CameraFov;
-                                  });
-    if (transform != parState.transforms.end()) {
-      parState.camera_output.camera->transform = transform->transform;
-    }
-    if (fov != parState.properties.end()) {
-      parState.camera_output.camera->vertical_fov_degrees = fov->value.x;
-    }
-  }
 }
 
 }  // namespace
@@ -499,16 +481,40 @@ std::optional<FilmFrameState> evaluateTargetSequencePreview(
     return std::nullopt;
   }
   FilmFrameState state;
-  evaluateTargetSequence(*sequence,
-                         std::clamp(parFrame, FilmFrame{0},
-                                    sequence->durationFrames()),
-                         state);
+  evaluateTargetSequence(
+      *sequence,
+      std::clamp(parFrame, FilmFrame{0}, sequence->durationFrames()), state,
+      isCameraSequence(*sequence));
   return state;
 }
 
 FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
                                      FilmFrame parFrame) {
   FilmFrameState state;
+  struct Candidate final {
+    const SequenceInstance* instance;
+    const TargetSequence* sequence;
+  };
+
+  std::optional<Candidate> camera;
+  for (const SequenceInstance& instance : parTimeline.instances) {
+    const TargetSequence* sequence = parTimeline.findSequence(instance.sequence_id);
+    if (sequence == nullptr || !isCameraSequence(*sequence) ||
+        instance.start_frame > parFrame) {
+      continue;
+    }
+    const bool active =
+        parFrame < saturatedFrameEnd(instance.start_frame, sequence->durationFrames());
+    if (!active && parTimeline.camera_gap_mode == CameraGapMode::Black) {
+      continue;
+    }
+    if (!camera.has_value() || instance.start_frame > camera->instance->start_frame ||
+        (instance.start_frame == camera->instance->start_frame &&
+         instance.id > camera->instance->id)) {
+      camera = {&instance, sequence};
+    }
+  }
+
   std::vector<TimelineTarget> targets;
   for (const SequenceInstance& instance : parTimeline.instances) {
     const TargetSequence* sequence = parTimeline.findSequence(instance.sequence_id);
@@ -519,10 +525,6 @@ FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
   }
 
   for (const TimelineTarget& target : targets) {
-    struct Candidate final {
-      const SequenceInstance* instance;
-      const TargetSequence* sequence;
-    };
     std::vector<Candidate> candidates;
     for (const SequenceInstance& instance : parTimeline.instances) {
       const TargetSequence* sequence = parTimeline.findSequence(instance.sequence_id);
@@ -558,38 +560,14 @@ FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
       local_frame = std::min(parFrame - selected.instance->start_frame,
                              selected.sequence->durationFrames());
     }
-    evaluateTargetSequence(*selected.sequence, local_frame, state);
-  }
-
-  struct CameraCandidate final {
-    const SequenceInstance* instance;
-    const TargetSequence* sequence;
-  };
-  std::optional<CameraCandidate> camera;
-  for (const SequenceInstance& instance : parTimeline.instances) {
-    const TargetSequence* sequence = parTimeline.findSequence(instance.sequence_id);
-    if (sequence == nullptr || !isCameraSequence(*sequence) ||
-        instance.start_frame > parFrame) {
-      continue;
+    if (camera.has_value() && camera->sequence->target == target) {
+      selected = *camera;
+      local_frame = std::min(parFrame - selected.instance->start_frame,
+                             selected.sequence->durationFrames());
     }
-    const bool active =
-        parFrame < saturatedFrameEnd(instance.start_frame, sequence->durationFrames());
-    if (!active && parTimeline.camera_gap_mode == CameraGapMode::Black) {
-      continue;
-    }
-    if (!camera.has_value() || instance.start_frame > camera->instance->start_frame ||
-        (instance.start_frame == camera->instance->start_frame &&
-         instance.id > camera->instance->id)) {
-      camera = {&instance, sequence};
-    }
-  }
-  state.camera_output = {};
-  if (camera.has_value()) {
-    FilmFrameState camera_state;
-    const FilmFrame local = std::min(parFrame - camera->instance->start_frame,
-                                     camera->sequence->durationFrames());
-    evaluateTargetSequence(*camera->sequence, local, camera_state);
-    state.camera_output = camera_state.camera_output;
+    const bool emit_camera =
+        camera.has_value() && selected.instance == camera->instance;
+    evaluateTargetSequence(*selected.sequence, local_frame, state, emit_camera);
   }
   return state;
 }

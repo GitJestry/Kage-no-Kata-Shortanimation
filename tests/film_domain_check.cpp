@@ -69,17 +69,16 @@ using kage::test::fail;
   const FilmFrameState held = evaluateMovieTimeline(timeline, 25);
   return local && !local->transforms.empty() &&
          close(local->transforms.front().transform.translation.x, 15.0f) &&
-         local->camera_output.camera &&
-         close(local->camera_output.camera->vertical_fov_degrees, 60.0f) &&
+         local->camera &&
+         close(local->camera->vertical_fov_degrees, 60.0f) &&
          !evaluateTargetSequencePreview(timeline, 9999, 0) &&
          movie.transforms.size() == 1 &&
          close(movie.transforms.front().transform.translation.x, 15.0f) &&
-         movie.camera_output.camera &&
-         close(movie.camera_output.camera->vertical_fov_degrees, 60.0f) &&
+         movie.camera &&
+         close(movie.camera->vertical_fov_degrees, 60.0f) &&
          !reset.transforms.empty() &&
          close(reset.transforms.front().transform.translation.x, 10.0f) &&
-         held.camera_output.camera &&
-         close(held.camera_output.camera->transform.translation.x, 20.0f);
+         held.camera && close(held.camera->transform.translation.x, 20.0f);
 }
 
 [[nodiscard]] bool testMovementEvaluation() {
@@ -227,6 +226,10 @@ using kage::test::fail;
   intensity.kind = PropertyKind::PointLightIntensity;
   intensity.start_value = intensity.control_1 = glm::vec4(2.0f);
   intensity.end_value = intensity.control_2 = glm::vec4(6.0f);
+  PropertyClip color;
+  color.kind = PropertyKind::PointLightColor;
+  color.start_value = color.control_1 = glm::vec4(0.2f, 0.4f, 0.8f, 1.0f);
+  color.end_value = color.control_2 = glm::vec4(0.8f, 0.6f, 0.2f, 1.0f);
   PropertyClip sun_intensity;
   sun_intensity.kind = PropertyKind::SunIntensity;
   sun_intensity.start_value = sun_intensity.control_1 = glm::vec4(1.0f);
@@ -236,6 +239,7 @@ using kage::test::fail;
       !edits.appendClipToLane(*first_camera, 10, fov) ||
       !edits.appendClipToLane(*second_camera, 10, still) ||
       !edits.appendClipToLane(*light, 10, intensity) ||
+      !edits.appendClipToLane(*light, 10, color) ||
       !edits.appendClipToLane(*sun, 10, sun_intensity) ||
       !edits.placeSequence(*first_camera, 0) ||
       !edits.placeSequence(*second_camera, 20) ||
@@ -244,23 +248,67 @@ using kage::test::fail;
   }
   const FilmFrameState active = evaluateMovieTimeline(timeline, 5);
   const FilmFrameState held_gap = evaluateMovieTimeline(timeline, 15);
-  if (!active.camera_output.camera ||
-      !close(active.camera_output.camera->vertical_fov_degrees, 50.0f) ||
+  if (!active.camera ||
+      !close(active.camera->vertical_fov_degrees, 50.0f) ||
       !active.sun || !close(active.sun->intensity, 2.0f) ||
-      !held_gap.camera_output.camera ||
-      held_gap.camera_output.camera->source_entity != scene::EntityId{21} ||
+      !held_gap.camera ||
+      held_gap.camera->source_entity != scene::EntityId{21} ||
       !edits.setCameraGapMode(CameraGapMode::Black)) {
     return false;
   }
   const FilmFrameState black_gap = evaluateMovieTimeline(timeline, 15);
-  const auto light_intensity = std::find_if(
-      active.properties.begin(), active.properties.end(),
-      [](const PropertyOverride& item) {
-        return item.kind == FilmPropertyKind::LightIntensity;
+  const auto evaluated_light = std::find_if(
+      active.point_lights.begin(), active.point_lights.end(),
+      [](const EvaluatedPointLightState& item) {
+        return item.source_entity == scene::EntityId{23};
       });
-  return light_intensity != active.properties.end() &&
-         close(light_intensity->value.x, 4.0f) &&
-         black_gap.camera_output.kind == FilmOutputKind::Black;
+  return evaluated_light != active.point_lights.end() &&
+         !evaluated_light->enabled &&
+         close(evaluated_light->color, glm::vec3(0.5f)) &&
+         close(evaluated_light->intensity, 4.0f) &&
+         close(evaluated_light->range, 42.0f) &&
+         !evaluated_light->casts_shadows && !black_gap.camera;
+}
+
+[[nodiscard]] bool testSelectedCameraUsesOneEvaluationPath() {
+  MovieTimeline timeline;
+  timeline.camera_gap_mode = CameraGapMode::Black;
+  TimelineEditService edits(timeline);
+  const scene::EntityId camera_entity{31};
+
+  CapturedEntityBaseState long_base;
+  long_base.transform.translation.x = 10.0f;
+  long_base.camera = CapturedCameraState{40.0f, 0.1f, 300.0f};
+  CapturedEntityBaseState short_base;
+  short_base.transform.translation.x = 100.0f;
+  short_base.camera = CapturedCameraState{70.0f, 0.1f, 300.0f};
+  const auto long_sequence = edits.createSequence(
+      "Long", {TimelineTargetKind::Camera, camera_entity}, long_base);
+  const auto short_sequence = edits.createSequence(
+      "Short", {TimelineTargetKind::Camera, camera_entity}, short_base);
+  MovementClip long_movement;
+  long_movement.end.translation.x = 50.0f;
+  MovementClip short_movement;
+  short_movement.end.translation.x = 200.0f;
+  if (!long_sequence || !short_sequence ||
+      !edits.appendClipToLane(*long_sequence, 40, long_movement) ||
+      !edits.appendClipToLane(*short_sequence, 10, short_movement) ||
+      !edits.placeSequence(*long_sequence, 0) ||
+      !edits.placeSequence(*short_sequence, 5)) {
+    return false;
+  }
+
+  const FilmFrameState state = evaluateMovieTimeline(timeline, 25);
+  const auto transform = std::find_if(
+      state.transforms.begin(), state.transforms.end(),
+      [camera_entity](const TransformOverride& item) {
+        return item.entity == camera_entity;
+      });
+  return state.camera && transform != state.transforms.end() &&
+         close(state.camera->vertical_fov_degrees, 40.0f) &&
+         close(state.camera->transform.translation,
+               transform->transform.translation) &&
+         transform->transform.translation.x < short_base.transform.translation.x;
 }
 
 [[nodiscard]] bool testTimelineEdits() {
@@ -417,6 +465,9 @@ int main() {
   }
   if (!testPropertyAndCameraGapEvaluation()) {
     return fail("camera, light, sun, or camera-gap evaluation failed");
+  }
+  if (!testSelectedCameraUsesOneEvaluationPath()) {
+    return fail("selected camera and transform used different evaluation paths");
   }
   if (!testTimelineEdits()) {
     return fail("TimelineEditService compatibility, overlap, duplication, or atomicity failed");

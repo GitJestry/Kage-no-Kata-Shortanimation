@@ -5,6 +5,7 @@
 #include "scene/world.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -18,6 +19,10 @@ using kage::test::fail;
   return glm::length(parLeft - parRight) < 0.002f;
 }
 
+[[nodiscard]] bool close(const glm::quat& parLeft, const glm::quat& parRight) {
+  return std::abs(std::abs(glm::dot(parLeft, parRight)) - 1.0f) < 0.002f;
+}
+
 [[nodiscard]] const TransformOverride* transformFor(const FilmFrameState& parState,
                                                      scene::EntityId parEntity) {
   const auto found = std::find_if(
@@ -26,15 +31,14 @@ using kage::test::fail;
   return found == parState.transforms.end() ? nullptr : &*found;
 }
 
-[[nodiscard]] const PropertyOverride* propertyFor(const FilmFrameState& parState,
-                                                   scene::EntityId parEntity,
-                                                   FilmPropertyKind parKind) {
+[[nodiscard]] const EvaluatedPointLightState* pointLightFor(
+    const FilmFrameState& parState, scene::EntityId parEntity) {
   const auto found = std::find_if(
-      parState.properties.begin(), parState.properties.end(),
-      [=](const PropertyOverride& item) {
-        return item.entity == parEntity && item.kind == parKind;
+      parState.point_lights.begin(), parState.point_lights.end(),
+      [parEntity](const EvaluatedPointLightState& item) {
+        return item.source_entity == parEntity;
       });
-  return found == parState.properties.end() ? nullptr : &*found;
+  return found == parState.point_lights.end() ? nullptr : &*found;
 }
 
 [[nodiscard]] bool sameEvaluatedFrame(const FilmFrameState& parBefore,
@@ -43,28 +47,37 @@ using kage::test::fail;
                                       scene::EntityId parLight) {
   const TransformOverride* before_transform = transformFor(parBefore, parRig);
   const TransformOverride* after_transform = transformFor(parAfter, parRig);
-  const PropertyOverride* before_light =
-      propertyFor(parBefore, parLight, FilmPropertyKind::LightIntensity);
-  const PropertyOverride* after_light =
-      propertyFor(parAfter, parLight, FilmPropertyKind::LightIntensity);
+  const EvaluatedPointLightState* before_light =
+      pointLightFor(parBefore, parLight);
+  const EvaluatedPointLightState* after_light = pointLightFor(parAfter, parLight);
   return before_transform != nullptr && after_transform != nullptr &&
          close(before_transform->transform.translation,
                after_transform->transform.translation) &&
          before_light != nullptr && after_light != nullptr &&
-         close(before_light->value.x, after_light->value.x) &&
+         before_light->source_entity == after_light->source_entity &&
+         before_light->enabled == after_light->enabled &&
+         close(before_light->color, after_light->color) &&
+         close(before_light->intensity, after_light->intensity) &&
+         close(before_light->range, after_light->range) &&
+         before_light->casts_shadows == after_light->casts_shadows &&
          parBefore.rig_animations.size() == 1 &&
          parAfter.rig_animations.size() == 1 &&
          parBefore.rig_animations.front().animation.clip_id ==
              parAfter.rig_animations.front().animation.clip_id &&
          close(parBefore.rig_animations.front().local_time_seconds,
                parAfter.rig_animations.front().local_time_seconds) &&
-         parBefore.camera_output.camera && parAfter.camera_output.camera &&
-         parBefore.camera_output.camera->source_entity ==
-             parAfter.camera_output.camera->source_entity &&
-         close(parBefore.camera_output.camera->transform.translation,
-               parAfter.camera_output.camera->transform.translation) &&
-         close(parBefore.camera_output.camera->vertical_fov_degrees,
-               parAfter.camera_output.camera->vertical_fov_degrees);
+         parBefore.camera && parAfter.camera &&
+         parBefore.camera->source_entity == parAfter.camera->source_entity &&
+         close(parBefore.camera->transform.translation,
+               parAfter.camera->transform.translation) &&
+         close(parBefore.camera->transform.rotation,
+               parAfter.camera->transform.rotation) &&
+         close(parBefore.camera->transform.scale,
+               parAfter.camera->transform.scale) &&
+         close(parBefore.camera->vertical_fov_degrees,
+               parAfter.camera->vertical_fov_degrees) &&
+         close(parBefore.camera->near_plane, parAfter.camera->near_plane) &&
+         close(parBefore.camera->far_plane, parAfter.camera->far_plane);
 }
 
 }  // namespace
@@ -164,15 +177,14 @@ int main() {
   }
 
   const FilmFrameState before = evaluateMovieTimeline(timeline, 30);
-  const PropertyOverride* light_enabled =
-      propertyFor(before, light, FilmPropertyKind::LightEnabled);
-  const PropertyOverride* light_range =
-      propertyFor(before, light, FilmPropertyKind::LightRange);
+  const EvaluatedPointLightState* evaluated_light = pointLightFor(before, light);
   if (!sameEvaluatedFrame(before, before, rig, light) ||
       before.rig_animations.front().animation.clip_id != arm_action.clip_id ||
       !before.rig_animations.front().animation.looping ||
-      light_enabled == nullptr || light_range == nullptr ||
-      light_enabled->value.x != 1.0f || !close(light_range->value.x, 42.0f)) {
+      evaluated_light == nullptr || !evaluated_light->enabled ||
+      !close(evaluated_light->color, light_before.color) ||
+      !close(evaluated_light->range, light_before.range) ||
+      evaluated_light->casts_shadows != light_before.casts_shadows) {
     return fail("Film v2 evaluation did not preserve authored values");
   }
 
@@ -229,13 +241,16 @@ int main() {
   }
 
   world.findEntity(light)->light->enabled = false;
+  world.findEntity(light)->light->color = {0.0f, 1.0f, 0.0f};
   world.findEntity(light)->light->intensity = 99.0f;
   world.findEntity(light)->light->range = 3.0f;
   world.findEntity(light)->light->casts_shadows = true;
   const FilmFrameState captured = evaluateMovieTimeline(reloaded, 0);
   const lighting::LightingState lighting = lighting::LightingSystem{}.extract(
       world, {}, {}, {}, &captured);
-  if (lighting.point_light_count != 1 || lighting.point_lights[0].casts_shadow ||
+  if (lighting.point_light_count != 1 || !lighting.point_lights[0].enabled ||
+      lighting.point_lights[0].casts_shadow ||
+      !close(lighting.point_lights[0].color, light_before.color) ||
       !close(lighting.point_lights[0].intensity, light_before.intensity) ||
       !close(lighting.point_lights[0].range, light_before.range)) {
     return fail("captured point-light state changed after World edits");
