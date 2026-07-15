@@ -146,7 +146,7 @@ class EngineCore final {
   [[nodiscard]] std::span<const scene::SceneManager::SceneRecord> getScenes()
       const;
   [[nodiscard]] const assets::StaticModel* getStaticMeshSource(
-      assets::AssetRegistry::StaticMeshHandle parHandle) const;
+      std::size_t parAssetIndex) const;
   [[nodiscard]] const assets::AssetRegistry::AssetLibraryEntry*
   getAssetLibraryEntry(std::size_t parAssetIndex) const;
   [[nodiscard]] scene::EntityId getSelectedEntity() const;

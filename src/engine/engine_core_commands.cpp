@@ -86,7 +86,6 @@ scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,
   scene::EntityId entity = getActiveScene().world.createEntity(
       m_asset_registry.reserveInstanceName(parAssetIndex));
   scene::StaticMeshComponent static_mesh;
-  static_mesh.mesh_handle = asset->mesh_handle;
   static_mesh.asset_library_index = parAssetIndex;
   static_mesh.local_bounds =
       document != nullptr ? document->static_model.bounds

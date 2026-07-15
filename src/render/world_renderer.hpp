@@ -113,7 +113,7 @@ struct PlacementGhost final {
   };
 
   Kind kind = Kind::None;
-  std::size_t mesh_handle = scene::INVALID_STATIC_MESH_HANDLE;
+  std::size_t asset_library_index = scene::INVALID_ASSET_LIBRARY_INDEX;
   math::Transform transform;
   glm::vec3 light_color{1.0f, 0.94f, 0.84f};
   float light_intensity = 1.0f;

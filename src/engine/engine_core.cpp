@@ -91,8 +91,8 @@ std::size_t EngineCore::registerModelAsset(std::string parLabel,
       m_asset_registry.getAssetLibraryEntry(asset_index);
   if (asset != nullptr && asset->document.has_value()) {
     const Clock::time_point upload_begin = Clock::now();
-    m_mesh_resource_cache.uploadStaticMesh(asset->mesh_handle,
-                                           asset->document->static_model);
+    m_mesh_resource_cache.uploadStaticMesh(
+        asset_index, asset->document->static_model);
     m_performance_snapshot.gpu_upload_ms =
         elapsedMilliseconds(upload_begin, Clock::now());
     m_asset_registry.releaseStaticGeometryPayload(asset_index);
@@ -106,7 +106,7 @@ void EngineCore::requestAssetLoad(std::size_t parAssetIndex) {
   if (entry == nullptr) {
     return;
   }
-  if (m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) != nullptr) {
+  if (m_mesh_resource_cache.getStaticMesh(parAssetIndex) != nullptr) {
     return;
   }
   if (entry->load_state == assets::AssetLoadState::Queued ||
@@ -121,11 +121,9 @@ void EngineCore::requestAssetLoad(std::size_t parAssetIndex) {
 }
 
 void EngineCore::attachLoadedAssetToInstances(std::size_t parAssetIndex) {
-  const assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
   const assets::ModelAsset* document =
       m_asset_registry.getLoadedAsset(parAssetIndex);
-  if (asset == nullptr || document == nullptr) {
+  if (document == nullptr) {
     return;
   }
 
@@ -137,7 +135,6 @@ void EngineCore::attachLoadedAssetToInstances(std::size_t parAssetIndex) {
         continue;
       }
 
-      entity.static_mesh->mesh_handle = asset->mesh_handle;
       entity.static_mesh->local_bounds = document->static_model.bounds;
       if (!document->skins.empty() && !entity.rig.has_value()) {
         scene::RigComponent rig;
@@ -171,9 +168,9 @@ void EngineCore::pollAssetStreaming() {
 
     m_performance_snapshot.asset_load_ms += entry->last_cpu_import_ms;
     try {
-      if (m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) == nullptr) {
+      if (m_mesh_resource_cache.getStaticMesh(asset_index) == nullptr) {
         const Clock::time_point upload_begin = Clock::now();
-        m_mesh_resource_cache.uploadStaticMesh(entry->mesh_handle,
+        m_mesh_resource_cache.uploadStaticMesh(asset_index,
                                                document->static_model);
         m_performance_snapshot.gpu_upload_ms +=
             elapsedMilliseconds(upload_begin, Clock::now());
@@ -493,8 +490,8 @@ std::span<const scene::SceneManager::SceneRecord> EngineCore::getScenes() const 
 }
 
 const assets::StaticModel* EngineCore::getStaticMeshSource(
-    assets::AssetRegistry::StaticMeshHandle parHandle) const {
-  return m_asset_registry.getStaticMeshSource(parHandle);
+    std::size_t parAssetIndex) const {
+  return m_asset_registry.getStaticMeshSource(parAssetIndex);
 }
 
 const assets::AssetRegistry::AssetLibraryEntry*

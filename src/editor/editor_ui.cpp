@@ -797,7 +797,8 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
     }
     drawVector3("Local bounds", entity->static_mesh->local_bounds.getSize());
     const assets::StaticModel* source =
-        parEngine.getStaticMeshSource(entity->static_mesh->mesh_handle);
+        parEngine.getStaticMeshSource(
+            entity->static_mesh->asset_library_index);
     if (source != nullptr) {
       int material_debug_mode =
           static_cast<int>(parEngine.getMaterialDebugMode());

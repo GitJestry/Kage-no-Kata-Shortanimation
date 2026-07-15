@@ -24,8 +24,6 @@ enum class AssetLoadState {
 
 class AssetRegistry final {
  public:
-  using StaticMeshHandle = std::size_t;
-
   struct AnimationPackEntry final {
     std::string label;
     std::filesystem::path path;
@@ -41,7 +39,6 @@ class AssetRegistry final {
     std::string load_error;
     std::chrono::steady_clock::time_point load_started_at{};
     float last_cpu_import_ms = 0.0f;
-    StaticMeshHandle mesh_handle = 0;
     std::size_t instance_count = 0;
     std::size_t next_instance_number = 0;
     std::vector<AnimationPackEntry> animation_packs;
@@ -81,7 +78,7 @@ class AssetRegistry final {
       std::size_t parAssetIndex) const;
   void releaseStaticGeometryPayload(std::size_t parAssetIndex);
   [[nodiscard]] const StaticModel* getStaticMeshSource(
-      StaticMeshHandle parHandle) const;
+      std::size_t parAssetIndex) const;
 
  private:
   void applyAnimationPacks(AssetLibraryEntry& parAsset);

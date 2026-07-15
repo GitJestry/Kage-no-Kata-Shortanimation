@@ -280,7 +280,6 @@ std::size_t AssetRegistry::registerStaticAsset(
   entry.path = std::move(parPath);
   entry.source_path = std::move(parSourcePath);
   entry.load_state = AssetLoadState::MetadataReady;
-  entry.mesh_handle = m_asset_library.size();
 
   m_asset_library.push_back(std::move(entry));
   return m_asset_library.size() - 1;
@@ -307,7 +306,6 @@ std::size_t AssetRegistry::registerModelAsset(std::string parLabel,
   entry.path = std::move(parPath);
   entry.document = std::move(parDocument);
   entry.load_state = AssetLoadState::Ready;
-  entry.mesh_handle = m_asset_library.size();
 
   m_asset_library.push_back(std::move(entry));
   return m_asset_library.size() - 1;
@@ -469,13 +467,9 @@ const ModelAsset* AssetRegistry::getLoadedAsset(
 }
 
 const StaticModel* AssetRegistry::getStaticMeshSource(
-    StaticMeshHandle parHandle) const {
-  for (const AssetLibraryEntry& entry : m_asset_library) {
-    if (entry.mesh_handle == parHandle && entry.document.has_value()) {
-      return &entry.document->static_model;
-    }
-  }
-  return nullptr;
+    std::size_t parAssetIndex) const {
+  const ModelAsset* asset = getLoadedAsset(parAssetIndex);
+  return asset != nullptr ? &asset->static_model : nullptr;
 }
 
 void AssetRegistry::applyAnimationPacks(AssetLibraryEntry& parAsset) {

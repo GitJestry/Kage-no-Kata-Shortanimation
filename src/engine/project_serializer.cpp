@@ -94,12 +94,6 @@ void readMeshComponent(kage::engine::EngineCore& parEngine,
     return;
   }
 
-  const auto* asset = parEngine.getAssetRegistry().getAssetLibraryEntry(
-      *asset_index);
-  if (asset == nullptr) {
-    return;
-  }
-
   const kage::assets::ModelAsset* document =
       parEngine.getAssetRegistry().getLoadedAsset(*asset_index);
   if (document == nullptr) {
@@ -107,7 +101,6 @@ void readMeshComponent(kage::engine::EngineCore& parEngine,
   }
 
   kage::scene::StaticMeshComponent mesh;
-  mesh.mesh_handle = asset->mesh_handle;
   mesh.asset_library_index = *asset_index;
   mesh.local_bounds =
       document != nullptr ? document->static_model.bounds

@@ -640,8 +640,8 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       camera, parViewportSize, parSettings.scene.environment));
   const glm::mat4 view_projection =
       camera.getViewProjectionMatrix(parViewportSize);
-  const auto find_mesh = [&](std::size_t handle) {
-    return parMeshResources.getStaticMesh(handle);
+  const auto find_mesh = [&](std::size_t asset_index) {
+    return parMeshResources.getStaticMesh(asset_index);
   };
   const auto find_skin_matrices = [&](const scene::EntityRecord& entity)
       -> std::span<const std::vector<glm::mat4>> {
@@ -688,7 +688,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       continue;
     }
 
-    const GpuMesh* mesh = find_mesh(entity.static_mesh->mesh_handle);
+    const GpuMesh* mesh = find_mesh(entity.static_mesh->asset_library_index);
     if (mesh == nullptr) {
       continue;
     }
@@ -789,7 +789,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
           .count();
 
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset) {
-    const GpuMesh* mesh = find_mesh(parGhost.mesh_handle);
+    const GpuMesh* mesh = find_mesh(parGhost.asset_library_index);
     if (mesh != nullptr) {
       glEnable(GL_BLEND);
       glDepthMask(GL_FALSE);
@@ -812,7 +812,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       selected_entity->static_mesh.has_value() &&
       selected_entity->static_mesh->visible) {
     const GpuMesh* mesh =
-        find_mesh(selected_entity->static_mesh->mesh_handle);
+        find_mesh(selected_entity->static_mesh->asset_library_index);
     if (mesh != nullptr) {
       const math::Transform selected_transform =
           viewportEntityTransform(*selected_entity, parView.film_state);
@@ -865,7 +865,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                  parSettings.viewport.floor_grid_radius);
   }
   if (parGhost.kind == PlacementGhost::Kind::StaticAsset &&
-      find_mesh(parGhost.mesh_handle) == nullptr) {
+      find_mesh(parGhost.asset_library_index) == nullptr) {
     addCube(m_solid_vertices,
             parGhost.transform.translation + glm::vec3(0.0f, 0.5f, 0.0f),
             1.0f, glm::vec4(0.55f, 0.68f, 0.82f, parGhost.opacity));
@@ -887,7 +887,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
       }
     }
     if (entity.static_mesh.has_value() && entity.static_mesh->visible &&
-        find_mesh(entity.static_mesh->mesh_handle) == nullptr) {
+        find_mesh(entity.static_mesh->asset_library_index) == nullptr) {
       const math::Bounds3 bounds = getEntityWorldBounds(entity);
       const glm::vec3 center =
           bounds.is_valid ? (bounds.min + bounds.max) * 0.5f
@@ -1043,7 +1043,7 @@ std::optional<scene::EntityId> WorldRenderer::pickEntity(
       continue;
     }
     const GpuMesh* mesh =
-        parMeshResources.getStaticMesh(entity.static_mesh->mesh_handle);
+        parMeshResources.getStaticMesh(entity.static_mesh->asset_library_index);
     if (mesh == nullptr) {
       continue;
     }

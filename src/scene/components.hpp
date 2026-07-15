@@ -11,8 +11,6 @@
 
 namespace kage::scene {
 
-inline constexpr std::size_t INVALID_STATIC_MESH_HANDLE =
-    static_cast<std::size_t>(-1);
 inline constexpr std::size_t INVALID_ASSET_LIBRARY_INDEX =
     static_cast<std::size_t>(-1);
 
@@ -25,7 +23,6 @@ struct TransformComponent final {
 };
 
 struct StaticMeshComponent final {
-  std::size_t mesh_handle = INVALID_STATIC_MESH_HANDLE;
   std::size_t asset_library_index = INVALID_ASSET_LIBRARY_INDEX;
   math::Bounds3 local_bounds;
   bool visible = true;
