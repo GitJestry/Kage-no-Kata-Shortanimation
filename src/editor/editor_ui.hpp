@@ -6,6 +6,7 @@
 #include "editor/confirmation_dialog.hpp"
 #include "editor/file_browser_dialog.hpp"
 #include "editor/editor_session.hpp"
+#include "editor/paintbrush_tool.hpp"
 #include "editor/ui_panel_rect.hpp"
 #include "engine/engine_core.hpp"
 
@@ -34,6 +35,9 @@ class EditorUi final {
   [[nodiscard]] int getPaintbrushBrushSize() const;
   [[nodiscard]] int getPaintbrushPaintDensity() const;
   [[nodiscard]] std::vector<std::size_t> getPaintbrushSelectedAssetIndices() const;
+  void paintBrushAssets(engine::EngineCore& parEngine,
+                        const glm::vec3& parCenter,
+                        const std::vector<std::size_t>& parAssetIndices) const;
 
  private:
   void applyStyle();
@@ -88,10 +92,7 @@ class EditorUi final {
   std::uint32_t m_entity_name_buffer_id =
       std::numeric_limits<std::uint32_t>::max();
   std::size_t m_selected_asset_index = 0;
-  std::vector<bool> m_paintbrush_selected_assets;
-  bool m_paintbrush_enabled = false;
-  int m_paintbrush_brush_size = 4;
-  int m_paintbrush_paint_density = 3;
+  PaintbrushTool m_paintbrush_tool;
   std::string m_model_import_error;
   std::string m_animation_import_error;
   std::string m_panorama_import_error;
