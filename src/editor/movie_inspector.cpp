@@ -44,20 +44,26 @@ void refreshNameEditState(NameEditState& parState, std::uint64_t parId,
   parState.initialized = true;
 }
 
+template <typename Result>
+[[nodiscard]] bool acceptMovieEdit(engine::EngineCore& parEngine,
+                                   std::string& parError,
+                                   const Result& parResult) {
+  if (!parResult.has_value()) {
+    parError = parResult.error();
+    return false;
+  }
+  parEngine.markProjectDirty();
+  parError.clear();
+  return true;
+}
+
 [[nodiscard]] bool setClipPayload(engine::EngineCore& parEngine,
                                   film::SequenceClipId parClipId,
                                   film::SequenceClipPayload parPayload,
                                   std::string& parError) {
   film::TimelineEditService edits(parEngine.getMovieTimeline());
   const auto result = edits.setClipPayload(parClipId, std::move(parPayload));
-  if (result.has_value()) {
-    parEngine.markProjectDirty();
-    parError.clear();
-    return true;
-  } else {
-    parError = result.error();
-    return false;
-  }
+  return acceptMovieEdit(parEngine, parError, result);
 }
 
 void drawTransformPoint(const char* parLabel, math::Transform& parTransform,
@@ -236,12 +242,8 @@ void applyPropertyPreset(CurvePreset parPreset,
     }
     film::TimelineEditService edits(parEngine.getMovieTimeline());
     const auto result = edits.setMovementStartMode(parClip.id, mode, explicit_start);
-    if (result.has_value()) {
-      parEngine.markProjectDirty();
-      parError.clear();
+    if (acceptMovieEdit(parEngine, parError, result)) {
       return true;
-    } else {
-      parError = result.error();
     }
   }
 
@@ -312,12 +314,8 @@ void applyPropertyPreset(CurvePreset parPreset,
     }
     film::TimelineEditService edits(parEngine.getMovieTimeline());
     const auto result = edits.setMovementTransition(parClip.id, transition);
-    if (result.has_value()) {
-      parEngine.markProjectDirty();
-      parError.clear();
+    if (acceptMovieEdit(parEngine, parError, result)) {
       return true;
-    } else {
-      parError = result.error();
     }
   }
   if (!transition.enabled) {
@@ -375,12 +373,8 @@ void applyPropertyPreset(CurvePreset parPreset,
   if (transition_changed) {
     film::TimelineEditService edits(parEngine.getMovieTimeline());
     const auto result = edits.setMovementTransition(parClip.id, transition);
-    if (result.has_value()) {
-      parEngine.markProjectDirty();
-      parError.clear();
+    if (acceptMovieEdit(parEngine, parError, result)) {
       return true;
-    } else {
-      parError = result.error();
     }
   }
   return false;
@@ -540,26 +534,18 @@ bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
   if (!mutated && ImGui::Button("Duplicate Clip", ImVec2(action_width, 0.0f))) {
     film::TimelineEditService edits(parEngine.getMovieTimeline());
     const auto duplicate = edits.duplicateClip(clip_id);
-    if (duplicate.has_value()) {
-      parEngine.markProjectDirty();
+    if (acceptMovieEdit(parEngine, parError, duplicate)) {
       parSession.movie_selection.clip_id = *duplicate;
-      parError.clear();
       mutated = true;
-    } else {
-      parError = duplicate.error();
     }
   }
   ImGui::SameLine();
   if (!mutated && ImGui::Button("Delete Clip", ImVec2(-1.0f, 0.0f))) {
     film::TimelineEditService edits(parEngine.getMovieTimeline());
     const auto result = edits.deleteClip(clip_id);
-    if (result.has_value()) {
-      parEngine.markProjectDirty();
+    if (acceptMovieEdit(parEngine, parError, result)) {
       parSession.movie_selection.clip_id = 0;
-      parError.clear();
       mutated = true;
-    } else {
-      parError = result.error();
     }
   }
   ImGui::PopID();
@@ -591,24 +577,18 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
     if (ImGui::Button("Duplicate Instance", ImVec2(-1.0f, 0.0f))) {
       film::TimelineEditService edits(timeline);
       const auto duplicate = edits.duplicateInstance(selected_instance->id);
-      if (duplicate.has_value()) {
-        parEngine.markProjectDirty();
+      if (acceptMovieEdit(parEngine, parError, duplicate)) {
         selectMovieInstance(parSession, *duplicate);
-        parError.clear();
         return;
       }
-      parError = duplicate.error();
     }
     if (ImGui::Button("Delete Instance", ImVec2(-1.0f, 0.0f))) {
       film::TimelineEditService edits(timeline);
       const auto result = edits.deleteInstance(selected_instance->id);
-      if (result.has_value()) {
-        parEngine.markProjectDirty();
+      if (acceptMovieEdit(parEngine, parError, result)) {
         parSession.movie_selection.instance_id = 0;
-        parError.clear();
         return;
       }
-      parError = result.error();
     }
   }
 
@@ -619,12 +599,7 @@ void drawMovieInspectorContext(engine::EngineCore& parEngine,
     film::TimelineEditService edits(timeline);
     const auto result = edits.setCameraGapMode(
         static_cast<film::CameraGapMode>(gap_mode));
-    if (result.has_value()) {
-      parEngine.markProjectDirty();
-      parError.clear();
-    } else {
-      parError = result.error();
-    }
+    (void)acceptMovieEdit(parEngine, parError, result);
   }
 
   ImGui::SeparatorText("Bake Movie");
@@ -703,17 +678,14 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
       film::TimelineEditService edits(timeline);
       const auto created = edits.createSequence(
           movieTargetLabel(parEngine, target) + " Sequence", target, *current_base);
-      if (created.has_value()) {
-        parEngine.markProjectDirty();
+      if (acceptMovieEdit(parEngine, parError, created)) {
         parEngine.clearFilmPreviewState();
         const film::TargetSequence* sequence = timeline.findSequence(*created);
         if (sequence != nullptr) {
           selectMovieSequence(parSession, *sequence);
         }
-        parError.clear();
         return;
       }
-      parError = created.error();
     }
   }
 
@@ -727,17 +699,14 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
         has_selected_sequence) {
       film::TimelineEditService edits(timeline);
       const auto duplicate = edits.duplicateSequence(selected_sequence->id);
-      if (duplicate.has_value()) {
-        parEngine.markProjectDirty();
+      if (acceptMovieEdit(parEngine, parError, duplicate)) {
         parEngine.clearFilmPreviewState();
         const film::TargetSequence* duplicated = timeline.findSequence(*duplicate);
         if (duplicated != nullptr) {
           selectMovieSequence(parSession, *duplicated);
         }
-        parError.clear();
         return;
       }
-      parError = duplicate.error();
     }
   }
   if (selected_sequence == nullptr || selected_sequence->target != target) {
@@ -756,35 +725,27 @@ void drawTargetInspectorContext(engine::EngineCore& parEngine,
       film::TimelineEditService edits(timeline);
       const auto result = edits.renameSequence(selected_sequence->id,
                                                sequence_name_state.buffer.data());
-      if (result.has_value()) {
-        parEngine.markProjectDirty();
-        parError.clear();
+      if (acceptMovieEdit(parEngine, parError, result)) {
         return;
-      } else {
-        parError = result.error();
       }
     }
     if (ImGui::Button("Delete Sequence", ImVec2(-1.0f, 0.0f))) {
       const film::TargetSequenceId sequence_id = selected_sequence->id;
       film::TimelineEditService edits(timeline);
       const auto result = edits.deleteSequence(sequence_id);
-      if (result.has_value()) {
-        parEngine.markProjectDirty();
+      if (acceptMovieEdit(parEngine, parError, result)) {
         parEngine.clearFilmPreviewState();
         parSession.movie_selection.sequence_id = 0;
         parSession.movie_selection.clip_id = 0;
         parSession.movie_selection.instance_id = 0;
-        parError.clear();
         return;
       }
-      parError = result.error();
     }
     if (drawClipInspector(parEngine, *selected_sequence, parSession, parError)) {
       return;
     }
   }
 }
-
 
 }  // namespace
 
