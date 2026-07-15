@@ -32,12 +32,8 @@ class EditorUi final {
   [[nodiscard]] bool isCursorOverPanel(const glm::vec2& parUiCursor) const;
 
   [[nodiscard]] bool isPaintbrushEnabled() const;
-  [[nodiscard]] int getPaintbrushBrushSize() const;
-  [[nodiscard]] int getPaintbrushPaintDensity() const;
   [[nodiscard]] std::vector<std::size_t> getPaintbrushSelectedAssetIndices() const;
-  void paintBrushAssets(engine::EngineCore& parEngine,
-                        const glm::vec3& parCenter,
-                        const std::vector<std::size_t>& parAssetIndices) const;
+  [[nodiscard]] const PaintbrushSettings& getPaintbrushSettings() const;
 
  private:
   void applyStyle();

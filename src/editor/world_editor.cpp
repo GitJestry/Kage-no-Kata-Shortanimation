@@ -2,6 +2,7 @@
 
 #include "assets/asset_path.hpp"
 #include "editor/ui_layout.hpp"
+#include "math/transform.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -14,7 +15,13 @@
 namespace kage::editor {
 
 WorldEditor::WorldEditor(engine::EngineCore& parEngine)
-    : m_engine(parEngine) {
+    : m_engine(parEngine),
+      m_paintbrush_controller([this](std::size_t parAssetIndex,
+                                     const kage::math::Transform& parTransform) {
+        const scene::EntityId entity = m_engine.instantiateAssetAt(
+            parAssetIndex, parTransform.translation);
+        m_engine.setEntityTransform(entity, parTransform);
+      }) {
   registerDefaultAssets();
   if (!m_engine.loadProject()) {
     m_engine.createDefaultProject();
@@ -225,15 +232,18 @@ void WorldEditor::handlePointerInput(
     const glm::vec3 paintbrush_position =
         m_engine.getPlacementPointOnFloor(viewport_cursor, viewport_size);
     m_engine.setPaintbrushPreview(
-        paintbrush_position, static_cast<float>(m_ui.getPaintbrushBrushSize()),
-        m_ui.getPaintbrushPaintDensity());
+        paintbrush_position,
+        static_cast<float>(m_ui.getPaintbrushSettings().brush_size),
+        m_ui.getPaintbrushSettings().paint_density);
 
-    if (parInput.left_mouse_down && !parInput.right_mouse_down) {
-      const std::vector<std::size_t> selected_assets =
-          m_ui.getPaintbrushSelectedAssetIndices();
-      m_ui.paintBrushAssets(m_engine, paintbrush_position, selected_assets);
+    const bool consumed = m_paintbrush_controller.processInput(
+        paintbrush_position, parInput, m_ui.getPaintbrushSettings(),
+        m_ui.getPaintbrushSelectedAssetIndices());
+    if (consumed) {
+      return;
     }
   } else {
+    m_paintbrush_controller.resetStroke();
     m_engine.clearPaintbrushPreview();
   }
 

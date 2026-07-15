@@ -135,22 +135,12 @@ bool EditorUi::isPaintbrushEnabled() const {
   return m_paintbrush_tool.isEnabled();
 }
 
-int EditorUi::getPaintbrushBrushSize() const {
-  return m_paintbrush_tool.getBrushSize();
-}
-
-int EditorUi::getPaintbrushPaintDensity() const {
-  return m_paintbrush_tool.getPaintDensity();
-}
-
 std::vector<std::size_t> EditorUi::getPaintbrushSelectedAssetIndices() const {
   return m_paintbrush_tool.getSelectedAssetIndices();
 }
 
-void EditorUi::paintBrushAssets(engine::EngineCore& parEngine,
-                                const glm::vec3& parCenter,
-                                const std::vector<std::size_t>& parAssetIndices) const {
-  m_paintbrush_tool.paintAssets(parEngine, parCenter, parAssetIndices);
+const PaintbrushSettings& EditorUi::getPaintbrushSettings() const {
+  return m_paintbrush_tool.getSettings();
 }
 
 void EditorUi::draw(engine::EngineCore& parEngine,

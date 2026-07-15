@@ -4,6 +4,7 @@
 #include "editor/editor_ui.hpp"
 #include "editor/confirmation_dialog.hpp"
 #include "editor/gizmo_controller.hpp"
+#include "editor/paintbrush_controller.hpp"
 #include "editor/placement_controller.hpp"
 #include "editor/selection_controller.hpp"
 #include "engine/engine_core.hpp"
@@ -43,6 +44,7 @@ class WorldEditor final {
   PlacementController m_placement_controller;
   SelectionController m_selection_controller;
   GizmoController m_gizmo_controller;
+  PaintbrushController m_paintbrush_controller;
   bool m_right_look_active = false;
   render::ViewportRect m_viewport;
 };
