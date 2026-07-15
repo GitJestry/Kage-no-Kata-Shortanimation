@@ -201,16 +201,16 @@ void addSolidSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
 
 void addMovementPathSegment(
     std::vector<kage::render::LineVertex>& parVertices,
-    const kage::film::MovementPathSegment& parSegment,
+    const kage::film::ResolvedMovementSpline& parSegment,
     const glm::vec3& parColor) {
   constexpr int SEGMENT_COUNT = 32;
-  glm::vec3 previous = parSegment.start;
+  glm::vec3 previous = parSegment.start.translation;
   for (int segment = 1; segment <= SEGMENT_COUNT; ++segment) {
     const float t =
         static_cast<float>(segment) / static_cast<float>(SEGMENT_COUNT);
     const glm::vec3 current = kage::math::cubicBezier(
-        parSegment.start, parSegment.control_1, parSegment.control_2,
-        parSegment.end, t);
+        parSegment.start.translation, parSegment.control_1,
+        parSegment.control_2, parSegment.end.translation, t);
     addLine(parVertices, previous, current, parColor);
     previous = current;
   }
@@ -219,7 +219,7 @@ void addMovementPathSegment(
 void addMovementPathOverlay(
     std::vector<kage::render::LineVertex>& parLines,
     std::vector<kage::render::SolidGizmoVertex>& parSolid,
-    const kage::film::ResolvedMovementPath& parPath,
+    const kage::film::ResolvedMovementSegment& parPath,
     const kage::camera::Camera& parCamera,
     const glm::vec2& parViewportSize) {
   const auto markerRadius = [&](const glm::vec3& parPosition) {
@@ -228,18 +228,22 @@ void addMovementPathOverlay(
                       0.04f, 1.5f);
   };
 
-  if (parPath.transition_before.has_value()) {
-    addMovementPathSegment(parLines, *parPath.transition_before,
+  if (parPath.transition_before.has_value() &&
+      parPath.transition_before->enabled) {
+    const auto& transition = parPath.transition_before->spline;
+    addMovementPathSegment(parLines, transition,
                            MOVEMENT_TRANSITION_COLOR);
-    addSolidSphere(parSolid, parPath.transition_before->start,
-                   markerRadius(parPath.transition_before->start),
+    addSolidSphere(parSolid, transition.start.translation,
+                   markerRadius(transition.start.translation),
                    MOVEMENT_TRANSITION_POINT_FILL);
   }
   addMovementPathSegment(parLines, parPath.movement, MOVEMENT_PATH_COLOR);
-  addSolidSphere(parSolid, parPath.movement.start,
-                 markerRadius(parPath.movement.start), MOVEMENT_POINT_FILL);
-  addSolidSphere(parSolid, parPath.movement.end,
-                 markerRadius(parPath.movement.end), MOVEMENT_POINT_FILL);
+  addSolidSphere(parSolid, parPath.movement.start.translation,
+                 markerRadius(parPath.movement.start.translation),
+                 MOVEMENT_POINT_FILL);
+  addSolidSphere(parSolid, parPath.movement.end.translation,
+                 markerRadius(parPath.movement.end.translation),
+                 MOVEMENT_POINT_FILL);
 }
 
 void addCircle(std::vector<kage::render::LineVertex>& parVertices,
@@ -848,7 +852,7 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   m_glow_vertices.reserve(256);
   addSunOverlay(m_line_vertices, m_solid_vertices, m_glow_vertices, camera,
                 parViewportSize, parLighting.sun);
-  for (const kage::film::ResolvedMovementPath& movement_path :
+  for (const kage::film::ResolvedMovementSegment& movement_path :
        parView.movement_paths) {
     addMovementPathOverlay(m_line_vertices, m_solid_vertices,
                            movement_path, camera, parViewportSize);

@@ -153,22 +153,31 @@ struct MovieTimeline final {
   [[nodiscard]] SequenceInstance* findInstance(SequenceInstanceId parId);
 };
 
-struct MovementPathSegment final {
-  glm::vec3 start{0.0f};
+struct ResolvedMovementSpline final {
+  FilmFrame start_frame = 0;
+  FilmFrame end_frame = 0;
+  math::Transform start;
   glm::vec3 control_1{0.0f};
   glm::vec3 control_2{0.0f};
-  glm::vec3 end{0.0f};
+  math::Transform end;
+  float timing_control_1 = 1.0f / 3.0f;
+  float timing_control_2 = 2.0f / 3.0f;
 };
 
-struct ResolvedMovementPath final {
-  MovementPathSegment movement;
-  std::optional<MovementPathSegment> transition_before;
+struct ResolvedMovementTransition final {
+  SequenceClipId predecessor_clip_id = 0;
+  bool enabled = false;
+  ResolvedMovementSpline spline;
 };
 
-// Resolves the spatial path exactly as sequence evaluation derives movement
-// starts. Timing controls affect traversal but do not change this geometry.
-[[nodiscard]] std::optional<ResolvedMovementPath> resolveMovementPath(
-    const TargetSequence& parSequence, SequenceClipId parClipId);
+struct ResolvedMovementSegment final {
+  SequenceClipId clip_id = 0;
+  ResolvedMovementSpline movement;
+  // Presence means eligible; enabled remains authored state.
+  std::optional<ResolvedMovementTransition> transition_before;
+};
+[[nodiscard]] std::vector<ResolvedMovementSegment> resolveMovementSegments(
+    const TargetSequence& parSequence);
 
 struct FilmPlayback final {
   double playhead_frame = 0.0;

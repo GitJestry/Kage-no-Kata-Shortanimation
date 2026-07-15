@@ -252,22 +252,26 @@ void applyPropertyPreset(CurvePreset parPreset,
   }
   drawTransformPoint("End Point", movement.end, changed);
 
-  const std::optional<film::ResolvedMovementPath> resolved_path =
-      film::resolveMovementPath(parSequence, parClip.id);
+  const auto resolved_movements = film::resolveMovementSegments(parSequence);
+  const auto resolved = std::find_if(
+      resolved_movements.begin(), resolved_movements.end(),
+      [clip_id = parClip.id](const film::ResolvedMovementSegment& item) {
+        return item.clip_id == clip_id;
+      });
   int path_mode = movement.curve.automatic_position_controls ? 0 : 1;
   if (ImGui::Combo("Path", &path_mode, "Straight\0Custom curve\0")) {
     if (path_mode == 0) {
       movement.curve.automatic_position_controls = true;
-    } else if (resolved_path.has_value()) {
-      movement.curve.position_control_1 = resolved_path->movement.control_1;
-      movement.curve.position_control_2 = resolved_path->movement.control_2;
+    } else if (resolved != resolved_movements.end()) {
+      movement.curve.position_control_1 = resolved->movement.control_1;
+      movement.curve.position_control_2 = resolved->movement.control_2;
       movement.curve.automatic_position_controls = false;
     }
     changed = true;
   }
   if (!movement.curve.automatic_position_controls &&
-      resolved_path.has_value()) {
-    const glm::vec3 start = resolved_path->movement.start;
+      resolved != resolved_movements.end()) {
+    const glm::vec3 start = resolved->movement.start.translation;
     glm::vec3 leaving_start = movement.curve.position_control_1 - start;
     glm::vec3 approaching_end =
         movement.curve.position_control_2 - movement.end.translation;
@@ -295,7 +299,8 @@ void applyPropertyPreset(CurvePreset parPreset,
     return setClipPayload(parEngine, parClip.id, movement, parError);
   }
 
-  if (!movementTransitionAvailable(parSequence, parClip)) {
+  if (resolved == resolved_movements.end() ||
+      !resolved->transition_before.has_value()) {
     return false;
   }
   ImGui::SeparatorText("Transition Before");
@@ -319,17 +324,17 @@ void applyPropertyPreset(CurvePreset parPreset,
     return false;
   }
   bool transition_changed = false;
-  if (resolved_path.has_value() &&
-      resolved_path->transition_before.has_value()) {
-    const film::MovementPathSegment& transition_path =
-        *resolved_path->transition_before;
+  if (resolved->transition_before.has_value()) {
+    const film::ResolvedMovementSpline& transition_path =
+        resolved->transition_before->spline;
     glm::vec3 leaving_start =
-        transition_path.control_1 - transition_path.start;
+        transition_path.control_1 - transition_path.start.translation;
     glm::vec3 approaching_end =
-        transition_path.control_2 - transition_path.end;
-    const float sensitivity = std::max(
-        glm::length(transition_path.end - transition_path.start) * 0.01f,
-        0.01f);
+        transition_path.control_2 - transition_path.end.translation;
+    const glm::vec3 transition_delta =
+        transition_path.end.translation - transition_path.start.translation;
+    const float sensitivity =
+        std::max(glm::length(transition_delta) * 0.01f, 0.01f);
     bool transition_curve_initialized =
         !transition.curve.automatic_position_controls;
     const auto initialize_transition_curve = [&]() {
@@ -348,14 +353,14 @@ void applyPropertyPreset(CurvePreset parPreset,
                           sensitivity) &&
         initialize_transition_curve()) {
       transition.curve.position_control_1 =
-          transition_path.start + leaving_start;
+          transition_path.start.translation + leaving_start;
       transition_changed = true;
     }
     if (ImGui::DragFloat3("Curve approaching end", &approaching_end.x,
                           sensitivity) &&
         initialize_transition_curve()) {
       transition.curve.position_control_2 =
-          transition_path.end + approaching_end;
+          transition_path.end.translation + approaching_end;
       transition_changed = true;
     }
     ImGui::PopID();

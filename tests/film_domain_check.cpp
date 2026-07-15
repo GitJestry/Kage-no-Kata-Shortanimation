@@ -98,6 +98,10 @@ using kage::test::fail;
   const auto continuous = evaluateTargetSequencePreview(timeline, *sequence, 10);
   math::Transform explicit_start;
   explicit_start.translation.x = 100.0f;
+  const auto xAt = [&](FilmFrame frame) {
+    return evaluateMovieTimeline(timeline, frame).transforms.front()
+        .transform.translation.x;
+  };
   if (!first_id || !second_id || !continuous ||
       continuous->transforms.empty() ||
       !close(continuous->transforms.front().transform.translation.x, 10.0f) ||
@@ -105,12 +109,27 @@ using kage::test::fail;
                                   MovementStartMode::ExplicitPosition,
                                   explicit_start) ||
       !edits.placeSequence(*sequence, 0) ||
-      !close(evaluateMovieTimeline(timeline, 10)
-                 .transforms.front()
-                 .transform.translation.x,
-             100.0f) ||
-      !edits.moveClip(*second_id, 20, 30) ||
+      !close(xAt(10), 100.0f) || !edits.moveClip(*second_id, 20, 30)) {
+    return false;
+  }
+  TargetSequence reordered = *timeline.findSequence(*sequence);
+  std::reverse(reordered.clips.begin(), reordered.clips.end());
+  const auto disabled = resolveMovementSegments(reordered);
+  if (disabled.size() != 2 || disabled[0].clip_id != *first_id ||
+      disabled[0].transition_before || !disabled[1].transition_before ||
+      !close(disabled[0].movement.start.translation, glm::vec3(0.0f)) ||
+      disabled[1].transition_before->enabled ||
+      disabled[1].transition_before->predecessor_clip_id != *first_id ||
       !edits.setMovementTransition(*second_id, MovementTransition{true, {}})) {
+    return false;
+  }
+  reordered.clips.front().start_frame = 10;
+  const bool contiguous_transition =
+      resolveMovementSegments(reordered)[1].transition_before.has_value();
+  reordered.clips.front().start_frame = 20;
+  std::get<MovementClip>(reordered.clips.front().payload).explicit_start.reset();
+  if (contiguous_transition ||
+      resolveMovementSegments(reordered)[1].transition_before) {
     return false;
   }
 
@@ -121,19 +140,32 @@ using kage::test::fail;
   if (!edits.setClipPayload(*second_id, manual)) {
     return false;
   }
-  const auto path = resolveMovementPath(*timeline.findSequence(*sequence), *second_id);
-  return close(evaluateMovieTimeline(timeline, 15)
-                   .transforms.front()
-                   .transform.translation.x,
-               55.0f) &&
-         path && path->transition_before &&
-         close(path->movement.start, glm::vec3(100.0f, 0.0f, 0.0f)) &&
-         close(path->movement.control_1, manual.curve.position_control_1) &&
-         close(path->movement.control_2, manual.curve.position_control_2) &&
-         close(path->transition_before->start, glm::vec3(10.0f, 0.0f, 0.0f)) &&
-         close(path->transition_before->control_1, glm::vec3(40.0f, 0.0f, 0.0f)) &&
-         close(path->transition_before->control_2, glm::vec3(70.0f, 0.0f, 0.0f)) &&
-         close(path->transition_before->end, glm::vec3(100.0f, 0.0f, 0.0f));
+  const auto paths = resolveMovementSegments(*timeline.findSequence(*sequence));
+  const ResolvedMovementSegment& path = paths[1];
+  return close(xAt(15), 55.0f) &&
+         paths.size() == 2 && path.transition_before &&
+         path.movement.start_frame == 20 && path.movement.end_frame == 30 &&
+         close(path.movement.start.translation, explicit_start.translation) &&
+         close(path.movement.control_1, manual.curve.position_control_1) &&
+         close(path.movement.control_2, manual.curve.position_control_2) &&
+         path.transition_before->spline.start_frame == 10 &&
+         path.transition_before->spline.end_frame == 20 &&
+         close(path.transition_before->spline.timing_control_1, 1.0f / 3.0f) &&
+         close(path.transition_before->spline.start.translation,
+               glm::vec3(10.0f, 0.0f, 0.0f)) &&
+         close(path.transition_before->spline.control_1,
+               glm::vec3(40.0f, 0.0f, 0.0f)) &&
+         close(path.transition_before->spline.control_2,
+               glm::vec3(70.0f, 0.0f, 0.0f)) &&
+         close(path.transition_before->spline.end.translation,
+               explicit_start.translation) &&
+         edits.setMovementStartMode(*second_id, MovementStartMode::PreviousEndpoint,
+                                    std::nullopt) &&
+         close(xAt(15), 10.0f) &&
+         edits.setMovementStartMode(*second_id, MovementStartMode::ExplicitPosition,
+                                    explicit_start) &&
+         edits.deleteClip(*first_id) &&
+         close(xAt(15), 0.0f);
 }
 
 [[nodiscard]] bool testAnimationEvaluation() {

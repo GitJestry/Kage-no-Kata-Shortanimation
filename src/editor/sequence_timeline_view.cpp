@@ -278,45 +278,37 @@ void drawSequenceTimeline(engine::EngineCore& parEngine,
     parSession.movie_selection.clip_id = clip_id;
     parSession.movie_selection.instance_id = 0;
   };
+  const auto resolved_movements = film::resolveMovementSegments(*sequence);
 
   for (std::size_t lane_index = 0; lane_index < lanes.size(); ++lane_index) {
     const float y = origin.y + timelineRulerHeight() +
                     static_cast<float>(lane_index) * LANE_HEIGHT;
+    if (lanes[lane_index].kind == SequenceLaneKind::Movement) {
+      for (const film::ResolvedMovementSegment& movement : resolved_movements) {
+        if (!movement.transition_before || !movement.transition_before->enabled) {
+          continue;
+        }
+        const auto& transition = movement.transition_before->spline;
+        const ImVec2 transition_min(frame_x(transition.start_frame), y + 29.0f);
+        const ImVec2 transition_max(frame_x(transition.end_frame), y + 40.0f);
+        draw_list->AddRectFilled(transition_min, transition_max,
+                                 IM_COL32(132, 83, 190, 255), 2.0f);
+        ImGui::SetCursorScreenPos(transition_min);
+        pushMovieWidgetId(MovieWidgetIdKind::SequenceClip, movement.clip_id);
+        if (ImGui::InvisibleButton("##Transition",
+              ImVec2(std::max(1.0f, transition_max.x - transition_min.x),
+                     transition_max.y - transition_min.y))) {
+          selectClip(movement.clip_id);
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("Transition before this movement clip");
+        }
+        ImGui::PopID();
+      }
+    }
     for (const film::SequenceClip& clip : sequence->clips) {
       if (!isInLane(clip, lanes[lane_index])) {
         continue;
-      }
-      const auto* movement = std::get_if<film::MovementClip>(&clip.payload);
-      if (movement != nullptr && movement->transition_before.enabled &&
-          movement->start_mode == film::MovementStartMode::ExplicitPosition) {
-        film::FilmFrame previous_end = 0;
-        bool has_previous = false;
-        for (const film::SequenceClip& previous : sequence->clips) {
-          const auto* previous_movement =
-              std::get_if<film::MovementClip>(&previous.payload);
-          if (previous_movement != nullptr && previous.end_frame <= clip.start_frame &&
-              (!has_previous || previous.end_frame > previous_end)) {
-            previous_end = previous.end_frame;
-            has_previous = true;
-          }
-        }
-        if (has_previous && previous_end < clip.start_frame) {
-          const ImVec2 transition_min(frame_x(previous_end), y + 29.0f);
-          const ImVec2 transition_max(frame_x(clip.start_frame), y + 40.0f);
-          draw_list->AddRectFilled(transition_min, transition_max,
-                                   IM_COL32(132, 83, 190, 255), 2.0f);
-          ImGui::SetCursorScreenPos(transition_min);
-          pushMovieWidgetId(MovieWidgetIdKind::SequenceClip, clip.id);
-          if (ImGui::InvisibleButton("##Transition", ImVec2(
-                  std::max(1.0f, transition_max.x - transition_min.x),
-                  transition_max.y - transition_min.y))) {
-            selectClip(clip.id);
-          }
-          if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Transition before this movement clip");
-          }
-          ImGui::PopID();
-        }
       }
 
       const auto [start, end] = previewRange(clip);

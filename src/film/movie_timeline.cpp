@@ -23,30 +23,23 @@ using kage::math::cubicBezier;
                     0.0f, 1.0f);
 }
 
-[[nodiscard]] math::Transform sampleMovementCurve(
-    const math::Transform& parStart, const math::Transform& parEnd,
-    const MovementCurve& parCurve, float parT) {
-  const float linear_t = std::clamp(parT, 0.0f, 1.0f);
-  const float timing_1 = std::clamp(parCurve.timing_control_1, 0.0f, 1.0f);
-  const float timing_2 =
-      std::clamp(parCurve.timing_control_2, timing_1, 1.0f);
-  const float t = cubicBezier(0.0f, timing_1, timing_2, 1.0f, linear_t);
-  const glm::vec3 delta = parEnd.translation - parStart.translation;
-  const glm::vec3 control_1 = parCurve.automatic_position_controls
-                                  ? parStart.translation + delta / 3.0f
-                                  : parCurve.position_control_1;
-  const glm::vec3 control_2 = parCurve.automatic_position_controls
-                                  ? parEnd.translation - delta / 3.0f
-                                  : parCurve.position_control_2;
+[[nodiscard]] math::Transform sampleMovementSpline(
+    const ResolvedMovementSpline& parSpline, FilmFrame parFrame) {
+  const float linear_t =
+      clipT(parFrame, parSpline.start_frame, parSpline.end_frame);
+  const float t = cubicBezier(0.0f, parSpline.timing_control_1,
+                              parSpline.timing_control_2, 1.0f, linear_t);
   math::Transform result;
-  result.translation = cubicBezier(parStart.translation, control_1, control_2,
-                                   parEnd.translation, t);
-  glm::quat end_rotation = parEnd.rotation;
-  if (glm::dot(parStart.rotation, end_rotation) < 0.0f) {
+  result.translation = cubicBezier(parSpline.start.translation,
+                                   parSpline.control_1, parSpline.control_2,
+                                   parSpline.end.translation, t);
+  glm::quat end_rotation = parSpline.end.rotation;
+  if (glm::dot(parSpline.start.rotation, end_rotation) < 0.0f) {
     end_rotation = -end_rotation;
   }
-  result.rotation = glm::normalize(glm::slerp(parStart.rotation, end_rotation, t));
-  result.scale = glm::mix(parStart.scale, parEnd.scale, t);
+  result.rotation =
+      glm::normalize(glm::slerp(parSpline.start.rotation, end_rotation, t));
+  result.scale = glm::mix(parSpline.start.scale, parSpline.end.scale, t);
   return result;
 }
 
@@ -133,20 +126,20 @@ int laneFor(const SequenceClipPayload& parPayload) {
 
 namespace {
 
-[[nodiscard]] MovementPathSegment resolveMovementSegment(
-    const glm::vec3& parStart, const glm::vec3& parEnd,
+[[nodiscard]] ResolvedMovementSpline resolveMovementSpline(
+    FilmFrame parStartFrame, FilmFrame parEndFrame,
+    const math::Transform& parStart, const math::Transform& parEnd,
     const MovementCurve& parCurve) {
-  const glm::vec3 delta = parEnd - parStart;
-  return {
-      parStart,
-      parCurve.automatic_position_controls
-          ? parStart + delta / 3.0f
-          : parCurve.position_control_1,
-      parCurve.automatic_position_controls
-          ? parEnd - delta / 3.0f
-          : parCurve.position_control_2,
-      parEnd,
-  };
+  const glm::vec3 delta = parEnd.translation - parStart.translation;
+  const float timing_1 = std::clamp(parCurve.timing_control_1, 0.0f, 1.0f);
+  const glm::vec3 control_1 = parCurve.automatic_position_controls
+                                  ? parStart.translation + delta / 3.0f
+                                  : parCurve.position_control_1;
+  const glm::vec3 control_2 = parCurve.automatic_position_controls
+                                  ? parEnd.translation - delta / 3.0f
+                                  : parCurve.position_control_2;
+  return {parStartFrame, parEndFrame, parStart, control_1, control_2, parEnd,
+          timing_1, std::clamp(parCurve.timing_control_2, timing_1, 1.0f)};
 }
 
 [[nodiscard]] std::vector<const SequenceClip*> orderedMovementClips(
@@ -160,10 +153,8 @@ namespace {
   }
   std::sort(clips.begin(), clips.end(),
             [](const SequenceClip* parLeft, const SequenceClip* parRight) {
-              if (parLeft->start_frame != parRight->start_frame) {
-                return parLeft->start_frame < parRight->start_frame;
-              }
-              return parLeft->id < parRight->id;
+              return std::pair{parLeft->start_frame, parLeft->id} <
+                     std::pair{parRight->start_frame, parRight->id};
             });
   return clips;
 }
@@ -191,17 +182,17 @@ FilmFrame MovieTimeline::durationFrames() const {
   return duration;
 }
 
-std::optional<ResolvedMovementPath> resolveMovementPath(
-    const TargetSequence& parSequence, SequenceClipId parClipId) {
+std::vector<ResolvedMovementSegment> resolveMovementSegments(
+    const TargetSequence& parSequence) {
   const auto* captured =
       std::get_if<CapturedEntityBaseState>(&parSequence.captured_base);
-  if (captured == nullptr || parClipId == 0) {
-    return std::nullopt;
+  if (captured == nullptr) {
+    return {};
   }
 
-  const std::vector<const SequenceClip*> movements =
-      orderedMovementClips(parSequence);
-
+  const auto movements = orderedMovementClips(parSequence);
+  std::vector<ResolvedMovementSegment> result;
+  result.reserve(movements.size());
   math::Transform current = captured->transform;
   const SequenceClip* previous = nullptr;
   for (const SequenceClip* clip : movements) {
@@ -211,24 +202,22 @@ std::optional<ResolvedMovementPath> resolveMovementPath(
                 movement.explicit_start.has_value()
             ? *movement.explicit_start
             : current;
-    if (clip->id == parClipId) {
-      ResolvedMovementPath result;
-      result.movement = resolveMovementSegment(
-          start.translation, movement.end.translation, movement.curve);
-      if (previous != nullptr &&
-          previous->end_frame < clip->start_frame &&
-          movement.start_mode == MovementStartMode::ExplicitPosition &&
-          movement.transition_before.enabled) {
-        result.transition_before = resolveMovementSegment(
-            current.translation, start.translation,
-            movement.transition_before.curve);
-      }
-      return result;
+    ResolvedMovementSegment segment{
+        clip->id, resolveMovementSpline(clip->start_frame, clip->end_frame,
+                                        start, movement.end, movement.curve), {}};
+    if (previous != nullptr && previous->end_frame < clip->start_frame &&
+        movement.start_mode == MovementStartMode::ExplicitPosition &&
+        movement.explicit_start.has_value()) {
+      segment.transition_before = ResolvedMovementTransition{
+          previous->id, movement.transition_before.enabled,
+          resolveMovementSpline(previous->end_frame, clip->start_frame, current,
+                                start, movement.transition_before.curve)};
     }
+    result.push_back(std::move(segment));
     current = movement.end;
     previous = clip;
   }
-  return std::nullopt;
+  return result;
 }
 
 TargetSequence* MovieTimeline::findSequence(TargetSequenceId parId) {
@@ -340,37 +329,25 @@ void evaluateTargetSequence(const TargetSequence& parSequence,
     parState.sun = {{sun->direction_to_sun, sun->color, sun->intensity}};
   }
 
-  const std::vector<const SequenceClip*> movements =
-      orderedMovementClips(parSequence);
-  if (!movements.empty() &&
-      std::holds_alternative<CapturedEntityBaseState>(parSequence.captured_base)) {
+  const auto movements = resolveMovementSegments(parSequence);
+  if (!movements.empty()) {
     math::Transform current =
         std::get<CapturedEntityBaseState>(parSequence.captured_base).transform;
-    FilmFrame previous_end = 0;
-    for (const SequenceClip* clip : movements) {
-      const MovementClip& movement = std::get<MovementClip>(clip->payload);
-      const math::Transform start =
-          movement.start_mode == MovementStartMode::ExplicitPosition &&
-                  movement.explicit_start.has_value()
-              ? *movement.explicit_start
-              : current;
-      if (parLocalFrame < clip->start_frame) {
-        if (movement.transition_before.enabled && parLocalFrame >= previous_end &&
-            clip->start_frame > previous_end) {
-          current = sampleMovementCurve(
-              current, start, movement.transition_before.curve,
-              clipT(parLocalFrame, previous_end, clip->start_frame));
+    for (const ResolvedMovementSegment& movement : movements) {
+      if (parLocalFrame < movement.movement.start_frame) {
+        if (movement.transition_before.has_value() &&
+            movement.transition_before->enabled &&
+            parLocalFrame >= movement.transition_before->spline.start_frame) {
+          current = sampleMovementSpline(movement.transition_before->spline,
+                                         parLocalFrame);
         }
         break;
       }
-      if (parLocalFrame < clip->end_frame) {
-        current = sampleMovementCurve(start, movement.end, movement.curve,
-                                      clipT(parLocalFrame, clip->start_frame,
-                                            clip->end_frame));
+      if (parLocalFrame < movement.movement.end_frame) {
+        current = sampleMovementSpline(movement.movement, parLocalFrame);
         break;
       }
-      current = movement.end;
-      previous_end = clip->end_frame;
+      current = movement.movement.end;
     }
     setTransform(parState, parSequence.target.entity, current);
     if (parEmitCamera && parState.camera.has_value() &&

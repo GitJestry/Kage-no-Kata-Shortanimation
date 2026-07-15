@@ -86,7 +86,7 @@ struct EditorRenderSettings final {
 struct ViewportView final {
   const camera::Camera* camera = nullptr;
   const film::FilmFrameState* film_state = nullptr;
-  std::span<const film::ResolvedMovementPath> movement_paths;
+  std::span<const film::ResolvedMovementSegment> movement_paths;
   scene::EntityId selected_entity;
   bool use_world_selection = true;
   bool black_film_output = false;

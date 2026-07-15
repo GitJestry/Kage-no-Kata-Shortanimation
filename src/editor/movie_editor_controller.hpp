@@ -11,9 +11,6 @@ namespace kage::editor {
 // camera, point light, or rigged entity.
 [[nodiscard]] std::optional<film::TimelineTarget> movieTargetForEntity(
     const scene::EntityRecord& parEntity);
-[[nodiscard]] bool movementTransitionAvailable(
-    const film::TargetSequence& parSequence,
-    const film::SequenceClip& parClip);
 
 // The editor cursor is an inclusive authoring position, while preview playback
 // can only consume the half-open frame range [0, duration).

@@ -135,7 +135,7 @@ class EngineCore final {
               int parMsaaSamples = 1,
               film::TargetSequenceId parPreviewSequenceId = 0,
               scene::EntityId parMovieSelectionEntity = {},
-              std::span<const film::ResolvedMovementPath> parMovementPaths = {});
+              std::span<const film::ResolvedMovementSegment> parMovementPaths = {});
   [[nodiscard]] const render::PerformanceSnapshot& getPerformanceSnapshot()
       const;
 

@@ -24,28 +24,6 @@ std::optional<film::TimelineTarget> movieTargetForEntity(
   return std::nullopt;
 }
 
-bool movementTransitionAvailable(const film::TargetSequence& parSequence,
-                                 const film::SequenceClip& parClip) {
-  const auto* movement = std::get_if<film::MovementClip>(&parClip.payload);
-  if (movement == nullptr ||
-      movement->start_mode != film::MovementStartMode::ExplicitPosition ||
-      !movement->explicit_start.has_value()) {
-    return false;
-  }
-  std::optional<film::FilmFrame> previous_end;
-  for (const film::SequenceClip& candidate : parSequence.clips) {
-    if (candidate.id == parClip.id ||
-        !std::holds_alternative<film::MovementClip>(candidate.payload) ||
-        candidate.end_frame > parClip.start_frame) {
-      continue;
-    }
-    previous_end = previous_end.has_value()
-                       ? std::max(*previous_end, candidate.end_frame)
-                       : candidate.end_frame;
-  }
-  return previous_end.has_value() && *previous_end < parClip.start_frame;
-}
-
 film::FilmFrame clampMovieAuthoringCursor(film::FilmFrame parFrame) {
   return std::clamp(parFrame, film::FilmFrame{0}, film::MAX_FILM_FRAMES);
 }

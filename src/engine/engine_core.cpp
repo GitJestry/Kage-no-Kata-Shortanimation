@@ -414,8 +414,7 @@ void EngineCore::render(const render::ViewportRect& parViewport,
                         int parMsaaSamples,
                         film::TargetSequenceId parPreviewSequenceId,
                         scene::EntityId parMovieSelectionEntity,
-                        std::span<const film::ResolvedMovementPath>
-                            parMovementPaths) {
+                        std::span<const film::ResolvedMovementSegment> parMovementPaths) {
   const Clock::time_point render_begin = Clock::now();
   const double film_frame =
       parFilmFrame >= 0.0 ? parFilmFrame : m_film_playback.playhead_frame;
