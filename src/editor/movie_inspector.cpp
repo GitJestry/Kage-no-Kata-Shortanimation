@@ -17,7 +17,6 @@
 #include <string_view>
 #include <utility>
 #include <variant>
-#include <vector>
 
 namespace kage::editor {
 namespace {
@@ -520,8 +519,7 @@ bool drawPropertyValue(const char* parLabel, glm::vec4& parValue,
   ImGui::Text("Frames [%d, %d)", clip->start_frame, clip->end_frame);
   pushMovieWidgetId(MovieWidgetIdKind::SequenceClip, clip_id);
   bool mutated = false;
-  if (const auto* movement = std::get_if<film::MovementClip>(&clip->payload)) {
-    static_cast<void>(movement);
+  if (std::holds_alternative<film::MovementClip>(clip->payload)) {
     mutated = drawMovementInspector(parEngine, parSequence, *clip, parError);
   } else if (std::holds_alternative<film::RigAnimationClip>(clip->payload)) {
     mutated = drawAnimationInspector(parEngine, parSequence, *clip, parError);

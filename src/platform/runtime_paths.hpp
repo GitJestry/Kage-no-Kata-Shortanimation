@@ -1,8 +1,17 @@
 #pragma once
 
 #include <filesystem>
+#include <system_error>
 
 namespace kage::platform {
+
+[[nodiscard]] inline std::filesystem::path canonicalOrAbsolute(
+    const std::filesystem::path& parPath) {
+  std::error_code error_code;
+  const std::filesystem::path canonical_path =
+      std::filesystem::weakly_canonical(parPath, error_code);
+  return error_code ? std::filesystem::absolute(parPath) : canonical_path;
+}
 
 class RuntimePaths final {
  public:

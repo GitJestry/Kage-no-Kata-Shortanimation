@@ -16,6 +16,8 @@
 
 namespace {
 
+using kage::platform::canonicalOrAbsolute;
+
 constexpr const char* PROJECT_ASSET_CATALOG_PATH =
     "projects/kage_no_kata_assets.kage.json";
 constexpr const char* PROJECT_WORLD_PATH =
@@ -82,17 +84,6 @@ std::filesystem::path getExecutablePath() {
 
 [[nodiscard]] bool hasAssetDirectory(const std::filesystem::path& parPath) {
   return std::filesystem::exists(parPath / "assets");
-}
-
-[[nodiscard]] std::filesystem::path canonicalOrAbsolute(
-    const std::filesystem::path& parPath) {
-  std::error_code error_code;
-  const std::filesystem::path canonical_path =
-      std::filesystem::weakly_canonical(parPath, error_code);
-  if (!error_code) {
-    return canonical_path;
-  }
-  return std::filesystem::absolute(parPath);
 }
 
 [[nodiscard]] std::filesystem::path searchRootUpwards(
