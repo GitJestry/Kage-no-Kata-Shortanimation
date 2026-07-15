@@ -62,14 +62,15 @@ struct MeshCenterQuery final {
   return getEntityWorldBounds(parEntity, parEntity.transform.transform);
 }
 
-void addLine(std::vector<kage::render::LineVertex>& parVertices,
+void addLine(std::vector<kage::render::DebugVertex>& parVertices,
              const glm::vec3& parStart, const glm::vec3& parEnd,
              const glm::vec3& parColor) {
-  parVertices.push_back({parStart, parColor});
-  parVertices.push_back({parEnd, parColor});
+  const glm::vec4 color(parColor, 1.0f);
+  parVertices.push_back({parStart, color});
+  parVertices.push_back({parEnd, color});
 }
 
-void addTriangle(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+void addTriangle(std::vector<kage::render::DebugVertex>& parVertices,
                  const glm::vec3& parA, const glm::vec3& parB,
                  const glm::vec3& parC, const glm::vec4& parColor) {
   parVertices.push_back({parA, parColor});
@@ -77,7 +78,7 @@ void addTriangle(std::vector<kage::render::SolidGizmoVertex>& parVertices,
   parVertices.push_back({parC, parColor});
 }
 
-void addCube(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+void addCube(std::vector<kage::render::DebugVertex>& parVertices,
              const glm::vec3& parCenter, float parSize,
              const glm::vec4& parColor) {
   const glm::vec3 e(parSize * 0.5f);
@@ -107,7 +108,7 @@ void addCube(std::vector<kage::render::SolidGizmoVertex>& parVertices,
              : glm::vec3(0.0f, 1.0f, 0.0f);
 }
 
-void addDisk(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+void addDisk(std::vector<kage::render::DebugVertex>& parVertices,
              const glm::vec3& parCenter, const glm::vec3& parAxisA,
              const glm::vec3& parAxisB, float parRadius,
              const glm::vec4& parColor) {
@@ -126,7 +127,7 @@ void addDisk(std::vector<kage::render::SolidGizmoVertex>& parVertices,
   }
 }
 
-void addCylinder(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+void addCylinder(std::vector<kage::render::DebugVertex>& parVertices,
                  const glm::vec3& parStart, const glm::vec3& parEnd,
                  float parRadius, const glm::vec4& parColor) {
   constexpr int SEGMENT_COUNT = 12;
@@ -155,7 +156,7 @@ void addCylinder(std::vector<kage::render::SolidGizmoVertex>& parVertices,
   }
 }
 
-void addCone(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+void addCone(std::vector<kage::render::DebugVertex>& parVertices,
              const glm::vec3& parTip, const glm::vec3& parDirection,
              float parLength, float parRadius, const glm::vec4& parColor) {
   constexpr int SEGMENT_COUNT = 16;
@@ -177,7 +178,7 @@ void addCone(std::vector<kage::render::SolidGizmoVertex>& parVertices,
   }
 }
 
-void addSolidSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
+void addSolidSphere(std::vector<kage::render::DebugVertex>& parVertices,
                     const glm::vec3& parCenter, float parRadius,
                     const glm::vec4& parColor) {
   const std::array<glm::vec3, 6> points = {
@@ -200,7 +201,7 @@ void addSolidSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
 }
 
 void addMovementPathSegment(
-    std::vector<kage::render::LineVertex>& parVertices,
+    std::vector<kage::render::DebugVertex>& parVertices,
     const kage::film::ResolvedMovementSpline& parSegment,
     const glm::vec3& parColor) {
   constexpr int SEGMENT_COUNT = 32;
@@ -217,8 +218,8 @@ void addMovementPathSegment(
 }
 
 void addMovementPathOverlay(
-    std::vector<kage::render::LineVertex>& parLines,
-    std::vector<kage::render::SolidGizmoVertex>& parSolid,
+    std::vector<kage::render::DebugVertex>& parLines,
+    std::vector<kage::render::DebugVertex>& parSolid,
     const kage::film::ResolvedMovementSegment& parPath,
     const kage::camera::Camera& parCamera,
     const glm::vec2& parViewportSize) {
@@ -246,7 +247,7 @@ void addMovementPathOverlay(
                  MOVEMENT_POINT_FILL);
 }
 
-void addCircle(std::vector<kage::render::LineVertex>& parVertices,
+void addCircle(std::vector<kage::render::DebugVertex>& parVertices,
                const glm::vec3& parCenter, const glm::vec3& parAxisA,
                const glm::vec3& parAxisB, float parRadius,
                const glm::vec3& parColor) {
@@ -265,7 +266,7 @@ void addCircle(std::vector<kage::render::LineVertex>& parVertices,
   }
 }
 
-void addFloorGrid(std::vector<kage::render::LineVertex>& parVertices,
+void addFloorGrid(std::vector<kage::render::DebugVertex>& parVertices,
                   const glm::vec3& parCameraPosition, int parRadius) {
   const int radius = std::clamp(parRadius, 8, GRID_LINE_CAP / 2);
   const int center_x = static_cast<int>(std::floor(parCameraPosition.x));
@@ -287,7 +288,7 @@ void addFloorGrid(std::vector<kage::render::LineVertex>& parVertices,
   }
 }
 
-void addFloorContactCue(std::vector<kage::render::LineVertex>& parVertices,
+void addFloorContactCue(std::vector<kage::render::DebugVertex>& parVertices,
                         const kage::math::Bounds3& parBounds,
                         const glm::vec3& parOrigin) {
   if (!parBounds.is_valid) {
@@ -319,8 +320,8 @@ void addFloorContactCue(std::vector<kage::render::LineVertex>& parVertices,
           glm::vec3(bottom_center.x, 0.0f, bottom_center.z), color);
 }
 
-void addTransformAxes(std::vector<kage::render::LineVertex>& parVertices,
-                      std::vector<kage::render::SolidGizmoVertex>& parSolid,
+void addTransformAxes(std::vector<kage::render::DebugVertex>& parVertices,
+                      std::vector<kage::render::DebugVertex>& parSolid,
                       const kage::math::Transform& parTransform,
                       float parLength,
                       kage::render::GizmoAxisSpace parAxisSpace) {
@@ -363,7 +364,7 @@ void addTransformAxes(std::vector<kage::render::LineVertex>& parVertices,
           ROTATION_FILL);
 }
 
-void addOriginCore(std::vector<kage::render::LineVertex>& parVertices,
+void addOriginCore(std::vector<kage::render::DebugVertex>& parVertices,
                    const glm::vec3& parPosition, float parRadius) {
   addCircle(parVertices, parPosition, glm::vec3(1.0f, 0.0f, 0.0f),
             glm::vec3(0.0f, 1.0f, 0.0f), parRadius,
@@ -376,8 +377,8 @@ void addOriginCore(std::vector<kage::render::LineVertex>& parVertices,
             SELECTED_CONTACT_COLOR);
 }
 
-void addLightGizmo(std::vector<kage::render::LineVertex>& parVertices,
-                   std::vector<kage::render::SolidGizmoVertex>& parSolid,
+void addLightGizmo(std::vector<kage::render::DebugVertex>& parVertices,
+                   std::vector<kage::render::DebugVertex>& parSolid,
                    const kage::math::Transform& parTransform,
                    const kage::scene::LightComponent& parLight,
                    const glm::vec3& parCameraRight,
@@ -391,9 +392,9 @@ void addLightGizmo(std::vector<kage::render::LineVertex>& parVertices,
             std::max(parLight.range, SOURCE_RADIUS * 2.0f), color * 0.42f);
 }
 
-void addSunOverlay(std::vector<kage::render::LineVertex>& parVertices,
-                   std::vector<kage::render::SolidGizmoVertex>& parSolid,
-                   std::vector<kage::render::SolidGizmoVertex>& parGlow,
+void addSunOverlay(std::vector<kage::render::DebugVertex>& parVertices,
+                   std::vector<kage::render::DebugVertex>& parSolid,
+                   std::vector<kage::render::DebugVertex>& parGlow,
                    const kage::camera::Camera& parCamera,
                    const glm::vec2& parViewportSize,
                    const kage::lighting::DirectionalLight& parSun) {
@@ -470,7 +471,7 @@ void addSunOverlay(std::vector<kage::render::LineVertex>& parVertices,
   return result;
 }
 
-void addCameraGizmo(std::vector<kage::render::LineVertex>& parVertices,
+void addCameraGizmo(std::vector<kage::render::DebugVertex>& parVertices,
                     const kage::math::Transform& parTransform) {
   const glm::vec3 position = parTransform.translation;
   const glm::vec3 right = parTransform.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
@@ -972,15 +973,15 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
   // The editor grid is a depth-tested overlay. It never writes depth and is
   // omitted entirely from film output by the overlay gate above.
   glDepthMask(GL_FALSE);
-  m_line_renderer.draw(m_grid_line_vertices, view_projection);
+  m_debug_renderer.drawLines(m_grid_line_vertices, view_projection);
   glDepthMask(GL_TRUE);
   glDisable(GL_DEPTH_TEST);
-  m_solid_gizmo_renderer.draw(m_solid_vertices, view_projection);
-  m_line_renderer.draw(m_line_vertices, view_projection);
+  m_debug_renderer.drawTriangles(m_solid_vertices, view_projection);
+  m_debug_renderer.drawLines(m_line_vertices, view_projection);
   if (!m_glow_vertices.empty()) {
     glDepthMask(GL_FALSE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    m_solid_gizmo_renderer.draw(m_glow_vertices, view_projection);
+    m_debug_renderer.drawTriangles(m_glow_vertices, view_projection);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_TRUE);
   }

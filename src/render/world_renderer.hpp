@@ -6,9 +6,8 @@
 #include "film/film_frame_state.hpp"
 #include "lighting/light.hpp"
 #include "math/transform.hpp"
-#include "render/line_renderer.hpp"
+#include "render/debug_primitive_renderer.hpp"
 #include "render/mesh_resource_cache.hpp"
-#include "render/solid_gizmo_renderer.hpp"
 #include "render/mesh_renderer.hpp"
 #include "render/viewport_policy.hpp"
 #include "render/viewport_rect.hpp"
@@ -153,12 +152,11 @@ class WorldRenderer final {
   EnvironmentRenderer m_environment_renderer;
   FilmFramebuffer m_film_framebuffer;
   ShadowRenderer m_shadow_renderer;
-  SolidGizmoRenderer m_solid_gizmo_renderer;
-  LineRenderer m_line_renderer;
-  std::vector<LineVertex> m_grid_line_vertices;
-  std::vector<LineVertex> m_line_vertices;
-  std::vector<SolidGizmoVertex> m_solid_vertices;
-  std::vector<SolidGizmoVertex> m_glow_vertices;
+  DebugPrimitiveRenderer m_debug_renderer;
+  std::vector<DebugVertex> m_grid_line_vertices;
+  std::vector<DebugVertex> m_line_vertices;
+  std::vector<DebugVertex> m_solid_vertices;
+  std::vector<DebugVertex> m_glow_vertices;
   GLuint m_pick_framebuffer = 0;
   GLuint m_pick_texture = 0;
   GLuint m_pick_depth = 0;
