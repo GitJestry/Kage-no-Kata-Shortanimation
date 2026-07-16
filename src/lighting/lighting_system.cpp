@@ -23,6 +23,17 @@ LightingState LightingSystem::extract(
           : glm::vec3(0.35f, 0.85f, 0.45f);
   state.sun.color = parSun.color;
   state.sun.intensity = std::max(parSun.intensity, 0.0f);
+  if (parFilmState != nullptr && parFilmState->sun.has_value()) {
+    const film::EvaluatedSunState& sun = *parFilmState->sun;
+    const float evaluated_length = glm::length(sun.direction_to_sun);
+    state.sun.direction_to_light =
+        evaluated_length > 0.0001f
+            ? sun.direction_to_sun / evaluated_length
+            : state.sun.direction_to_light;
+    state.sun.color = glm::max(sun.color, glm::vec3(0.0f));
+    state.sun.intensity = std::max(sun.intensity, 0.0f);
+    state.sun.enabled = state.sun.intensity > 0.0f;
+  }
 
   struct Candidate final {
     PointLight light;
@@ -32,33 +43,22 @@ LightingState LightingSystem::extract(
   thread_local std::vector<Candidate> candidates;
   candidates.clear();
   for (const scene::EntityRecord& entity : parWorld.getEntities()) {
-    if (!entity.alive || !entity.light.has_value() ||
-        entity.light->type != scene::LightType::Point) {
+    if (!entity.alive || !entity.light.has_value()) {
       continue;
     }
     scene::LightComponent source = *entity.light;
     if (parFilmState != nullptr) {
-      for (const film::PropertyOverride& property :
-           parFilmState->properties) {
-        if (property.entity != entity.id) {
-          continue;
-        }
-        switch (property.kind) {
-          case film::FilmPropertyKind::LightEnabled:
-            source.enabled = property.value.x >= 0.5f;
-            break;
-          case film::FilmPropertyKind::LightIntensity:
-            source.intensity = std::max(property.value.x, 0.0f);
-            break;
-          case film::FilmPropertyKind::LightColor:
-            source.color = glm::max(glm::vec3(property.value), glm::vec3(0.0f));
-            break;
-          case film::FilmPropertyKind::LightRange:
-            source.range = std::max(property.value.x, 0.001f);
-            break;
-          case film::FilmPropertyKind::CameraFov:
-            break;
-        }
+      const auto evaluated = std::find_if(
+          parFilmState->point_lights.begin(), parFilmState->point_lights.end(),
+          [entity_id = entity.id](const film::EvaluatedPointLightState& item) {
+            return item.source_entity == entity_id;
+          });
+      if (evaluated != parFilmState->point_lights.end()) {
+        source.enabled = evaluated->enabled;
+        source.intensity = std::max(evaluated->intensity, 0.0f);
+        source.color = glm::max(evaluated->color, glm::vec3(0.0f));
+        source.range = std::max(evaluated->range, 0.001f);
+        source.casts_shadows = evaluated->casts_shadows;
       }
     }
     if (!source.enabled || source.intensity <= 0.0f) {

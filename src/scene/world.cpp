@@ -66,15 +66,6 @@ void World::setLight(EntityId parEntity, LightComponent parLight) {
   entity->light = parLight;
 }
 
-void World::setVisible(EntityId parEntity, bool parVisible) {
-  EntityRecord* entity = findEntity(parEntity);
-  if (entity == nullptr || !entity->static_mesh.has_value()) {
-    return;
-  }
-
-  entity->static_mesh->visible = parVisible;
-}
-
 bool World::deleteEntity(EntityId parEntity) {
   EntityRecord* entity = findEntity(parEntity);
   if (entity == nullptr) {

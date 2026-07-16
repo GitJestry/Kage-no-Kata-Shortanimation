@@ -139,7 +139,7 @@ void PlacementController::publishGhost(engine::EngineCore& parEngine) const {
         return;
       }
       ghost.kind = render::PlacementGhost::Kind::StaticAsset;
-      ghost.mesh_handle = asset->mesh_handle;
+      ghost.asset_library_index = m_asset_index;
       break;
     }
     case Kind::Camera:

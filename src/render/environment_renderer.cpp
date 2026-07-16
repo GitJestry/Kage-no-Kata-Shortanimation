@@ -109,13 +109,13 @@ void EnvironmentRenderer::pollUpload() {
   m_state = EnvironmentLoadState::Ready;
 }
 
-bool EnvironmentRenderer::draw(const camera::Camera& parCamera,
+void EnvironmentRenderer::draw(const camera::Camera& parCamera,
                                const glm::vec2& parViewportSize,
                                const EnvironmentSettings& parSettings) {
   pollUpload();
   if (!parSettings.visible || !m_panorama.isValid() ||
       parSettings.asset_id != m_loaded_asset) {
-    return false;
+    return;
   }
   glDisable(GL_DEPTH_TEST);
   glDepthMask(GL_FALSE);
@@ -138,7 +138,6 @@ bool EnvironmentRenderer::draw(const camera::Camera& parCamera,
   Texture2D::unbind(0);
   glDepthMask(GL_TRUE);
   glEnable(GL_DEPTH_TEST);
-  return true;
 }
 
 EnvironmentLoadState EnvironmentRenderer::getState() const { return m_state; }

@@ -29,7 +29,6 @@ class World final {
   void setRig(EntityId parEntity, RigComponent parRig);
   void setCamera(EntityId parEntity, CameraComponent parCamera);
   void setLight(EntityId parEntity, LightComponent parLight);
-  void setVisible(EntityId parEntity, bool parVisible);
   bool deleteEntity(EntityId parEntity);
 
   [[nodiscard]] EntityRecord* findEntity(EntityId parEntity);

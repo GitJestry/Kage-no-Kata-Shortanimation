@@ -11,18 +11,8 @@ bool isVisible(const math::Bounds3& parBounds,
   if (!parBounds.is_valid) {
     return true;
   }
-  const std::array<glm::vec3, 8> corners = {
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.min.z),
-      glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.max.z),
-      glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.max.z),
-      glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.max.z),
-  };
   std::array<int, 6> outside{};
-  for (const glm::vec3& corner : corners) {
+  for (const glm::vec3& corner : math::boundsCorners(parBounds)) {
     const glm::vec4 clip = parViewProjection * glm::vec4(corner, 1.0f);
     outside[0] += clip.x < -clip.w;
     outside[1] += clip.x > clip.w;

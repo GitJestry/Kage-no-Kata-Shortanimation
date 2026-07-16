@@ -1,7 +1,5 @@
 #include "animation/animator.hpp"
 
-#include <glm/gtc/matrix_inverse.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -49,20 +47,6 @@ namespace {
   }
 
   return std::clamp((parTimeSeconds - begin) / (end - begin), 0.0f, 1.0f);
-}
-
-[[nodiscard]] glm::mat4 getInverseMeshBindTransform(
-    const kage::assets::ModelAsset& parAsset,
-    const kage::assets::StaticPrimitive& parPrimitive) {
-  if (parPrimitive.node_index == kage::assets::INVALID_NODE_INDEX ||
-      static_cast<std::size_t>(parPrimitive.node_index) >=
-          parAsset.nodes.size()) {
-    return glm::inverse(parPrimitive.transform);
-  }
-
-  return glm::inverse(
-      parAsset.nodes[static_cast<std::size_t>(parPrimitive.node_index)]
-          .global_transform);
 }
 
 }  // namespace
@@ -189,19 +173,6 @@ std::vector<glm::mat4> Animator::buildJointMatrices(
                        skin.inverse_bind_matrices[joint_index]);
   }
   return matrices;
-}
-
-std::vector<glm::mat4> Animator::buildPrimitiveSkinMatrices(
-    const assets::ModelAsset& parAsset,
-    const assets::StaticPrimitive& parPrimitive,
-    const SkeletonPose& parPose) {
-  if (parPrimitive.skin_index == assets::INVALID_SKIN_INDEX) {
-    return {};
-  }
-
-  return buildJointMatrices(parAsset, parPrimitive.skin_index, parPose,
-                            getInverseMeshBindTransform(parAsset,
-                                                        parPrimitive));
 }
 
 SkeletonPose Animator::makePoseFromLocals(

@@ -4,38 +4,6 @@
 
 namespace kage::input {
 
-enum class Key {
-  Unknown,
-  Escape,
-  Space,
-  W,
-  A,
-  S,
-  D,
-  F,
-  Delete,
-  Tab,
-  LeftShift
-};
-
-enum class KeyAction {
-  Release,
-  Press,
-  Repeat
-};
-
-enum class MouseButton {
-  Unknown,
-  Left,
-  Right,
-  Middle
-};
-
-enum class PointerAction {
-  Release,
-  Press
-};
-
 struct EditorInputSnapshot final {
   glm::vec2 ui_cursor{0.0f};
   glm::vec2 ui_delta{0.0f};
@@ -46,11 +14,6 @@ struct EditorInputSnapshot final {
   bool right_mouse_down = false;
   bool middle_mouse_down = false;
   bool left_mouse_pressed = false;
-  bool right_mouse_pressed = false;
-  bool middle_mouse_pressed = false;
-  bool left_mouse_released = false;
-  bool right_mouse_released = false;
-  bool middle_mouse_released = false;
   bool key_w_down = false;
   bool key_a_down = false;
   bool key_s_down = false;
@@ -59,13 +22,11 @@ struct EditorInputSnapshot final {
   bool key_shift_down = false;
   bool key_escape_pressed = false;
   bool key_delete_pressed = false;
-  bool key_tab_pressed = false;
   bool key_z_pressed = false;
   bool wants_capture_mouse = false;
   bool wants_capture_keyboard = false;
   bool ui_item_active = false;
   bool ui_popup_open = false;
-  bool viewport_hovered = false;
   float scroll_y = 0.0f;
 };
 

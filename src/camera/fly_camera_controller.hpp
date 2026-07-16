@@ -21,7 +21,6 @@ class FlyCameraController final {
               float parDeltaSeconds) const;
   void look(Camera& parCamera, const glm::vec2& parPixelDelta);
   void syncFromCamera(const Camera& parCamera);
-  void resetRoll(Camera& parCamera);
   void adjustSpeed(float parScrollAmount);
   void setMoveSpeed(float parMoveSpeed);
 

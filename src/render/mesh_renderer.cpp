@@ -1,23 +1,76 @@
 #include "render/mesh_renderer.hpp"
+#include "render/shader_limits.hpp"
 
 #include <algorithm>
 #include <array>
+#include <iostream>
+#include <stdexcept>
 
 namespace {
+
+static_assert(kage::lighting::MAX_POINT_LIGHTS == 32,
+              "Keep the GLSL point-light limit synchronized");
+
+#define KAGE_STRINGIFY_IMPL(value) #value
+#define KAGE_STRINGIFY(value) KAGE_STRINGIFY_IMPL(value)
+#define KAGE_GLSL_SKINNING_DECLARATIONS                                    \
+  "layout (location = 4) in uvec4 inJoints;\n"                            \
+  "layout (location = 5) in vec4 inWeights;\n"                            \
+  "uniform bool u_skinning_enabled;\n"                                    \
+  "uniform mat4 u_joint_matrices[" KAGE_STRINGIFY(                         \
+      KAGE_MAX_SHADER_JOINTS) "];\n"                                       \
+  "mat4 skinMatrix() {\n"                                                   \
+  "  if (!u_skinning_enabled) return mat4(1.0);\n"                       \
+  "  return u_joint_matrices[inJoints.x] * inWeights.x +\n"               \
+  "         u_joint_matrices[inJoints.y] * inWeights.y +\n"               \
+  "         u_joint_matrices[inJoints.z] * inWeights.z +\n"               \
+  "         u_joint_matrices[inJoints.w] * inWeights.w;\n"               \
+  "}\n"
+
+void configureDepthFallback(GLenum parTarget) {
+  glTexParameteri(parTarget, GL_TEXTURE_BASE_LEVEL, 0);
+  glTexParameteri(parTarget, GL_TEXTURE_MAX_LEVEL, 0);
+  glTexParameteri(parTarget, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+  glTexParameteri(parTarget, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(parTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(parTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(parTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+void clearGlErrors() {
+  while (glGetError() != GL_NO_ERROR) {
+  }
+}
+
+[[nodiscard]] bool allocateDepthFallback(GLenum parTarget, GLuint parTexture) {
+  glBindTexture(parTarget, parTexture);
+  constexpr float FAR_DEPTH = 1.0f;
+  const int face_count = parTarget == GL_TEXTURE_CUBE_MAP ? 6 : 1;
+  for (int face = 0; face < face_count; ++face) {
+    const GLenum face_target = parTarget == GL_TEXTURE_CUBE_MAP
+                                   ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + face
+                                   : parTarget;
+    glTexImage2D(face_target, 0, GL_DEPTH_COMPONENT32F, 1, 1, 0,
+                 GL_DEPTH_COMPONENT, GL_FLOAT, &FAR_DEPTH);
+  }
+  configureDepthFallback(parTarget);
+  if (parTarget == GL_TEXTURE_CUBE_MAP) {
+    glTexParameteri(parTarget, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  }
+  const bool valid = glGetError() == GL_NO_ERROR;
+  glBindTexture(parTarget, 0);
+  return valid;
+}
 
 constexpr char STATIC_MESH_VERTEX_SHADER[] = R"(#version 410 core
 layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inTexCoord;
 layout (location = 3) in vec4 inTangent;
-layout (location = 4) in uvec4 inJoints;
-layout (location = 5) in vec4 inWeights;
 
 uniform mat4 u_model;
 uniform mat4 u_view_projection;
-uniform bool u_skinning_enabled;
-uniform mat4 u_joint_matrices[128];
-
+)" KAGE_GLSL_SKINNING_DECLARATIONS R"(
 out vec3 worldNormal;
 out vec3 worldPosition;
 out vec3 worldTangent;
@@ -25,13 +78,7 @@ out float tangentSign;
 out vec2 meshTexCoord;
 
 void main() {
-  mat4 skin = mat4(1.0);
-  if (u_skinning_enabled) {
-    skin = u_joint_matrices[inJoints.x] * inWeights.x +
-           u_joint_matrices[inJoints.y] * inWeights.y +
-           u_joint_matrices[inJoints.z] * inWeights.z +
-           u_joint_matrices[inJoints.w] * inWeights.w;
-  }
+  mat4 skin = skinMatrix();
   vec4 skinned_position = skin * vec4(inPosition, 1.0);
   vec4 world_position = u_model * skinned_position;
   mat3 normalMatrix = mat3(transpose(inverse(u_model)));
@@ -45,6 +92,7 @@ void main() {
 )";
 
 constexpr char STATIC_MESH_FRAGMENT_SHADER[] = R"(#version 410 core
+#define MAX_POINT_LIGHTS 32
 in vec3 worldNormal;
 in vec3 worldPosition;
 in vec3 worldTangent;
@@ -87,10 +135,10 @@ uniform vec3 u_sun_direction_to_light;
 uniform vec3 u_sun_color;
 uniform float u_sun_intensity;
 uniform int u_point_light_count;
-uniform vec3 u_point_light_positions[32];
-uniform vec3 u_point_light_colors[32];
-uniform float u_point_light_intensities[32];
-uniform float u_point_light_ranges[32];
+uniform vec3 u_point_light_positions[MAX_POINT_LIGHTS];
+uniform vec3 u_point_light_colors[MAX_POINT_LIGHTS];
+uniform float u_point_light_intensities[MAX_POINT_LIGHTS];
+uniform float u_point_light_ranges[MAX_POINT_LIGHTS];
 uniform vec3 u_camera_position;
 uniform int u_material_debug_mode;
 uniform bool u_solid_mode;
@@ -100,9 +148,14 @@ uniform mat4 u_sun_shadow_matrix;
 uniform sampler2D u_sun_shadow_map;
 uniform samplerCube u_point_shadow_map_0;
 uniform samplerCube u_point_shadow_map_1;
-uniform int u_point_shadow_slots[32];
+uniform int u_point_shadow_slots[MAX_POINT_LIGHTS];
 
 out vec4 fragColor;
+
+const float PI = 3.14159265;
+const float PBR_EPSILON = 0.0001;
+const float MIN_ROUGHNESS = 0.04;
+const float MIN_LIGHT_RANGE = 0.001;
 
 vec2 transformUv(vec2 uv, vec2 offset, vec2 scale, float rotation) {
   vec2 scaled = uv * scale;
@@ -119,13 +172,13 @@ float distributionGgx(vec3 normal, vec3 halfDirection, float roughness) {
   float ndothSquared = ndoth * ndoth;
   float denominator =
       ndothSquared * (alphaSquared - 1.0) + 1.0;
-  return alphaSquared / max(3.14159265 * denominator * denominator, 0.0001);
+  return alphaSquared / max(PI * denominator * denominator, PBR_EPSILON);
 }
 
 float geometrySchlickGgx(float ndotv, float roughness) {
   float r = roughness + 1.0;
   float k = (r * r) / 8.0;
-  return ndotv / max(ndotv * (1.0 - k) + k, 0.0001);
+  return ndotv / max(ndotv * (1.0 - k) + k, PBR_EPSILON);
 }
 
 float geometrySmith(vec3 normal, vec3 viewDirection, vec3 lightDirection,
@@ -172,7 +225,7 @@ float pointVisibility(int lightIndex, vec3 toLight, float lightDistance) {
       ? texture(u_point_shadow_map_0, -toLight).r
       : texture(u_point_shadow_map_1, -toLight).r;
   float current = lightDistance /
-                  max(u_point_light_ranges[lightIndex], 0.001);
+                  max(u_point_light_ranges[lightIndex], MIN_LIGHT_RANGE);
   return current - 0.0035 <= stored ? 1.0 : 0.12;
 }
 
@@ -191,10 +244,10 @@ vec3 evaluatePbrLight(vec3 baseColor, vec3 normal, vec3 viewDirection,
   vec3 fresnel = fresnelSchlick(max(dot(halfDirection, viewDirection), 0.0), f0);
   vec3 numerator = distribution * geometry * fresnel;
   float denominator =
-      4.0 * max(dot(normal, viewDirection), 0.0) * ndotl + 0.0001;
+      4.0 * max(dot(normal, viewDirection), 0.0) * ndotl + PBR_EPSILON;
   vec3 specular = numerator / denominator;
   vec3 diffuse = (vec3(1.0) - fresnel) * (1.0 - metallic) *
-                 baseColor / 3.14159265;
+                 baseColor / PI;
   return (diffuse + specular) * lightColor * intensity * ndotl;
 }
 
@@ -248,7 +301,7 @@ void main() {
     discard;
   }
 
-  float roughness = clamp(u_roughness_factor, 0.04, 1.0);
+  float roughness = clamp(u_roughness_factor, MIN_ROUGHNESS, 1.0);
   float metallic = clamp(u_metallic_factor, 0.0, 1.0);
   if (u_has_metallic_roughness_texture) {
     vec4 metallicRoughness =
@@ -256,7 +309,7 @@ void main() {
                 transformUv(meshTexCoord, u_metallic_roughness_offset,
                             u_metallic_roughness_scale,
                             u_metallic_roughness_rotation));
-    roughness = clamp(roughness * metallicRoughness.g, 0.04, 1.0);
+    roughness = clamp(roughness * metallicRoughness.g, MIN_ROUGHNESS, 1.0);
     metallic = clamp(metallic * metallicRoughness.b, 0.0, 1.0);
   }
 
@@ -305,7 +358,7 @@ void main() {
         : vec3(0.0, 1.0, 0.0);
     float attenuation =
         pow(clamp(1.0 - lightDistance /
-                          max(u_point_light_ranges[lightIndex], 0.001),
+                          max(u_point_light_ranges[lightIndex], MIN_LIGHT_RANGE),
                   0.0, 1.0), 2.0);
     color += evaluatePbrLight(baseColor.rgb, normal, viewDirection,
                               pointDirection,
@@ -328,24 +381,14 @@ void main() {
 constexpr char PICKING_VERTEX_SHADER[] = R"(#version 410 core
 layout (location = 0) in vec3 inPosition;
 layout (location = 2) in vec2 inTexCoord;
-layout (location = 4) in uvec4 inJoints;
-layout (location = 5) in vec4 inWeights;
 
 uniform mat4 u_model;
 uniform mat4 u_view_projection;
-uniform bool u_skinning_enabled;
-uniform mat4 u_joint_matrices[128];
-
+)" KAGE_GLSL_SKINNING_DECLARATIONS R"(
 out vec2 meshTexCoord;
 
 void main() {
-  mat4 skin = mat4(1.0);
-  if (u_skinning_enabled) {
-    skin = u_joint_matrices[inJoints.x] * inWeights.x +
-           u_joint_matrices[inJoints.y] * inWeights.y +
-           u_joint_matrices[inJoints.z] * inWeights.z +
-           u_joint_matrices[inJoints.w] * inWeights.w;
-  }
+  mat4 skin = skinMatrix();
   meshTexCoord = inTexCoord;
   gl_Position = u_view_projection * u_model * skin * vec4(inPosition, 1.0);
 }
@@ -388,23 +431,13 @@ void main() {
 constexpr char OUTLINE_VERTEX_SHADER[] = R"(#version 410 core
 layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
-layout (location = 4) in uvec4 inJoints;
-layout (location = 5) in vec4 inWeights;
 
 uniform mat4 u_model;
 uniform mat4 u_view_projection;
 uniform float u_outline_thickness;
-uniform bool u_skinning_enabled;
-uniform mat4 u_joint_matrices[128];
-
+)" KAGE_GLSL_SKINNING_DECLARATIONS R"(
 void main() {
-  mat4 skin = mat4(1.0);
-  if (u_skinning_enabled) {
-    skin = u_joint_matrices[inJoints.x] * inWeights.x +
-           u_joint_matrices[inJoints.y] * inWeights.y +
-           u_joint_matrices[inJoints.z] * inWeights.z +
-           u_joint_matrices[inJoints.w] * inWeights.w;
-  }
+  mat4 skin = skinMatrix();
   mat3 normalMatrix = mat3(transpose(inverse(u_model)));
   vec3 normal = normalize(normalMatrix * mat3(skin) * inNormal);
   vec4 worldPosition =
@@ -424,6 +457,10 @@ void main() {
 }
 )";
 
+#undef KAGE_GLSL_SKINNING_DECLARATIONS
+#undef KAGE_STRINGIFY
+#undef KAGE_STRINGIFY_IMPL
+
 }  // namespace
 
 namespace kage::render {
@@ -432,6 +469,36 @@ MeshRenderer::MeshRenderer() {
   m_shader.create(STATIC_MESH_VERTEX_SHADER, STATIC_MESH_FRAGMENT_SHADER);
   m_outline_shader.create(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
   m_picking_shader.create(PICKING_VERTEX_SHADER, PICKING_FRAGMENT_SHADER);
+  createSunShadowFallback();
+  createPointShadowFallback();
+}
+
+MeshRenderer::~MeshRenderer() {
+  glDeleteTextures(1, &m_point_shadow_fallback);
+}
+
+void MeshRenderer::createSunShadowFallback() {
+  clearGlErrors();
+  m_sun_shadow_fallback.create();
+  if (!allocateDepthFallback(GL_TEXTURE_2D,
+                             m_sun_shadow_fallback.getHandle())) {
+    m_sun_shadow_fallback.release();
+    throw std::runtime_error("Failed to allocate Sun shadow fallback texture");
+  }
+}
+
+void MeshRenderer::createPointShadowFallback() {
+  clearGlErrors();
+  glGenTextures(1, &m_point_shadow_fallback);
+  if (m_point_shadow_fallback == 0) {
+    throw std::runtime_error("Failed to create point shadow fallback texture");
+  }
+
+  if (!allocateDepthFallback(GL_TEXTURE_CUBE_MAP, m_point_shadow_fallback)) {
+    glDeleteTextures(1, &m_point_shadow_fallback);
+    m_point_shadow_fallback = 0;
+    throw std::runtime_error("Failed to allocate point shadow fallback texture");
+  }
 }
 
 void MeshRenderer::beginFrame(
@@ -461,17 +528,23 @@ void MeshRenderer::beginFrame(
   m_shader.setMat4("u_sun_shadow_matrix",
                    sun_shadow ? parShadows->sun_view_projection : glm::mat4(1.0f));
   m_shader.setInt("u_sun_shadow_map", 4);
-  if (sun_shadow) {
-    glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, parShadows->sun_depth);
-  }
+  glActiveTexture(GL_TEXTURE4);
+  glBindTexture(GL_TEXTURE_2D,
+                sun_shadow ? parShadows->sun_depth
+                           : m_sun_shadow_fallback.getHandle());
+  glBindSampler(4, 0);
   m_shader.setInt("u_point_shadow_map_0", 5);
   m_shader.setInt("u_point_shadow_map_1", 6);
-  for (std::size_t shadow = 0; parShadows != nullptr &&
-                               shadow < parShadows->point_count;
+  for (std::size_t shadow = 0; shadow < lighting::MAX_POINT_SHADOWS;
        ++shadow) {
     glActiveTexture(GL_TEXTURE5 + static_cast<GLenum>(shadow));
-    glBindTexture(GL_TEXTURE_CUBE_MAP, parShadows->point_depth[shadow]);
+    const bool point_shadow =
+        parShadows != nullptr && shadow < parShadows->point_count &&
+        parShadows->point_depth[shadow] != 0;
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  point_shadow ? parShadows->point_depth[shadow]
+                               : m_point_shadow_fallback);
+    glBindSampler(5 + static_cast<GLuint>(shadow), 0);
   }
 
   const std::size_t point_light_count = std::min(

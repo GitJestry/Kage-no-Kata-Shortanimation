@@ -8,6 +8,7 @@
 #include "film/film_exporter.hpp"
 #include "lighting/lighting_system.hpp"
 #include "platform/runtime_paths.hpp"
+#include "render/frame_time_history.hpp"
 #include "render/mesh_resource_cache.hpp"
 #include "render/viewport_rect.hpp"
 #include "render/world_renderer.hpp"
@@ -15,8 +16,8 @@
 
 #include <glm/glm.hpp>
 
-#include <array>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -29,22 +30,19 @@ class ProjectSerializer;
 
 class EngineCore final {
  public:
-  struct CameraRay final {
-    glm::vec3 origin{0.0f};
-    glm::vec3 direction{0.0f, 0.0f, -1.0f};
+  struct CreateFilmCameraResult final {
+    scene::EntityId entity;
+    film::TargetSequenceId sequence_id = 0;
+    film::SequenceInstanceId instance_id = 0;
   };
 
   EngineCore();
 
   std::size_t registerStaticAsset(std::string parLabel,
                                   std::filesystem::path parPath);
-  std::size_t registerStaticAsset(std::string parLabel,
-                                  std::filesystem::path parPath,
-                                  std::filesystem::path parSourcePath);
   std::size_t registerStaticAsset(assets::AssetId parAssetId,
                                   std::string parLabel,
-                                  std::filesystem::path parPath,
-                                  std::filesystem::path parSourcePath);
+                                  std::filesystem::path parPath);
   std::size_t registerModelAsset(std::string parLabel,
                                  std::filesystem::path parPath,
                                  assets::ModelAsset parDocument);
@@ -52,9 +50,6 @@ class EngineCore final {
   [[nodiscard]] std::optional<std::size_t> importModelAsset(
       const std::filesystem::path& parSourcePath, std::string parLabel,
       std::string& parError);
-  [[nodiscard]] bool importAnimationForEntity(
-      scene::EntityId parEntity, const std::filesystem::path& parSourcePath,
-      std::string parLabel, std::string& parError);
   [[nodiscard]] std::optional<assets::AssetId> importPanorama(
       const std::filesystem::path& parSourcePath, std::string parLabel,
       std::string& parError);
@@ -64,6 +59,8 @@ class EngineCore final {
   bool loadLocalSession();
   void saveLocalSession();
   [[nodiscard]] bool exportFilmSequence(std::string& parError);
+  [[nodiscard]] film::TimelineValidation validateMovieTimeline(
+      bool parForBake = false) const;
   void advanceFilmExport();
   void cancelFilmExport();
   [[nodiscard]] const film::FinalRenderJob& getFinalRenderJob() const;
@@ -71,11 +68,8 @@ class EngineCore final {
   void markLocalSessionDirty();
   [[nodiscard]] bool isProjectDirty() const;
   [[nodiscard]] const platform::RuntimePaths& getRuntimePaths() const;
-  [[nodiscard]] std::filesystem::path getProjectSavePath() const;
-  [[nodiscard]] std::filesystem::path getLocalSessionSavePath() const;
 
   std::size_t createScene(std::string parName);
-  std::size_t createLocalScene(std::string parName);
   bool deleteScene(std::size_t parSceneIndex);
   void setActiveScene(std::size_t parSceneIndex);
   void renameScene(std::size_t parSceneIndex, std::string parName);
@@ -86,6 +80,8 @@ class EngineCore final {
                                        const glm::vec3& parPosition);
   scene::EntityId createPointLightEntityAt(std::string parName,
                                            const glm::vec3& parPosition);
+  [[nodiscard]] std::expected<CreateFilmCameraResult, std::string>
+  createFilmCameraFromView(film::FilmFrame parStartFrame);
   bool deleteEntity(scene::EntityId parEntity);
   void selectEntity(scene::EntityId parEntity);
   void clearSelection();
@@ -119,25 +115,25 @@ class EngineCore final {
   void setGizmoAxisSpace(render::GizmoAxisSpace parAxisSpace);
   void setViewportMode(render::ViewportMode parMode);
 
-  void update(float parDeltaSeconds, bool parMovieWorkspace);
+  void update(float parDeltaSeconds, bool parMovieWorkspace,
+              film::FilmFrame parPlaybackDuration = -1);
   void render(const render::ViewportRect& parViewport,
               bool parMovieWorkspace = false,
-              bool parShotPreview = false, double parFilmFrame = -1.0,
+              double parFilmFrame = -1.0,
               bool parShowOverlays = true,
               unsigned int parDestinationFramebuffer = 0,
-              film::FilmClipId parSelectedFilmClip = 0,
-              film::FilmClipId parSoloFilmClip = 0,
-              int parMsaaSamples = 1);
+              int parMsaaSamples = 1,
+              film::TargetSequenceId parPreviewSequenceId = 0,
+              scene::EntityId parMovieSelectionEntity = {},
+              std::span<const film::ResolvedMovementSegment> parMovementPaths = {});
   [[nodiscard]] const render::PerformanceSnapshot& getPerformanceSnapshot()
       const;
 
   [[nodiscard]] scene::World& getWorld();
   [[nodiscard]] const scene::World& getWorld() const;
   [[nodiscard]] camera::CameraSystem& getCameraSystem();
-  [[nodiscard]] const camera::CameraSystem& getCameraSystem() const;
   [[nodiscard]] const lighting::LightingState& getLightingState() const;
   [[nodiscard]] assets::AssetRegistry& getAssetRegistry();
-  [[nodiscard]] const assets::AssetRegistry& getAssetRegistry() const;
   [[nodiscard]] std::span<const assets::AssetRegistry::AssetLibraryEntry>
   getAssetLibrary() const;
   [[nodiscard]] std::span<const assets::EnvironmentAsset>
@@ -145,10 +141,9 @@ class EngineCore final {
   [[nodiscard]] std::span<const scene::SceneManager::SceneRecord> getScenes()
       const;
   [[nodiscard]] const assets::StaticModel* getStaticMeshSource(
-      assets::AssetRegistry::StaticMeshHandle parHandle) const;
+      std::size_t parAssetIndex) const;
   [[nodiscard]] const assets::AssetRegistry::AssetLibraryEntry*
   getAssetLibraryEntry(std::size_t parAssetIndex) const;
-  [[nodiscard]] const render::PlacementGhost& getPlacementGhost() const;
   [[nodiscard]] scene::EntityId getSelectedEntity() const;
   [[nodiscard]] const scene::SunLightSettings& getSunLightSettings() const;
   [[nodiscard]] std::size_t getActiveSceneIndex() const;
@@ -163,11 +158,15 @@ class EngineCore final {
   [[nodiscard]] render::MaterialDebugMode getMaterialDebugMode() const;
   [[nodiscard]] render::GizmoAxisSpace getGizmoAxisSpace() const;
   [[nodiscard]] render::ViewportMode getViewportMode() const;
-  [[nodiscard]] film::FilmSequence& getFilmSequence();
+  [[nodiscard]] film::MovieTimeline& getMovieTimeline();
   [[nodiscard]] film::FilmPlayback& getFilmPlayback();
+  void clearFilmPreviewState();
   [[nodiscard]] math::Bounds3 getEntityWorldBounds(
       scene::EntityId parEntity) const;
   [[nodiscard]] std::optional<scene::EntityId> pickEntity(
+      const glm::vec2& parCursorPixel,
+      const glm::vec2& parViewportSize);
+  [[nodiscard]] std::optional<scene::EntityId> pickMovieEntity(
       const glm::vec2& parCursorPixel,
       const glm::vec2& parViewportSize);
   [[nodiscard]] bool isCursorOverEntityCore(
@@ -177,25 +176,22 @@ class EngineCore final {
       const glm::vec2& parCursorPixel,
       const glm::vec2& parViewportSize) const;
   [[nodiscard]] glm::vec3 getPointInFrontOfCamera(float parDistance) const;
-  [[nodiscard]] glm::vec3 getCameraRayDirection(
-      const glm::vec2& parCursorPixel,
-      const glm::vec2& parViewportSize) const;
 
  private:
+  [[nodiscard]] float uploadLoadedAsset(std::size_t parAssetIndex);
   void attachLoadedAssetToInstances(std::size_t parAssetIndex);
   void pollAssetStreaming();
   [[nodiscard]] scene::SceneManager::SceneRecord& getActiveScene();
   [[nodiscard]] const scene::SceneManager::SceneRecord& getActiveScene() const;
-  [[nodiscard]] CameraRay makeCameraRay(const glm::vec2& parCursorPixel,
-                                        const glm::vec2& parViewportSize) const;
   [[nodiscard]] lighting::LightingState buildLightingState(
       const camera::Camera& parCamera,
       const film::FilmFrameState* parFilmState = nullptr) const;
-  void createDefaultSceneEntities(scene::SceneManager::SceneRecord& parScene);
   void rebuildAssetInstanceCounts();
-  [[nodiscard]] std::optional<camera::Camera> evaluateFilmCamera(
-      double parFrame) const;
-
+  [[nodiscard]] std::optional<scene::EntityId> pickEntityForView(
+      const camera::Camera& parCamera,
+      const film::FilmFrameState* parFilmState,
+      const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize,
+      bool parUseHandleCenterDistance);
   friend class ProjectSerializer;
 
   platform::RuntimePaths m_runtime_paths;
@@ -215,11 +211,13 @@ class EngineCore final {
   render::PerformanceSnapshot m_performance_snapshot;
   film::FilmPlayback m_film_playback;
   film::FilmFrameState m_film_frame_state;
+  film::FilmFrameState m_viewport_film_frame_state;
+  std::optional<camera::Camera> m_viewport_camera;
+  bool m_viewport_consumes_film_state = false;
+  bool m_viewport_black_output = false;
   std::vector<animation::EvaluatedSkinPalette> m_film_skin_palettes;
   film::FinalRenderJob m_final_render_job;
-  std::array<float, 120> m_cpu_frame_samples{};
-  std::size_t m_cpu_frame_sample_count = 0;
-  std::size_t m_cpu_frame_sample_cursor = 0;
+  render::FrameTimeHistory m_cpu_frame_history;
   bool m_project_dirty = false;
   bool m_local_session_dirty = false;
   float m_local_session_autosave_timer_seconds = 0.0f;

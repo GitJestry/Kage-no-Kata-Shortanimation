@@ -42,9 +42,9 @@ class GpuMesh final {
   GpuMesh(const GpuMesh&) = delete;
   GpuMesh& operator=(const GpuMesh&) = delete;
 
-  GpuMesh(GpuMesh&& parOther) noexcept;
-  GpuMesh& operator=(GpuMesh&& parOther) noexcept;
-  ~GpuMesh();
+  GpuMesh(GpuMesh&& parOther) noexcept = default;
+  GpuMesh& operator=(GpuMesh&& parOther) noexcept = default;
+  ~GpuMesh() = default;
 
   void upload(const assets::StaticModel& parModel,
               TextureResourceCache& parTextureCache);
@@ -87,18 +87,7 @@ class GpuMesh final {
     GpuBuffer vertex_buffer;
     GpuBuffer index_buffer;
     glm::mat4 transform{1.0f};
-    glm::vec4 base_color_factor{1.0f};
-    assets::MaterialTextureSlot base_color_texture;
-    assets::MaterialTextureSlot normal_texture;
-    assets::MaterialTextureSlot metallic_roughness_texture;
-    assets::MaterialTextureSlot emissive_texture;
-    float metallic_factor = 1.0f;
-    float roughness_factor = 1.0f;
-    float normal_scale = 1.0f;
-    float alpha_cutoff = 0.5f;
-    glm::vec3 emissive_factor{0.0f};
-    assets::AlphaMode alpha_mode = assets::AlphaMode::Opaque;
-    bool double_sided = false;
+    assets::StaticMaterial material;
     bool has_skin = false;
     std::uint32_t skin_index = assets::INVALID_SKIN_INDEX;
     std::size_t primitive_index = 0;
@@ -111,12 +100,23 @@ class GpuMesh final {
     TextureSampler sampler;
   };
 
+  [[nodiscard]] bool bindTextureSlot(
+      const assets::MaterialTextureSlot& parSlot, GLuint parTextureUnit,
+      bool parEnabled = true) const;
+  void bindSkinning(
+      const ShaderProgram& parShader, const PrimitiveGpuData& parPrimitive,
+      std::span<const std::vector<glm::mat4>> parSkinMatrices,
+      bool parRequireValidSkinIndex = true) const;
+  void bindAlphaMaskMaterial(
+      const ShaderProgram& parShader,
+      const PrimitiveGpuData& parPrimitive) const;
+  static void drawIndexed(const PrimitiveGpuData& parPrimitive);
+
   std::vector<PrimitiveGpuData> m_primitives;
   std::size_t m_index_count = 0;
   bool m_has_opaque_primitives = false;
   bool m_has_blend_primitives = false;
   Texture2D m_fallback_texture;
-  GLuint m_fallback_cube = 0;
   std::vector<TextureBinding> m_textures;
 };
 

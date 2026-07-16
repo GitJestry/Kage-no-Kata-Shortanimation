@@ -50,13 +50,9 @@ inline Bounds3 makeAssetPlaceholderBounds() {
   return bounds;
 }
 
-inline Bounds3 transformBounds(const Bounds3& parBounds,
-                               const glm::mat4& parTransform) {
-  Bounds3 transformed;
-  if (!parBounds.is_valid) {
-    return transformed;
-  }
-  const std::array<glm::vec3, 8> corners = {
+[[nodiscard]] inline std::array<glm::vec3, 8> boundsCorners(
+    const Bounds3& parBounds) {
+  return {
       glm::vec3(parBounds.min.x, parBounds.min.y, parBounds.min.z),
       glm::vec3(parBounds.max.x, parBounds.min.y, parBounds.min.z),
       glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.min.z),
@@ -66,7 +62,15 @@ inline Bounds3 transformBounds(const Bounds3& parBounds,
       glm::vec3(parBounds.min.x, parBounds.max.y, parBounds.max.z),
       glm::vec3(parBounds.max.x, parBounds.max.y, parBounds.max.z),
   };
-  for (const glm::vec3& corner : corners) {
+}
+
+inline Bounds3 transformBounds(const Bounds3& parBounds,
+                               const glm::mat4& parTransform) {
+  Bounds3 transformed;
+  if (!parBounds.is_valid) {
+    return transformed;
+  }
+  for (const glm::vec3& corner : boundsCorners(parBounds)) {
     transformed.includePoint(
         glm::vec3(parTransform * glm::vec4(corner, 1.0f)));
   }

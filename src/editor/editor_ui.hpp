@@ -26,26 +26,22 @@ class EditorUi final {
             SelectionController& parSelectionController,
             GizmoController& parGizmoController,
             ConfirmationDialog& parConfirmationDialog,
-            const glm::vec2& parViewportSize, float parDeltaSeconds,
-            unsigned int parFrameCount);
+            float parDeltaSeconds);
   [[nodiscard]] bool isCursorOverPanel(const glm::vec2& parUiCursor) const;
 
  private:
   void applyStyle();
   void beginPanelTracking();
+  void computeMovieEditorLayout(EditorSession& parSession);
   void trackCurrentPanel();
   void clampCurrentPanel(const char* parPanelName,
                          bool parKeepAboveStatusStrip);
-  void drawHiddenPanelButton();
-  void drawHiddenInspectorButton();
-  void drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession,
-                             const glm::vec2& parViewportSize);
+  void drawHiddenPanelButton(bool parInspector = false);
+  void drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession);
   void drawLeftPanel(engine::EngineCore& parEngine,
                      PlacementController& parPlacementController,
                      SelectionController& parSelectionController,
-                     GizmoController& parGizmoController,
-                     ConfirmationDialog& parConfirmationDialog,
-                     const glm::vec2& parViewportSize);
+                     ConfirmationDialog& parConfirmationDialog);
   void drawSceneControls(engine::EngineCore& parEngine,
                          ConfirmationDialog& parConfirmationDialog);
   void drawCreationPalette(engine::EngineCore& parEngine,
@@ -56,16 +52,10 @@ class EditorUi final {
                     ConfirmationDialog& parConfirmationDialog);
   void drawInspector(engine::EngineCore& parEngine,
                      GizmoController& parGizmoController,
-                     ConfirmationDialog& parConfirmationDialog,
-                     const glm::vec2& parViewportSize);
+                     ConfirmationDialog& parConfirmationDialog);
   void drawRuntimeDiagnostics(engine::EngineCore& parEngine,
-                              const glm::vec2& parViewportSize,
-                              float parDeltaSeconds,
-                              unsigned int parFrameCount);
-  void drawStatusStrip(engine::EngineCore& parEngine,
-                       const PlacementController& parPlacementController,
-                       const GizmoController& parGizmoController,
-                       const glm::vec2& parViewportSize);
+                              float parDeltaSeconds);
+  void drawStatusStrip();
   void drawImportDialogs(engine::EngineCore& parEngine,
                          PlacementController& parPlacementController);
   void refreshSceneNameBuffer(engine::EngineCore& parEngine);
@@ -76,21 +66,19 @@ class EditorUi final {
 
   std::array<char, 128> m_scene_name_buffer{};
   std::array<char, 128> m_entity_name_buffer{};
-  std::array<char, 128> m_animation_import_label_buffer{};
   std::array<char, 128> m_panorama_import_label_buffer{};
   std::size_t m_scene_name_buffer_index = static_cast<std::size_t>(-1);
   std::uint32_t m_entity_name_buffer_id =
       std::numeric_limits<std::uint32_t>::max();
   std::size_t m_selected_asset_index = 0;
   std::string m_model_import_error;
-  std::string m_animation_import_error;
   std::string m_panorama_import_error;
   FileBrowserDialog m_model_import_browser;
-  FileBrowserDialog m_animation_import_browser;
   FileBrowserDialog m_panorama_import_browser;
   bool m_panel_visible = true;
   bool m_inspector_visible = true;
   bool m_diagnostics_visible = false;
+  bool m_movie_layout_computed = false;
   std::vector<UiPanelRect> m_panel_rects;
 };
 

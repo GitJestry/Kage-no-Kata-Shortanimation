@@ -1,6 +1,8 @@
 #include "editor/world_editor.hpp"
 
 #include "assets/asset_path.hpp"
+#include "editor/movie_editor_controller.hpp"
+#include "editor/movie_editor_panel.hpp"
 #include "editor/ui_layout.hpp"
 
 #include <algorithm>
@@ -10,6 +12,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace kage::editor {
 
@@ -20,7 +23,6 @@ WorldEditor::WorldEditor(engine::EngineCore& parEngine)
     m_engine.createDefaultProject();
   }
   m_engine.loadLocalSession();
-  loadEditorSession(m_engine.getLocalSessionSavePath(), m_session);
   m_gizmo_controller.setAxisSpace(
       m_engine.getGizmoAxisSpace() == render::GizmoAxisSpace::World
           ? GizmoController::AxisSpace::World
@@ -29,7 +31,6 @@ WorldEditor::WorldEditor(engine::EngineCore& parEngine)
 
 WorldEditor::~WorldEditor() {
   m_engine.saveLocalSession();
-  saveEditorSession(m_engine.getLocalSessionSavePath(), m_session);
 }
 
 void WorldEditor::update(float parDeltaSeconds,
@@ -40,18 +41,6 @@ void WorldEditor::update(float parDeltaSeconds,
     static_cast<void>(m_placement_controller.cancel(m_engine));
     m_gizmo_controller.end();
     m_engine.clearGizmoGuide();
-  }
-  if (m_session.solo_clip_preview) {
-    const film::FilmClip* clip = m_engine.getFilmSequence().findClip(
-        m_session.selected_film_clip);
-    if (clip == nullptr ||
-        m_engine.getFilmPlayback().playhead_frame >= clip->end_frame) {
-      m_session.solo_clip_preview = false;
-      m_engine.getFilmPlayback().playing = false;
-      if (clip != nullptr) {
-        m_engine.getFilmPlayback().playhead_frame = clip->start_frame;
-      }
-    }
   }
   m_engine.setGizmoAxisSpace(
       m_gizmo_controller.getAxisSpace() == GizmoController::AxisSpace::World
@@ -86,30 +75,64 @@ void WorldEditor::update(float parDeltaSeconds,
     }
   }
 
-  applyCameraMovement(parInput);
-  handlePointerInput(parInput);
-  m_engine.update(parDeltaSeconds, m_session.workspace == Workspace::Movie);
+  const bool movie_workspace = m_session.workspace == Workspace::Movie;
+  film::FilmPlayback& playback = m_engine.getFilmPlayback();
+  const film::TargetSequence* selected_sequence = movie_workspace
+      ? selectedMovieTargetSequence(m_session, m_engine.getMovieTimeline())
+      : nullptr;
+  const bool camera_sequence_preview =
+      playback.previewing && selected_sequence != nullptr &&
+      film::isCameraSequence(*selected_sequence);
+  applyCameraMovement(parInput, camera_sequence_preview);
+  handlePointerInput(parInput, camera_sequence_preview);
+  const film::FilmFrame playback_duration =
+      movie_workspace
+          ? moviePreviewDuration(m_session, m_engine.getMovieTimeline())
+          : -1;
+  const bool playback_was_playing = playback.playing;
+  m_engine.update(parDeltaSeconds, movie_workspace, playback_duration);
+  if (movie_workspace && playback_was_playing) {
+    synchronizeMovieAuthoringCursor(m_session, playback);
+  }
 }
 
 void WorldEditor::render(const glm::vec2& parViewportSize) {
   static_cast<void>(parViewportSize);
+  scene::EntityId movie_selection_entity;
+  std::vector<film::ResolvedMovementSegment> movement_paths;
+  const film::TargetSequence* sequence =
+      selectedMovieTargetSequence(m_session, m_engine.getMovieTimeline());
+  if (m_session.movie_selection.target.has_value() &&
+      m_session.movie_selection.target->kind !=
+          film::TimelineTargetKind::Sun) {
+    movie_selection_entity = m_session.movie_selection.target->entity;
+  }
+  if (m_session.workspace == Workspace::Movie) {
+    const MovieEditorSelection& selection = m_session.movie_selection;
+    if (sequence != nullptr) {
+      movement_paths = film::resolveMovementSegments(*sequence);
+      if (m_session.shown_movement_paths_sequence_id != sequence->id) {
+        std::erase_if(movement_paths,
+                      [clip_id = selection.clip_id](const auto& movement) {
+                        return movement.clip_id != clip_id;
+                      });
+      }
+    }
+  }
+  const film::FilmPlayback& playback = m_engine.getFilmPlayback();
+  const film::TargetSequenceId preview_sequence_id =
+      playback.previewing && sequence != nullptr ? sequence->id : 0;
   m_engine.render(m_viewport,
                   m_session.workspace == Workspace::Movie,
-                  m_session.shot_preview, -1.0,
-                  !m_session.shot_preview, 0,
-                  m_session.selected_film_clip,
-                  m_session.solo_clip_preview
-                      ? m_session.selected_film_clip
-                      : 0);
+                  -1.0, true, 0, 1, preview_sequence_id,
+                  movie_selection_entity,
+                  movement_paths);
   m_engine.advanceFilmExport();
 }
 
-void WorldEditor::buildImGui(const glm::vec2& parViewportSize,
-                             float parDeltaSeconds,
-                             unsigned int parFrameCount) {
+void WorldEditor::buildImGui(float parDeltaSeconds) {
   m_ui.draw(m_engine, m_session, m_placement_controller, m_selection_controller,
-            m_gizmo_controller, m_confirmation_dialog, parViewportSize, parDeltaSeconds,
-            parFrameCount);
+            m_gizmo_controller, m_confirmation_dialog, parDeltaSeconds);
   m_confirmation_dialog.draw();
 }
 
@@ -153,14 +176,15 @@ void WorldEditor::registerDefaultAssets() {
 }
 
 void WorldEditor::applyCameraMovement(
-    const input::EditorInputSnapshot& parInput) {
+    const input::EditorInputSnapshot& parInput,
+    bool parCameraSequencePreview) {
   const bool viewport_active =
       m_viewport.contains(parInput.framebuffer_cursor) &&
       !m_ui.isCursorOverPanel(parInput.ui_cursor);
   camera::CameraSystem& camera_system = m_engine.getCameraSystem();
   const bool camera_keyboard_active =
       !parInput.wants_capture_keyboard &&
-      !m_session.shot_preview &&
+      !parCameraSequencePreview &&
       (viewport_active || m_right_look_active ||
        m_placement_controller.isActive() || m_gizmo_controller.isActive());
   camera_system.setMovement(camera::CameraMovement::Forward,
@@ -178,8 +202,9 @@ void WorldEditor::applyCameraMovement(
 }
 
 void WorldEditor::handlePointerInput(
-    const input::EditorInputSnapshot& parInput) {
-  if (m_session.shot_preview) {
+    const input::EditorInputSnapshot& parInput,
+    bool parCameraSequencePreview) {
+  if (parCameraSequencePreview) {
     m_right_look_active = false;
     m_gizmo_controller.end();
     m_engine.clearGizmoGuide();
@@ -255,6 +280,12 @@ void WorldEditor::handlePointerInput(
     return;
   }
 
+  if (!world_edit) {
+    static_cast<void>(m_selection_controller.selectMovieTarget(
+        m_engine, m_session, viewport_cursor, viewport_size));
+    return;
+  }
+
   const bool selected = m_selection_controller.handleViewportLeftPress(
       m_engine, viewport_cursor, viewport_size);
   if (!selected) {
@@ -264,18 +295,27 @@ void WorldEditor::handlePointerInput(
 
 void WorldEditor::updateViewportRect(
     const input::EditorInputSnapshot& parInput) {
-  const float bottom_ui = UI_STATUS_HEIGHT +
-      (m_session.workspace == Workspace::Movie
-           ? m_session.film_editor_height
-           : 0.0f);
-  const int reserved_bottom = std::max(
-      0, static_cast<int>(std::lround(
-             bottom_ui * parInput.ui_to_framebuffer_scale.y)));
+  const bool movie_workspace = m_session.workspace == Workspace::Movie;
   const int width = std::max(static_cast<int>(parInput.framebuffer_size.x), 1);
   const int full_height =
       std::max(static_cast<int>(parInput.framebuffer_size.y), 1);
-  m_viewport = {{0, 0},
-                {width, std::max(full_height - reserved_bottom, 1)},
+  if (movie_workspace) {
+    // EditorUi owns MovieEditorLayout. Its fitted film rectangle keeps Movie
+    // camera projection, input, and Bake at the same 16:9 aspect ratio.
+    const UiPanelRect& viewport = m_session.movie_layout.film_preview;
+    const glm::ivec2 origin = glm::ivec2(glm::round(
+        viewport.min * parInput.ui_to_framebuffer_scale));
+    const glm::ivec2 size = glm::max(
+        glm::ivec2(glm::round((viewport.max - viewport.min) *
+                              parInput.ui_to_framebuffer_scale)),
+        glm::ivec2(1));
+    m_viewport = {origin, size, full_height};
+    return;
+  }
+  const int reserved_bottom = std::max(
+      0, static_cast<int>(std::lround(UI_STATUS_HEIGHT *
+                                      parInput.ui_to_framebuffer_scale.y)));
+  m_viewport = {{0, 0}, {width, std::max(full_height - reserved_bottom, 1)},
                 full_height};
 }
 

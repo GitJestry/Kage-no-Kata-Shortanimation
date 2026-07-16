@@ -25,14 +25,15 @@ class WorldEditor final {
   void update(float parDeltaSeconds,
               const input::EditorInputSnapshot& parInput);
   void render(const glm::vec2& parViewportSize);
-  void buildImGui(const glm::vec2& parViewportSize, float parDeltaSeconds,
-                  unsigned int parFrameCount);
+  void buildImGui(float parDeltaSeconds);
   bool cancelActiveOperation();
 
  private:
   void registerDefaultAssets();
-  void applyCameraMovement(const input::EditorInputSnapshot& parInput);
-  void handlePointerInput(const input::EditorInputSnapshot& parInput);
+  void applyCameraMovement(const input::EditorInputSnapshot& parInput,
+                           bool parCameraSequencePreview);
+  void handlePointerInput(const input::EditorInputSnapshot& parInput,
+                          bool parCameraSequencePreview);
   void publishGizmoGuide();
   void updateViewportRect(const input::EditorInputSnapshot& parInput);
 

@@ -2,33 +2,12 @@
 
 #include "animation/animator.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <utility>
 
 namespace kage::animation {
 
 namespace {
-
-[[nodiscard]] std::optional<std::size_t> resolveClipIndex(
-    const kage::assets::ModelAsset& parAsset,
-    const kage::film::RigAnimation& parAnimation) {
-  if (parAnimation.clip_id != 0) {
-    const auto clip = std::find_if(
-        parAsset.animation_clips.begin(), parAsset.animation_clips.end(),
-        [&](const kage::assets::AnimationClip& item) {
-          return item.id == parAnimation.clip_id;
-        });
-    if (clip != parAsset.animation_clips.end()) {
-      return static_cast<std::size_t>(
-          std::distance(parAsset.animation_clips.begin(), clip));
-    }
-    return std::nullopt;
-  }
-  return parAnimation.legacy_clip_index < parAsset.animation_clips.size()
-             ? std::optional<std::size_t>(parAnimation.legacy_clip_index)
-             : std::nullopt;
-}
 
 void storePose(std::vector<std::vector<glm::mat4>>& parMatrices,
                const assets::ModelAsset& parAsset,
@@ -75,7 +54,7 @@ void AnimationSystem::evaluateFilmFrame(
     SkeletonPose pose = Animator::makeBindPose(*asset);
     const std::optional<std::size_t> clip_index =
         active != parFrame.rig_animations.end()
-            ? resolveClipIndex(*asset, active->animation)
+            ? resolveAnimationClipIndex(*asset, active->animation)
             : std::nullopt;
     if (active != parFrame.rig_animations.end() && clip_index.has_value()) {
       const float duration = asset->animation_clips[*clip_index].duration_seconds;
@@ -84,7 +63,11 @@ void AnimationSystem::evaluateFilmFrame(
       const float source_out = duration * std::clamp(
           active->animation.source_out, active->animation.source_in, 1.0f);
       const float source_length = std::max(source_out - source_in, 0.0001f);
-      float time = source_in + active->local_time_seconds;
+      float local_time = active->local_time_seconds;
+      if (active->final_pose && active->animation.looping) {
+        local_time = std::nextafter(local_time, 0.0f);
+      }
+      float time = source_in + local_time;
       if (active->animation.looping) {
         time = source_in + std::fmod(std::max(time - source_in, 0.0f),
                                     source_length);

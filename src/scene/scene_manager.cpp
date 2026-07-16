@@ -5,15 +5,13 @@
 
 namespace kage::scene {
 
-std::size_t SceneManager::createScene(std::string parName,
-                                      bool parLocalOnly) {
+std::size_t SceneManager::createScene(std::string parName) {
   if (parName.empty()) {
     parName = "Scene " + std::to_string(m_scenes.size() + 1);
   }
 
   SceneRecord scene;
   scene.name = std::move(parName);
-  scene.local_only = parLocalOnly;
   m_scenes.push_back(std::move(scene));
   m_active_scene_index = m_scenes.size() - 1;
   return m_active_scene_index;

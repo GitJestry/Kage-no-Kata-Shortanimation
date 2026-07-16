@@ -1,21 +1,18 @@
 #include "engine/engine_core.hpp"
 
 #include "film/film_exporter.hpp"
+#include "film/movie_timeline_world_validation.hpp"
 
+#include "engine/film_viewport.hpp"
 #include "engine/project_serializer.hpp"
 #include "math/screen_projection.hpp"
+#include "render/viewport_picking.hpp"
 #include "scene/components.hpp"
 
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
-
 #include <algorithm>
-#include <array>
 #include <charconv>
 #include <chrono>
 #include <cmath>
-#include <limits>
-#include <numeric>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -28,67 +25,16 @@
 namespace {
 
 constexpr float DEFAULT_PLACEMENT_DISTANCE = 4.0f;
-constexpr float ENTITY_HANDLE_EXTENT = 0.35f;
-constexpr float RAY_EPSILON = 0.00001f;
 constexpr float AUTOSAVE_INTERVAL_SECONDS = 2.0f;
 constexpr float HANDLE_SCREEN_RADIUS = 28.0f;
+constexpr int ALLOCATOR_RELIEF_PASS_COUNT = 3;
+constexpr float ALLOCATOR_RELIEF_INTERVAL_SECONDS = 1.0f;
 
 using Clock = std::chrono::steady_clock;
 
 [[nodiscard]] float elapsedMilliseconds(Clock::time_point parStart,
                                         Clock::time_point parEnd) {
   return std::chrono::duration<float, std::milli>(parEnd - parStart).count();
-}
-
-[[nodiscard]] bool intersectBounds(
-    const kage::engine::EngineCore::CameraRay& parRay,
-    const kage::math::Bounds3& parBounds, float& parDistance) {
-  if (!parBounds.is_valid) {
-    return false;
-  }
-
-  float min_distance = 0.0f;
-  float max_distance = std::numeric_limits<float>::max();
-  for (int axis = 0; axis < 3; ++axis) {
-    const float origin = parRay.origin[axis];
-    const float direction = parRay.direction[axis];
-    const float min_value = parBounds.min[axis];
-    const float max_value = parBounds.max[axis];
-    if (std::abs(direction) < RAY_EPSILON) {
-      if (origin < min_value || origin > max_value) {
-        return false;
-      }
-      continue;
-    }
-
-    float near_distance = (min_value - origin) / direction;
-    float far_distance = (max_value - origin) / direction;
-    if (near_distance > far_distance) {
-      std::swap(near_distance, far_distance);
-    }
-    min_distance = std::max(min_distance, near_distance);
-    max_distance = std::min(max_distance, far_distance);
-    if (min_distance > max_distance) {
-      return false;
-    }
-  }
-
-  parDistance = min_distance;
-  return true;
-}
-
-[[nodiscard]] bool intersectSphere(
-    const kage::engine::EngineCore::CameraRay& parRay,
-    const glm::vec3& parCenter, float parRadius) {
-  const glm::vec3 to_center = parCenter - parRay.origin;
-  const float projected = glm::dot(to_center, parRay.direction);
-  if (projected < 0.0f) {
-    return false;
-  }
-
-  const glm::vec3 closest = parRay.origin + parRay.direction * projected;
-  const glm::vec3 delta = closest - parCenter;
-  return glm::dot(delta, delta) <= parRadius * parRadius;
 }
 
 [[nodiscard]] std::size_t readInstanceSuffix(std::string_view parName,
@@ -125,30 +71,30 @@ std::size_t EngineCore::registerStaticAsset(std::string parLabel,
                                               std::move(parPath));
 }
 
-std::size_t EngineCore::registerStaticAsset(
-    std::string parLabel, std::filesystem::path parPath,
-    std::filesystem::path parSourcePath) {
-  return m_asset_registry.registerStaticAsset(std::move(parLabel),
-                                              std::move(parPath),
-                                              std::move(parSourcePath));
-}
-
 std::size_t EngineCore::registerModelAsset(std::string parLabel,
                                            std::filesystem::path parPath,
                                            assets::ModelAsset parDocument) {
   const std::size_t asset_index = m_asset_registry.registerModelAsset(
       std::move(parLabel), std::move(parPath), std::move(parDocument));
-  const assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(asset_index);
-  if (asset != nullptr && asset->document.has_value()) {
-    const Clock::time_point upload_begin = Clock::now();
-    m_mesh_resource_cache.uploadStaticMesh(asset->mesh_handle,
-                                           asset->document->static_model);
-    m_performance_snapshot.gpu_upload_ms =
-        elapsedMilliseconds(upload_begin, Clock::now());
-    m_asset_registry.releaseStaticGeometryPayload(asset_index);
-  }
+  m_performance_snapshot.gpu_upload_ms = uploadLoadedAsset(asset_index);
   return asset_index;
+}
+
+float EngineCore::uploadLoadedAsset(std::size_t parAssetIndex) {
+  const assets::AssetRegistry::AssetLibraryEntry* asset =
+      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
+  if (asset == nullptr || !asset->document.has_value()) {
+    return 0.0f;
+  }
+  float elapsed = 0.0f;
+  if (m_mesh_resource_cache.getStaticMesh(parAssetIndex) == nullptr) {
+    const auto begin = Clock::now();
+    m_mesh_resource_cache.uploadStaticMesh(
+        parAssetIndex, asset->document->static_model);
+    elapsed = elapsedMilliseconds(begin, Clock::now());
+  }
+  m_asset_registry.releaseStaticGeometryPayload(parAssetIndex);
+  return elapsed;
 }
 
 void EngineCore::requestAssetLoad(std::size_t parAssetIndex) {
@@ -157,7 +103,7 @@ void EngineCore::requestAssetLoad(std::size_t parAssetIndex) {
   if (entry == nullptr) {
     return;
   }
-  if (m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) != nullptr) {
+  if (m_mesh_resource_cache.getStaticMesh(parAssetIndex) != nullptr) {
     return;
   }
   if (entry->load_state == assets::AssetLoadState::Queued ||
@@ -172,11 +118,9 @@ void EngineCore::requestAssetLoad(std::size_t parAssetIndex) {
 }
 
 void EngineCore::attachLoadedAssetToInstances(std::size_t parAssetIndex) {
-  const assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(parAssetIndex);
   const assets::ModelAsset* document =
       m_asset_registry.getLoadedAsset(parAssetIndex);
-  if (asset == nullptr || document == nullptr) {
+  if (document == nullptr) {
     return;
   }
 
@@ -188,7 +132,6 @@ void EngineCore::attachLoadedAssetToInstances(std::size_t parAssetIndex) {
         continue;
       }
 
-      entity.static_mesh->mesh_handle = asset->mesh_handle;
       entity.static_mesh->local_bounds = document->static_model.bounds;
       if (!document->skins.empty() && !entity.rig.has_value()) {
         scene::RigComponent rig;
@@ -222,26 +165,19 @@ void EngineCore::pollAssetStreaming() {
 
     m_performance_snapshot.asset_load_ms += entry->last_cpu_import_ms;
     try {
-      if (m_mesh_resource_cache.getStaticMesh(entry->mesh_handle) == nullptr) {
-        const Clock::time_point upload_begin = Clock::now();
-        m_mesh_resource_cache.uploadStaticMesh(entry->mesh_handle,
-                                               document->static_model);
-        m_performance_snapshot.gpu_upload_ms +=
-            elapsedMilliseconds(upload_begin, Clock::now());
-      }
+      m_performance_snapshot.gpu_upload_ms += uploadLoadedAsset(asset_index);
     } catch (const std::exception& error) {
       m_asset_registry.failLoad(asset_index, error.what());
       continue;
     }
     attachLoadedAssetToInstances(asset_index);
     m_asset_registry.completeGpuUpload(asset_index);
-    m_asset_registry.releaseStaticGeometryPayload(asset_index);
   }
   const bool streaming_active = m_asset_streamer.getPendingCount() > 0;
   m_performance_snapshot.streaming_work_items =
       m_asset_streamer.getPendingCount();
   if (m_streaming_was_active && !streaming_active) {
-    m_allocator_relief_passes_remaining = 3;
+    m_allocator_relief_passes_remaining = ALLOCATOR_RELIEF_PASS_COUNT;
     m_allocator_relief_timer_seconds = 0.0f;
   }
   m_streaming_was_active = streaming_active;
@@ -257,7 +193,6 @@ void EngineCore::createDefaultProject() {
     return;
   }
 
-  createDefaultSceneEntities(*scene);
   if (m_asset_registry.getAssetLibrary().size() >= 2) {
     const scene::EntityId torii =
         instantiateAssetAt(1, glm::vec3(0.0f));
@@ -265,6 +200,11 @@ void EngineCore::createDefaultProject() {
     frameEntity(torii);
     clearSelection();
   }
+  const auto film_camera = createFilmCameraFromView(0);
+  if (!film_camera.has_value()) {
+    throw std::runtime_error(film_camera.error());
+  }
+  clearSelection();
   markProjectDirty();
 }
 
@@ -279,9 +219,6 @@ void EngineCore::saveProject() {
 bool EngineCore::loadLocalSession() {
   const bool loaded = ProjectSerializer::loadLocalSession(*this);
   m_last_session_fly_speed = m_camera_system.getFlyMoveSpeed();
-  if (loaded && m_local_session_dirty) {
-    saveLocalSession();
-  }
   return loaded;
 }
 
@@ -294,12 +231,6 @@ void EngineCore::saveLocalSession() {
 }
 
 void EngineCore::markProjectDirty() {
-  const auto scenes = m_scene_manager.getScenes();
-  const std::size_t active_scene = m_scene_manager.getActiveSceneIndex();
-  if (active_scene < scenes.size() && scenes[active_scene].local_only) {
-    m_local_session_dirty = true;
-    return;
-  }
   m_project_dirty = true;
 }
 
@@ -315,48 +246,27 @@ const platform::RuntimePaths& EngineCore::getRuntimePaths() const {
   return m_runtime_paths;
 }
 
-std::filesystem::path EngineCore::getProjectSavePath() const {
-  return m_runtime_paths.getProjectWorldPath();
-}
-
-std::filesystem::path EngineCore::getLocalSessionSavePath() const {
-  return m_runtime_paths.getLocalSessionPath();
-}
-
-std::optional<camera::Camera> EngineCore::evaluateFilmCamera(
-    double parFrame) const {
-  const auto sample = getActiveScene().film_sequence.evaluateCamera(parFrame);
-  if (!sample.has_value()) {
-    return std::nullopt;
-  }
-  const scene::EntityRecord* entity =
-      getActiveScene().world.findEntity(sample->camera);
-  if (entity == nullptr || !entity->camera.has_value()) {
-    return std::nullopt;
-  }
-  camera::Camera result;
-  result.position = entity->transform.transform.translation;
-  result.orientation = glm::normalize(entity->transform.transform.rotation);
-  result.vertical_fov_degrees = entity->camera->vertical_fov_degrees;
-  result.near_plane = entity->camera->near_plane;
-  result.far_plane = entity->camera->far_plane;
-  if (sample->transform.has_value()) {
-    result.position = sample->transform->translation;
-    result.orientation = glm::normalize(sample->transform->rotation);
-  }
-  if (sample->vertical_fov_degrees.has_value()) {
-    result.vertical_fov_degrees = *sample->vertical_fov_degrees;
-  }
-  return result;
-}
-
 bool EngineCore::exportFilmSequence(std::string& parError) {
-  const std::string& name = getActiveScene().film_sequence.name;
+  const film::TimelineValidation validation = validateMovieTimeline(true);
+  if (validation.hasErrors()) {
+    const film::TimelineDiagnostic* error = validation.firstError();
+    parError = error != nullptr ? error->message
+                                : "Movie is not valid for final render";
+    return false;
+  }
+  const std::string& name = getActiveScene().movie_timeline.name;
   return m_final_render_job.start(
-      getActiveScene().film_sequence,
+      getActiveScene().movie_timeline,
       std::filesystem::path("output") / "frames" / name,
       std::filesystem::path("output") / (name + ".mp4"),
       film::findFfmpegExecutable(), parError);
+}
+
+film::TimelineValidation EngineCore::validateMovieTimeline(
+    bool parForBake) const {
+  const scene::SceneManager::SceneRecord& scene = getActiveScene();
+  return film::validateMovieTimelineWithWorld(scene.movie_timeline, scene.world,
+                                               parForBake, &m_asset_registry);
 }
 
 void EngineCore::advanceFilmExport() {
@@ -364,11 +274,11 @@ void EngineCore::advanceFilmExport() {
     return;
   }
   m_final_render_job.advance(
-      getActiveScene().film_sequence,
+      getActiveScene().movie_timeline,
       [&](int frame, int width, int height,
           unsigned int destination_framebuffer) {
         render(render::ViewportRect{{0, 0}, {width, height}, height},
-               true, true, frame, false, destination_framebuffer, 0, 0, 4);
+               true, frame, false, destination_framebuffer, 4);
       });
 }
 
@@ -378,11 +288,13 @@ const film::FinalRenderJob& EngineCore::getFinalRenderJob() const {
   return m_final_render_job;
 }
 
-void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace) {
+void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace,
+                        film::FilmFrame parPlaybackDuration) {
   pollAssetStreaming();
   if (m_allocator_relief_passes_remaining > 0) {
     m_allocator_relief_timer_seconds += parDeltaSeconds;
-    if (m_allocator_relief_timer_seconds >= 1.0f) {
+    if (m_allocator_relief_timer_seconds >=
+        ALLOCATOR_RELIEF_INTERVAL_SECONDS) {
       releaseTransientAllocatorPages();
       --m_allocator_relief_passes_remaining;
       m_allocator_relief_timer_seconds = 0.0f;
@@ -390,9 +302,13 @@ void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace) {
   }
   m_camera_system.update(parDeltaSeconds);
   if (parMovieWorkspace) {
-    m_film_playback.update(parDeltaSeconds, getActiveScene().film_sequence);
+    const film::FilmFrame duration =
+        parPlaybackDuration >= 0
+            ? parPlaybackDuration
+            : getActiveScene().movie_timeline.durationFrames();
+    m_film_playback.update(parDeltaSeconds, duration);
   } else {
-    m_film_playback.playing = false;
+    m_film_playback.stop();
   }
   const float fly_speed = m_camera_system.getFlyMoveSpeed();
   if (std::abs(fly_speed - m_last_session_fly_speed) > 0.0001f) {
@@ -413,27 +329,31 @@ void EngineCore::update(float parDeltaSeconds, bool parMovieWorkspace) {
 }
 
 void EngineCore::render(const render::ViewportRect& parViewport,
-                        bool parMovieWorkspace, bool parShotPreview,
-                        double parFilmFrame, bool parShowOverlays,
+                        bool parMovieWorkspace, double parFilmFrame,
+                        bool parShowOverlays,
                         unsigned int parDestinationFramebuffer,
-                        film::FilmClipId parSelectedFilmClip,
-                        film::FilmClipId parSoloFilmClip,
-                        int parMsaaSamples) {
+                        int parMsaaSamples,
+                        film::TargetSequenceId parPreviewSequenceId,
+                        scene::EntityId parMovieSelectionEntity,
+                        std::span<const film::ResolvedMovementSegment> parMovementPaths) {
   const Clock::time_point render_begin = Clock::now();
   const double film_frame =
       parFilmFrame >= 0.0 ? parFilmFrame : m_film_playback.playhead_frame;
-  const std::optional<camera::Camera> film_camera =
-      parShotPreview ? evaluateFilmCamera(film_frame)
-                     : std::nullopt;
-  const camera::Camera& view_camera =
-      film_camera.has_value() ? *film_camera : m_camera_system.getEditorCamera();
   const film::FilmFrameState* film_state = nullptr;
-  if (parMovieWorkspace) {
-    if (parSoloFilmClip != 0) {
-      getActiveScene().film_sequence.evaluateClip(
-          parSoloFilmClip, film_frame, m_film_frame_state);
+  const bool consume_film_state = film::requiresFilmFrameState(
+      parMovieWorkspace, parFilmFrame, m_film_playback);
+  if (consume_film_state) {
+    const auto frame = static_cast<film::FilmFrame>(std::clamp(
+        std::floor(film_frame), 0.0,
+        static_cast<double>(film::MAX_FILM_FRAMES)));
+    if (parPreviewSequenceId != 0) {
+      const std::optional<film::FilmFrameState> preview =
+          film::evaluateTargetSequencePreview(getActiveScene().movie_timeline,
+                                              parPreviewSequenceId, frame);
+      m_film_frame_state = preview.value_or(film::FilmFrameState{});
     } else {
-      getActiveScene().film_sequence.evaluate(film_frame, m_film_frame_state);
+      m_film_frame_state =
+          film::evaluateMovieTimeline(getActiveScene().movie_timeline, frame);
     }
     film_state = &m_film_frame_state;
     const Clock::time_point animation_begin = Clock::now();
@@ -442,26 +362,57 @@ void EngineCore::render(const render::ViewportRect& parViewport,
                                          m_film_skin_palettes);
     m_performance_snapshot.animation_update_ms =
         elapsedMilliseconds(animation_begin, Clock::now());
+  } else {
+    m_film_skin_palettes.clear();
+    m_performance_snapshot.animation_update_ms = 0.0f;
+  }
+  const film::TargetSequence* preview_sequence =
+      getActiveScene().movie_timeline.findSequence(parPreviewSequenceId);
+  const bool use_film_camera =
+      parPreviewSequenceId == 0 ||
+      (preview_sequence != nullptr && film::isCameraSequence(*preview_sequence));
+  const FilmViewportCamera viewport_camera = resolveFilmViewportCamera(
+      m_camera_system.getEditorCamera(), getActiveScene().world, film_state,
+      use_film_camera);
+  const bool black_camera_output = viewport_camera.black_output;
+  const camera::Camera* view_camera = viewport_camera.camera.has_value()
+                                          ? &*viewport_camera.camera
+                                          : nullptr;
+  if (parDestinationFramebuffer == 0) {
+    m_viewport_consumes_film_state = viewport_camera.consumes_film_state;
+    m_viewport_black_output = viewport_camera.black_output;
+    m_viewport_camera = viewport_camera.camera;
+    if (film_state != nullptr) {
+      m_viewport_film_frame_state = *film_state;
+    }
   }
   const lighting::LightingState frame_lighting = buildLightingState(
-      view_camera, film_state);
+      view_camera != nullptr ? *view_camera : m_camera_system.getEditorCamera(),
+      film_state);
   const render::ViewportView view{
-      &view_camera,
-      parMovieWorkspace ? &getActiveScene().film_sequence : nullptr,
-      film_frame,
+      view_camera,
+      film_state,
+      parMovementPaths,
+      parMovieSelectionEntity,
+      !parMovieWorkspace,
+      black_camera_output,
       parDestinationFramebuffer,
       parDestinationFramebuffer != 0,
-      parMovieWorkspace
+      consume_film_state
           ? std::span<const animation::EvaluatedSkinPalette>(
                 m_film_skin_palettes)
           : std::span<const animation::EvaluatedSkinPalette>{},
-      parSelectedFilmClip,
       parMsaaSamples,
   };
   render::EditorRenderSettings settings = m_render_settings;
-  settings.viewport.show_overlays = parShowOverlays;
+  if (parDestinationFramebuffer != 0) {
+    settings.viewport.mode = render::ViewportMode::Final;
+    settings.viewport.material_debug_mode = render::MaterialDebugMode::Lit;
+  }
+  settings.viewport.show_overlays = shouldShowEditorOverlays(
+      parShowOverlays, viewport_camera, use_film_camera);
   settings.viewport.show_world_edit_gizmos = !parMovieWorkspace;
-  if (!parShowOverlays) {
+  if (!settings.viewport.show_overlays) {
     settings.viewport.floor_grid_visible = false;
   }
   m_world_renderer.render(getActiveScene(), m_mesh_resource_cache,
@@ -476,23 +427,10 @@ void EngineCore::render(const render::ViewportRect& parViewport,
   const float cpu_frame_ms = m_performance_snapshot.animation_update_ms +
                              m_performance_snapshot.render_ms +
                              m_performance_snapshot.gpu_upload_ms;
-  m_cpu_frame_samples[m_cpu_frame_sample_cursor] = cpu_frame_ms;
-  m_cpu_frame_sample_cursor =
-      (m_cpu_frame_sample_cursor + 1) % m_cpu_frame_samples.size();
-  m_cpu_frame_sample_count =
-      std::min(m_cpu_frame_sample_count + 1, m_cpu_frame_samples.size());
-  std::array<float, 120> sorted_samples = m_cpu_frame_samples;
-  std::sort(sorted_samples.begin(),
-            sorted_samples.begin() + m_cpu_frame_sample_count);
-  const float total = std::accumulate(
-      sorted_samples.begin(),
-      sorted_samples.begin() + m_cpu_frame_sample_count, 0.0f);
-  m_performance_snapshot.cpu_average_ms =
-      total / static_cast<float>(m_cpu_frame_sample_count);
-  const std::size_t p95_index =
-      std::min(m_cpu_frame_sample_count - 1,
-               (m_cpu_frame_sample_count * 95 + 99) / 100 - 1);
-  m_performance_snapshot.cpu_p95_ms = sorted_samples[p95_index];
+  const render::FrameTimeStats cpu_stats =
+      m_cpu_frame_history.record(cpu_frame_ms);
+  m_performance_snapshot.cpu_average_ms = cpu_stats.average_ms;
+  m_performance_snapshot.cpu_p95_ms = cpu_stats.p95_ms;
 }
 
 scene::World& EngineCore::getWorld() {
@@ -507,19 +445,11 @@ camera::CameraSystem& EngineCore::getCameraSystem() {
   return m_camera_system;
 }
 
-const camera::CameraSystem& EngineCore::getCameraSystem() const {
-  return m_camera_system;
-}
-
 const lighting::LightingState& EngineCore::getLightingState() const {
   return m_lighting_state;
 }
 
 assets::AssetRegistry& EngineCore::getAssetRegistry() {
-  return m_asset_registry;
-}
-
-const assets::AssetRegistry& EngineCore::getAssetRegistry() const {
   return m_asset_registry;
 }
 
@@ -538,17 +468,13 @@ std::span<const scene::SceneManager::SceneRecord> EngineCore::getScenes() const 
 }
 
 const assets::StaticModel* EngineCore::getStaticMeshSource(
-    assets::AssetRegistry::StaticMeshHandle parHandle) const {
-  return m_asset_registry.getStaticMeshSource(parHandle);
+    std::size_t parAssetIndex) const {
+  return m_asset_registry.getStaticMeshSource(parAssetIndex);
 }
 
 const assets::AssetRegistry::AssetLibraryEntry*
 EngineCore::getAssetLibraryEntry(std::size_t parAssetIndex) const {
   return m_asset_registry.getAssetLibraryEntry(parAssetIndex);
-}
-
-const render::PlacementGhost& EngineCore::getPlacementGhost() const {
-  return m_placement_ghost;
 }
 
 scene::EntityId EngineCore::getSelectedEntity() const {
@@ -603,12 +529,22 @@ render::ViewportMode EngineCore::getViewportMode() const {
   return m_render_settings.viewport.mode;
 }
 
-film::FilmSequence& EngineCore::getFilmSequence() {
-  return getActiveScene().film_sequence;
+film::MovieTimeline& EngineCore::getMovieTimeline() {
+  return getActiveScene().movie_timeline;
 }
 
 film::FilmPlayback& EngineCore::getFilmPlayback() {
   return m_film_playback;
+}
+
+void EngineCore::clearFilmPreviewState() {
+  m_film_playback.stop();
+  m_film_frame_state = {};
+  m_viewport_film_frame_state = {};
+  m_viewport_camera.reset();
+  m_viewport_consumes_film_state = false;
+  m_viewport_black_output = false;
+  m_film_skin_palettes.clear();
 }
 
 const render::PerformanceSnapshot& EngineCore::getPerformanceSnapshot() const {
@@ -622,60 +558,42 @@ math::Bounds3 EngineCore::getEntityWorldBounds(scene::EntityId parEntity) const 
     return {};
   }
 
-  if (entity->static_mesh.has_value()) {
-    return math::transformBounds(entity->static_mesh->local_bounds,
-                                 entity->transform.transform.toMatrix());
-  }
-
-  return math::makePointBounds(entity->transform.transform.translation,
-                               ENTITY_HANDLE_EXTENT);
+  return render::viewportEntityBounds(*entity, entity->transform.transform);
 }
 
 std::optional<scene::EntityId> EngineCore::pickEntity(
     const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
+  return pickEntityForView(m_camera_system.getEditorCamera(), nullptr,
+                           parCursorPixel, parViewportSize, true);
+}
+
+std::optional<scene::EntityId> EngineCore::pickMovieEntity(
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
+  if (!m_viewport_consumes_film_state) {
+    return pickEntity(parCursorPixel, parViewportSize);
+  }
+  if (m_viewport_black_output || !m_viewport_camera.has_value()) {
+    return std::nullopt;
+  }
+  return pickEntityForView(*m_viewport_camera, &m_viewport_film_frame_state,
+                           parCursorPixel, parViewportSize, false);
+}
+
+std::optional<scene::EntityId> EngineCore::pickEntityForView(
+    const camera::Camera& parCamera, const film::FilmFrameState* parFilmState,
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize,
+    bool parUseHandleCenterDistance) {
   if (m_render_settings.viewport.mode != render::ViewportMode::Bounds) {
-    if (std::optional<scene::EntityId> gpu_pick = m_world_renderer.pickEntity(
-        getActiveScene(), m_mesh_resource_cache,
-        m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize)) {
-      return gpu_pick;
+    if (auto picked = m_world_renderer.pickEntity(
+            getActiveScene(), m_mesh_resource_cache, parCamera, parCursorPixel,
+            parViewportSize, parFilmState)) {
+      return picked;
     }
   }
-  const CameraRay ray = makeCameraRay(parCursorPixel, parViewportSize);
-  float closest_distance = std::numeric_limits<float>::max();
-  std::optional<scene::EntityId> closest_entity;
-  for (const scene::EntityRecord& entity :
-       getActiveScene().world.getEntities()) {
-    if (!entity.alive) {
-      continue;
-    }
-
-    float distance = 0.0f;
-    bool hit = false;
-    if (entity.static_mesh.has_value() && entity.static_mesh->visible) {
-      const math::Bounds3 world_bounds = getEntityWorldBounds(entity.id);
-      if (!intersectBounds(ray, world_bounds, distance)) {
-        continue;
-      }
-      hit = true;
-    } else {
-      hit = intersectSphere(ray, entity.transform.transform.translation,
-                            ENTITY_HANDLE_EXTENT);
-      distance =
-          glm::length(entity.transform.transform.translation - ray.origin);
-    }
-
-    if (!hit) {
-      continue;
-    }
-
-    const float candidate_distance = distance;
-    if (candidate_distance < closest_distance) {
-      closest_distance = candidate_distance;
-      closest_entity = entity.id;
-    }
-  }
-
-  return closest_entity;
+  return render::pickViewportEntityBounds(
+      getActiveScene().world, &parCamera, parFilmState, parCursorPixel,
+      parViewportSize, render::VIEWPORT_ENTITY_HANDLE_EXTENT,
+      parUseHandleCenterDistance);
 }
 
 bool EngineCore::isCursorOverEntityCore(
@@ -704,15 +622,19 @@ bool EngineCore::isCursorOverEntityCore(
       std::max({bounds.getSize().x, bounds.getSize().y, bounds.getSize().z,
                 1.0f}) *
       0.055f;
-  return intersectSphere(makeCameraRay(parCursorPixel, parViewportSize),
-                         entity->transform.transform.translation,
-                         std::max(core_radius, 0.12f));
+  const render::ViewportPickRay ray = render::makeViewportPickRay(
+      m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize);
+  float distance = 0.0f;
+  return render::viewportRayIntersectsSphere(
+      ray, entity->transform.transform.translation,
+      std::max(core_radius, 0.12f), distance);
 }
 
 glm::vec3 EngineCore::getPlacementPointOnFloor(
     const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
-  const CameraRay ray = makeCameraRay(parCursorPixel, parViewportSize);
-  if (std::abs(ray.direction.y) > RAY_EPSILON) {
+  const render::ViewportPickRay ray = render::makeViewportPickRay(
+      m_camera_system.getEditorCamera(), parCursorPixel, parViewportSize);
+  if (std::abs(ray.direction.y) > 0.00001f) {
     const float distance = -ray.origin.y / ray.direction.y;
     if (distance > 0.0f) {
       return ray.origin + ray.direction * distance;
@@ -729,39 +651,12 @@ glm::vec3 EngineCore::getPointInFrontOfCamera(float parDistance) const {
   return camera.position + camera.getForward() * std::max(parDistance, 0.1f);
 }
 
-glm::vec3 EngineCore::getCameraRayDirection(
-    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
-  return makeCameraRay(parCursorPixel, parViewportSize).direction;
-}
-
 scene::SceneManager::SceneRecord& EngineCore::getActiveScene() {
   return m_scene_manager.getActiveScene();
 }
 
 const scene::SceneManager::SceneRecord& EngineCore::getActiveScene() const {
   return m_scene_manager.getActiveScene();
-}
-
-EngineCore::CameraRay EngineCore::makeCameraRay(
-    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) const {
-  const camera::Camera& camera = m_camera_system.getEditorCamera();
-  const glm::vec2 viewport_size = glm::max(parViewportSize, glm::vec2(1.0f));
-  const glm::vec2 normalized_device_coordinate{
-      (parCursorPixel.x / viewport_size.x) * 2.0f - 1.0f,
-      1.0f - (parCursorPixel.y / viewport_size.y) * 2.0f};
-  const glm::mat4 inverse_view_projection = glm::inverse(
-      camera.getProjectionMatrix(viewport_size) * camera.getViewMatrix());
-  glm::vec4 near_point = inverse_view_projection *
-                         glm::vec4(normalized_device_coordinate, -1.0f, 1.0f);
-  glm::vec4 far_point = inverse_view_projection *
-                        glm::vec4(normalized_device_coordinate, 1.0f, 1.0f);
-  near_point /= near_point.w;
-  far_point /= far_point.w;
-
-  CameraRay ray;
-  ray.origin = glm::vec3(near_point);
-  ray.direction = glm::normalize(glm::vec3(far_point - near_point));
-  return ray;
 }
 
 lighting::LightingState EngineCore::buildLightingState(
@@ -776,12 +671,6 @@ lighting::LightingState EngineCore::buildLightingState(
   return m_lighting_system.extract(
       getActiveScene().world, getActiveScene().sun_light,
       parCamera.position, environment, parFilmState);
-}
-
-void EngineCore::createDefaultSceneEntities(
-    scene::SceneManager::SceneRecord& parScene) {
-  parScene.sun_light = {};
-  parScene.selected_entity = {};
 }
 
 void EngineCore::rebuildAssetInstanceCounts() {

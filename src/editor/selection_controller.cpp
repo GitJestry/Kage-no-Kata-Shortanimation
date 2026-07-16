@@ -1,4 +1,5 @@
 #include "editor/selection_controller.hpp"
+#include "editor/movie_editor_controller.hpp"
 
 #include <optional>
 
@@ -47,6 +48,44 @@ void SelectionController::selectFromOutliner(engine::EngineCore& parEngine,
   if (parFrameEntity) {
     parEngine.frameEntity(parEntity);
   }
+}
+
+bool SelectionController::selectMovieTarget(
+    engine::EngineCore& parEngine, EditorSession& parSession,
+    const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize) {
+  const float elapsed_since_last =
+      m_elapsed_seconds - m_last_left_click_seconds;
+  const glm::vec2 click_delta = parCursorPixel - m_last_left_click_position;
+  const bool near_last_click =
+      glm::dot(click_delta, click_delta) <=
+      DOUBLE_CLICK_PIXEL_RADIUS * DOUBLE_CLICK_PIXEL_RADIUS;
+  m_last_left_click_seconds = m_elapsed_seconds;
+  m_last_left_click_position = parCursorPixel;
+
+  const std::optional<scene::EntityId> picked =
+      parEngine.pickMovieEntity(parCursorPixel, parViewportSize);
+  if (!picked.has_value()) {
+    return false;
+  }
+  const scene::EntityRecord* entity = parEngine.getWorld().findEntity(*picked);
+  if (entity == nullptr) {
+    return false;
+  }
+
+  const std::optional<film::TimelineTarget> target = movieTargetForEntity(*entity);
+  if (target.has_value()) {
+    parEngine.clearFilmPreviewState();
+    ::kage::editor::selectMovieTarget(
+        parSession, parEngine.getMovieTimeline(), *target);
+  }
+  if (!target.has_value()) {
+    return false;
+  }
+
+  if (elapsed_since_last <= DOUBLE_CLICK_SECONDS && near_last_click) {
+    parEngine.frameEntity(*picked);
+  }
+  return true;
 }
 
 }  // namespace kage::editor
