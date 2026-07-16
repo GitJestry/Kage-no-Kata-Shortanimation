@@ -64,16 +64,44 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 target_compile_definitions(framework PRIVATE
   KAGE_GL_VALIDATION=$<IF:$<CONFIG:Debug>,1,0>)
 
+function(kage_add_check TARGET_NAME)
+  add_executable(${TARGET_NAME} ${ARGN})
+  target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
+  target_include_directories(${TARGET_NAME} PRIVATE src)
+  target_link_libraries(${TARGET_NAME} PRIVATE glm)
+  string(REGEX REPLACE "_check$" "" TEST_NAME "${TARGET_NAME}")
+  add_test(NAME ${TEST_NAME} COMMAND ${TARGET_NAME})
+endfunction()
+
 if(BUILD_TESTING)
-  add_executable(runtime_paths_check
-    tests/runtime_paths_check.cpp
-    src/platform/runtime_paths.cpp
+  kage_add_check(film_domain_check
+    tests/film_domain_check.cpp
+    src/film/movie_timeline.cpp
+    src/film/timeline_edit_service.cpp
   )
-  target_compile_features(runtime_paths_check PRIVATE cxx_std_23)
-  target_include_directories(runtime_paths_check PRIVATE src)
-  target_compile_definitions(runtime_paths_check PRIVATE
-    "KAGE_SOURCE_ROOT=\"${KAGE_SOURCE_ROOT}\"")
-  add_test(NAME runtime_paths COMMAND runtime_paths_check)
+  kage_add_check(film_persistence_check
+    tests/film_persistence_check.cpp
+    src/film/movie_timeline.cpp
+    src/film/movie_timeline_serializer.cpp
+    src/film/timeline_edit_service.cpp
+    src/lighting/lighting_system.cpp
+    src/scene/world.cpp
+  )
+  kage_add_check(movie_workflow_check
+    tests/movie_workflow_check.cpp
+    src/assets/asset_registry.cpp
+    src/assets/gltf_asset_loader.cpp
+    src/camera/camera.cpp
+    src/editor/movie_editor_controller.cpp
+    src/engine/film_camera_creation.cpp
+    src/film/movie_timeline.cpp
+    src/film/movie_timeline_world_validation.cpp
+    src/film/timeline_edit_service.cpp
+    src/scene/scene_manager.cpp
+    src/scene/world.cpp
+  )
+  target_link_libraries(film_persistence_check PRIVATE framework tinygltf)
+  target_link_libraries(movie_workflow_check PRIVATE tinygltf)
 endif()
 
 if(MSVC)

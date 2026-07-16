@@ -5,21 +5,20 @@
 namespace kage::render {
 
 void MeshResourceCache::uploadStaticMesh(
-    assets::AssetRegistry::StaticMeshHandle parHandle,
-    const assets::StaticModel& parModel) {
-  if (parHandle >= m_static_meshes.size()) {
-    m_static_meshes.resize(parHandle + 1);
+    std::size_t parAssetIndex, const assets::StaticModel& parModel) {
+  if (parAssetIndex >= m_static_meshes.size()) {
+    m_static_meshes.resize(parAssetIndex + 1);
   }
 
-  m_static_meshes[parHandle].upload(parModel, m_texture_cache);
+  m_static_meshes[parAssetIndex].upload(parModel, m_texture_cache);
 }
 
 const GpuMesh* MeshResourceCache::getStaticMesh(
-    assets::AssetRegistry::StaticMeshHandle parHandle) const {
-  if (parHandle >= m_static_meshes.size()) {
+    std::size_t parAssetIndex) const {
+  if (parAssetIndex >= m_static_meshes.size()) {
     return nullptr;
   }
-  const GpuMesh& mesh = m_static_meshes[parHandle];
+  const GpuMesh& mesh = m_static_meshes[parAssetIndex];
   return mesh.isValid() ? &mesh : nullptr;
 }
 

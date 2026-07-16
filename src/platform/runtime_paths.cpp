@@ -16,6 +16,8 @@
 
 namespace {
 
+using kage::platform::canonicalOrAbsolute;
+
 constexpr const char* PROJECT_ASSET_CATALOG_PATH =
     "projects/kage_no_kata_assets.kage.json";
 constexpr const char* PROJECT_WORLD_PATH =
@@ -84,17 +86,6 @@ std::filesystem::path getExecutablePath() {
   return std::filesystem::exists(parPath / "assets");
 }
 
-[[nodiscard]] std::filesystem::path canonicalOrAbsolute(
-    const std::filesystem::path& parPath) {
-  std::error_code error_code;
-  const std::filesystem::path canonical_path =
-      std::filesystem::weakly_canonical(parPath, error_code);
-  if (!error_code) {
-    return canonical_path;
-  }
-  return std::filesystem::absolute(parPath);
-}
-
 [[nodiscard]] std::filesystem::path searchRootUpwards(
     std::filesystem::path parStart) {
   parStart = canonicalOrAbsolute(std::move(parStart));
@@ -150,19 +141,13 @@ std::filesystem::path getExecutablePath() {
 namespace kage::platform {
 
 RuntimePaths::RuntimePaths(std::filesystem::path parExecutablePath)
-    : m_executable_directory(
-          canonicalOrAbsolute(std::move(parExecutablePath)).parent_path()),
-      m_project_root(resolveProjectRoot(m_executable_directory)),
+    : m_project_root(resolveProjectRoot(
+          canonicalOrAbsolute(std::move(parExecutablePath)).parent_path())),
       m_asset_directory(m_project_root / "assets"),
-      m_model_directory(m_asset_directory / "models"),
-      m_animation_directory(m_asset_directory / "animations") {}
+      m_model_directory(m_asset_directory / "models") {}
 
 RuntimePaths RuntimePaths::fromExecutable() {
   return RuntimePaths(getExecutablePath());
-}
-
-const std::filesystem::path& RuntimePaths::getExecutableDirectory() const {
-  return m_executable_directory;
 }
 
 const std::filesystem::path& RuntimePaths::getProjectRoot() const {
@@ -177,10 +162,6 @@ const std::filesystem::path& RuntimePaths::getModelDirectory() const {
   return m_model_directory;
 }
 
-const std::filesystem::path& RuntimePaths::getAnimationDirectory() const {
-  return m_animation_directory;
-}
-
 std::filesystem::path RuntimePaths::getProjectPath(
     const std::filesystem::path& parRelativePath) const {
   return m_project_root / parRelativePath;
@@ -191,24 +172,9 @@ std::filesystem::path RuntimePaths::getAssetPath(
   return m_asset_directory / parRelativePath;
 }
 
-std::filesystem::path RuntimePaths::getModelPath(
-    const std::filesystem::path& parRelativePath) const {
-  return m_model_directory / parRelativePath;
-}
-
-std::filesystem::path RuntimePaths::getAnimationPath(
-    const std::filesystem::path& parRelativePath) const {
-  return m_animation_directory / parRelativePath;
-}
-
 std::filesystem::path RuntimePaths::getTexturePath(
     const std::filesystem::path& parRelativePath) const {
   return getAssetPath(std::filesystem::path("textures") / parRelativePath);
-}
-
-std::filesystem::path RuntimePaths::getAudioPath(
-    const std::filesystem::path& parRelativePath) const {
-  return getAssetPath(std::filesystem::path("audio") / parRelativePath);
 }
 
 std::filesystem::path RuntimePaths::getProjectAssetCatalogPath() const {

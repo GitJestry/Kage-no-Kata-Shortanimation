@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/movie_editor_layout.hpp"
 #include "editor/ui_panel_rect.hpp"
 
 #include <imgui.h>

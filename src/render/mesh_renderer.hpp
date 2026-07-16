@@ -4,6 +4,7 @@
 #include "render/gpu_mesh.hpp"
 #include "render/shadow_renderer.hpp"
 #include "render/shader_program.hpp"
+#include "render/texture_2d.hpp"
 
 #include <glm/glm.hpp>
 
@@ -15,12 +16,13 @@ namespace kage::render {
 class MeshRenderer final {
  public:
   MeshRenderer();
+  ~MeshRenderer();
 
   MeshRenderer(const MeshRenderer&) = delete;
   MeshRenderer& operator=(const MeshRenderer&) = delete;
 
-  MeshRenderer(MeshRenderer&&) noexcept = default;
-  MeshRenderer& operator=(MeshRenderer&&) noexcept = default;
+  MeshRenderer(MeshRenderer&&) noexcept = delete;
+  MeshRenderer& operator=(MeshRenderer&&) noexcept = delete;
 
   void beginFrame(const glm::mat4& parViewProjection,
                   const glm::vec3& parCameraPosition,
@@ -47,9 +49,14 @@ class MeshRenderer final {
                    std::uint32_t parEntityId) const;
 
  private:
+  void createSunShadowFallback();
+  void createPointShadowFallback();
+
   ShaderProgram m_shader;
   ShaderProgram m_outline_shader;
   ShaderProgram m_picking_shader;
+  Texture2D m_sun_shadow_fallback;
+  GLuint m_point_shadow_fallback = 0;
 };
 
 }  // namespace kage::render

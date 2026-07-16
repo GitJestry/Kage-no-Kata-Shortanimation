@@ -3,17 +3,17 @@
 #include "assets/asset_registry.hpp"
 #include "animation/animation_system.hpp"
 #include "camera/camera.hpp"
-#include "film/film_sequence.hpp"
+#include "film/film_frame_state.hpp"
 #include "lighting/light.hpp"
 #include "math/transform.hpp"
-#include "render/line_renderer.hpp"
+#include "render/debug_primitive_renderer.hpp"
 #include "render/mesh_resource_cache.hpp"
-#include "render/solid_gizmo_renderer.hpp"
 #include "render/mesh_renderer.hpp"
 #include "render/viewport_policy.hpp"
 #include "render/viewport_rect.hpp"
 #include "render/environment_renderer.hpp"
 #include "render/film_framebuffer.hpp"
+#include "render/frame_time_history.hpp"
 #include "render/shadow_renderer.hpp"
 #include "scene/scene_manager.hpp"
 
@@ -27,6 +27,11 @@
 #include <vector>
 
 namespace kage::render {
+
+inline constexpr int MIN_FLOOR_GRID_RADIUS = 8;
+inline constexpr int MAX_FLOOR_GRID_RADIUS = 1000;
+inline constexpr float MIN_EDITOR_VIEW_DISTANCE = 5.0f;
+inline constexpr float MAX_EDITOR_VIEW_DISTANCE = 5000.0f;
 
 enum class SkyPreset {
   ClearDay,
@@ -85,12 +90,14 @@ struct EditorRenderSettings final {
 
 struct ViewportView final {
   const camera::Camera* camera = nullptr;
-  const film::FilmSequence* sequence = nullptr;
-  double frame = 0.0;
+  const film::FilmFrameState* film_state = nullptr;
+  std::span<const film::ResolvedMovementSegment> movement_paths;
+  scene::EntityId selected_entity;
+  bool use_world_selection = true;
+  bool black_film_output = false;
   GLuint destination_framebuffer = 0;
   bool use_film_framebuffer = false;
   std::span<const animation::EvaluatedSkinPalette> skin_palettes;
-  film::FilmClipId selected_film_clip = 0;
   int msaa_samples = 1;
 };
 
@@ -111,7 +118,7 @@ struct PlacementGhost final {
   };
 
   Kind kind = Kind::None;
-  std::size_t mesh_handle = scene::INVALID_STATIC_MESH_HANDLE;
+  std::size_t asset_library_index = scene::INVALID_ASSET_LIBRARY_INDEX;
   math::Transform transform;
   glm::vec3 light_color{1.0f, 0.94f, 0.84f};
   float light_intensity = 1.0f;
@@ -143,28 +150,26 @@ class WorldRenderer final {
       const MeshResourceCache& parMeshResources,
       const camera::Camera& parCamera,
       const glm::vec2& parCursorPixel,
-      const glm::vec2& parViewportSize);
+      const glm::vec2& parViewportSize,
+      const film::FilmFrameState* parFilmState = nullptr);
 
  private:
   MeshRenderer m_mesh_renderer;
   EnvironmentRenderer m_environment_renderer;
   FilmFramebuffer m_film_framebuffer;
   ShadowRenderer m_shadow_renderer;
-  SolidGizmoRenderer m_solid_gizmo_renderer;
-  LineRenderer m_line_renderer;
-  std::vector<LineVertex> m_grid_line_vertices;
-  std::vector<LineVertex> m_line_vertices;
-  std::vector<SolidGizmoVertex> m_solid_vertices;
-  std::vector<SolidGizmoVertex> m_glow_vertices;
+  DebugPrimitiveRenderer m_debug_renderer;
+  std::vector<DebugVertex> m_grid_line_vertices;
+  std::vector<DebugVertex> m_line_vertices;
+  std::vector<DebugVertex> m_solid_vertices;
+  std::vector<DebugVertex> m_glow_vertices;
   GLuint m_pick_framebuffer = 0;
   GLuint m_pick_texture = 0;
   GLuint m_pick_depth = 0;
   std::array<GLuint, 3> m_gpu_timer_queries{};
   std::array<bool, 3> m_gpu_timer_pending{};
   std::size_t m_gpu_timer_cursor = 0;
-  std::array<float, 120> m_gpu_frame_samples{};
-  std::size_t m_gpu_frame_sample_count = 0;
-  std::size_t m_gpu_frame_sample_cursor = 0;
+  FrameTimeHistory m_gpu_frame_history;
 };
 
 inline bool PlacementGhost::isActive() const {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "film/film_sequence.hpp"
+#include "film/film_frame_state.hpp"
 #include "lighting/light.hpp"
 #include "scene/components.hpp"
 #include "scene/world.hpp"

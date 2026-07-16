@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/engine_core.hpp"
+#include "render/gizmo_metrics.hpp"
 
 #include <glm/glm.hpp>
 
@@ -43,7 +44,6 @@ class GizmoController final {
   void end();
 
   [[nodiscard]] bool isActive() const;
-  [[nodiscard]] Operation getOperation() const;
   [[nodiscard]] std::optional<render::GizmoGuide> getActiveGuide(
       const engine::EngineCore& parEngine) const;
 
@@ -65,7 +65,7 @@ class GizmoController final {
   scene::EntityId m_entity;
   glm::vec3 m_drag_offset{0.0f};
   glm::vec3 m_axis{1.0f, 0.0f, 0.0f};
-  glm::vec3 m_axis_color{0.18f, 0.82f, 0.28f};
+  glm::vec3 m_axis_color{render::GIZMO_AXIS_X_COLOR};
   float m_drag_height = 0.0f;
 };
 

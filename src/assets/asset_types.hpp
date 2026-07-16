@@ -222,9 +222,6 @@ struct PrimitiveSkinBinding final {
 };
 
 struct GltfDocument final {
-  std::filesystem::path source_path;
-  std::string scene_name;
-  std::string import_warning;
   StaticModel static_model;
   std::vector<GltfNode> nodes;
   std::vector<std::uint32_t> root_nodes;
@@ -232,14 +229,8 @@ struct GltfDocument final {
   std::vector<PrimitiveSkinBinding> primitive_skin_bindings;
   std::vector<AnimationClip> animation_clips;
   std::vector<GltfMarker> markers;
-  GltfAssetStats stats;
-  math::Bounds3 bounds;
 };
 
-using MeshData = StaticModel;
-using MaterialData = StaticMaterial;
-using SkeletonData = GltfSkin;
-using AnimationClipData = AnimationClip;
 using ModelAsset = GltfDocument;
 
 }  // namespace kage::assets
