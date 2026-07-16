@@ -76,10 +76,8 @@ std::filesystem::path getExecutablePath() {
 }
 
 [[nodiscard]] bool isProjectRoot(const std::filesystem::path& parPath) {
-  return std::filesystem::exists(parPath / "CMakeLists.txt") &&
-         std::filesystem::exists(parPath / "assets") &&
-         std::filesystem::exists(parPath / "projects") &&
-         std::filesystem::exists(parPath / "src");
+  return std::filesystem::exists(parPath / "assets") &&
+         std::filesystem::exists(parPath / "projects");
 }
 
 [[nodiscard]] bool hasAssetDirectory(const std::filesystem::path& parPath) {
@@ -130,6 +128,12 @@ std::filesystem::path getExecutablePath() {
   std::filesystem::path executable_root = searchRootUpwards(parExecutableDirectory);
   if (!executable_root.empty() && isProjectRoot(executable_root)) {
     return executable_root;
+  }
+
+  const std::filesystem::path source_root =
+      canonicalOrAbsolute(std::filesystem::path(KAGE_SOURCE_ROOT));
+  if (isProjectRoot(source_root)) {
+    return source_root;
   }
 
   if (!root.empty()) {

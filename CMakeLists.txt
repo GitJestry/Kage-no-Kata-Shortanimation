@@ -12,8 +12,11 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 endif()
 
 include(FetchContent)
+include(CTest)
 include(cmake/Sources.cmake)
 include(cmake/PatchGltemplate.cmake)
+
+file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" KAGE_SOURCE_ROOT)
 
 set(FRAMEWORK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/framework-src")
 set(FRAMEWORK_BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/framework-build")
@@ -56,8 +59,22 @@ add_executable(${PROJECT_NAME} src/main.cpp ${KAGE_ENGINE_SOURCES})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} PRIVATE framework tinygltf meshoptimizer)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+  "KAGE_SOURCE_ROOT=\"${KAGE_SOURCE_ROOT}\"")
 target_compile_definitions(framework PRIVATE
   KAGE_GL_VALIDATION=$<IF:$<CONFIG:Debug>,1,0>)
+
+if(BUILD_TESTING)
+  add_executable(runtime_paths_check
+    tests/runtime_paths_check.cpp
+    src/platform/runtime_paths.cpp
+  )
+  target_compile_features(runtime_paths_check PRIVATE cxx_std_23)
+  target_include_directories(runtime_paths_check PRIVATE src)
+  target_compile_definitions(runtime_paths_check PRIVATE
+    "KAGE_SOURCE_ROOT=\"${KAGE_SOURCE_ROOT}\"")
+  add_test(NAME runtime_paths COMMAND runtime_paths_check)
+endif()
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)

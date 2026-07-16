@@ -37,19 +37,9 @@ namespace {
 [[nodiscard]] std::filesystem::path findAssetDirectory(
     std::filesystem::path parDirectory) {
   parDirectory = canonicalOrAbsolute(std::move(parDirectory));
-  std::filesystem::path fallback_asset_directory;
   while (!parDirectory.empty()) {
     if (parDirectory.filename() == "assets") {
-      const std::filesystem::path parent = parDirectory.parent_path();
-      if (!fallback_asset_directory.empty() &&
-          std::filesystem::exists(parent / "CMakeLists.txt") &&
-          std::filesystem::exists(parent / "src") &&
-          std::filesystem::exists(parent / "projects")) {
-        return parDirectory;
-      }
-      if (fallback_asset_directory.empty()) {
-        fallback_asset_directory = parDirectory;
-      }
+      return parDirectory;
     }
     const std::filesystem::path parent = parDirectory.parent_path();
     if (parent == parDirectory) {
@@ -57,8 +47,7 @@ namespace {
     }
     parDirectory = parent;
   }
-  return fallback_asset_directory.empty() ? fallbackDirectory()
-                                         : fallback_asset_directory;
+  return fallbackDirectory();
 }
 
 [[nodiscard]] bool acceptsFile(
@@ -165,49 +154,25 @@ bool FileBrowserDialog::isOpen() const {
 void FileBrowserDialog::refreshEntries() {
   m_entries.clear();
   std::error_code error_code;
-  const std::filesystem::directory_options options =
-      std::filesystem::directory_options::skip_permission_denied;
-
-  const auto addEntry = [&](const std::filesystem::path& path) {
-    std::error_code entry_error;
-    const bool directory = std::filesystem::is_directory(path, entry_error);
-    if (entry_error) {
-      return;
-    }
-    if (directory) {
-      const std::filesystem::path relative_path =
-          path.lexically_relative(m_current_directory);
-      const std::string label = relative_path.empty()
-                                    ? path.filename().string()
-                                    : relative_path.string();
-      m_entries.push_back({path, label, true});
-      return;
-    }
-    if (!acceptsFile(path, m_filter)) {
-      return;
-    }
-    const std::filesystem::path relative_path =
-        path.lexically_relative(m_current_directory);
-    const std::string label = relative_path.empty()
-                                  ? path.filename().string()
-                                  : relative_path.string();
-    m_entries.push_back({path, label, false});
-  };
-
-  if (!std::filesystem::exists(m_current_directory, error_code)) {
-    return;
-  }
-
   for (const std::filesystem::directory_entry& entry :
-       std::filesystem::recursive_directory_iterator(m_current_directory,
-                                                      options, error_code)) {
+       std::filesystem::directory_iterator(m_current_directory, error_code)) {
+    if (error_code) {
+      return;
+    }
+    const bool directory = entry.is_directory(error_code);
     if (error_code) {
       error_code.clear();
       continue;
     }
-    addEntry(entry.path());
+    if (!directory && !acceptsFile(entry.path(), m_filter)) {
+      continue;
+    }
+    m_entries.push_back({
+        entry.path(),
+        entry.path().filename().string(),
+        directory,
+    });
   }
-
   std::sort(m_entries.begin(), m_entries.end(),
             [](const Entry& parLeft, const Entry& parRight) {
               if (parLeft.directory != parRight.directory) {
