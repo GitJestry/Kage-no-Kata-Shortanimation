@@ -9,7 +9,6 @@
 #include <filesystem>
 #include <mutex>
 #include <optional>
-#include <stop_token>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -17,14 +16,10 @@
 
 namespace kage::assets {
 
-enum class AssetLoadPriority : int {
-  Selected = 0,
-  Visible = 1,
-  Background = 2
-};
+enum class AssetLoadPriority : int { Selected = 0, Visible = 1, Background = 2 };
 
 class AssetStreamer final {
- public:
+public:
   struct Result final {
     std::size_t asset_index = 0;
     std::optional<ModelAsset> document;
@@ -44,7 +39,7 @@ class AssetStreamer final {
   [[nodiscard]] std::optional<Result> poll();
   [[nodiscard]] std::size_t getPendingCount() const;
 
- private:
+private:
   struct Request final {
     std::size_t asset_index = 0;
     std::filesystem::path path;
@@ -53,16 +48,17 @@ class AssetStreamer final {
     std::uint64_t generation = 0;
   };
 
-  void worker(std::stop_token parStopToken);
+  void worker();
 
   mutable std::mutex m_mutex;
-  std::condition_variable_any m_condition;
-  std::vector<std::jthread> m_workers;
+  std::condition_variable m_condition;
+  std::vector<std::thread> m_workers;
   std::vector<Request> m_requests;
   std::deque<Result> m_results;
   std::uint64_t m_next_sequence = 0;
   std::vector<std::size_t> m_active_requests;
   std::unordered_map<std::size_t, std::uint64_t> m_generations;
+  bool m_stopping = false;
 };
 
-}  // namespace kage::assets
+} // namespace kage::assets

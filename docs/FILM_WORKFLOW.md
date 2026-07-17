@@ -74,10 +74,10 @@ orphaned so the user can remove it explicitly rather than lose authored data.
 
 ## Save and Bake
 
-Save Project writes World schema vX containing Film schema vY. Persistence
-includes stable IDs, captured bases, clips, curves, instances, animation
-trim/speed/loop, and camera-gap mode. Editor-only selection, zoom, scroll, and
-panel geometry are not Film data.
+Save Project writes the World and its Film data. Persistence includes stable
+IDs, captured bases, clips, curves, instances, animation trim/speed/loop, and
+camera-gap mode. Editor-only selection, zoom, scroll, and panel geometry are not
+Film data.
 
 Bake requires a playable valid timeline and evaluated camera output. It renders
 overlay-free 3840×2160 PNG frames at 30 fps, writes a manifest, and encodes an
