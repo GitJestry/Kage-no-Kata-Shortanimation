@@ -16,10 +16,8 @@ namespace {
 
 using kage::platform::canonicalOrAbsolute;
 
-constexpr const char* PROJECT_ASSET_CATALOG_PATH =
-    "projects/kage_no_kata_assets.kage.json";
-constexpr const char* PROJECT_WORLD_PATH =
-    "projects/kage_no_kata_world.kage.json";
+constexpr const char* PROJECT_ASSET_CATALOG_PATH = "projects/kage_no_kata_assets.kage.json";
+constexpr const char* PROJECT_WORLD_PATH = "projects/kage_no_kata_world.kage.json";
 constexpr const char* LOCAL_SESSION_PATH = ".kage_local/editor_session.json";
 
 std::filesystem::path getExecutablePath() {
@@ -28,8 +26,7 @@ std::filesystem::path getExecutablePath() {
   DWORD copied_size = 0;
 
   while (true) {
-    copied_size = GetModuleFileNameW(
-        nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    copied_size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
     if (copied_size == 0) {
       throw std::runtime_error("Failed to resolve executable path");
     }
@@ -61,8 +58,7 @@ std::filesystem::path getExecutablePath() {
 #else
   std::vector<char> buffer(1024);
   while (true) {
-    const ssize_t copied_size =
-        readlink("/proc/self/exe", buffer.data(), buffer.size());
+    const ssize_t copied_size = readlink("/proc/self/exe", buffer.data(), buffer.size());
     if (copied_size < 0) {
       return std::filesystem::current_path();
     }
@@ -84,8 +80,7 @@ std::filesystem::path getExecutablePath() {
   return std::filesystem::exists(parPath / "assets");
 }
 
-[[nodiscard]] std::filesystem::path searchRootUpwards(
-    std::filesystem::path parStart) {
+[[nodiscard]] std::filesystem::path searchRootUpwards(std::filesystem::path parStart) {
   parStart = canonicalOrAbsolute(std::move(parStart));
   std::filesystem::path asset_only_candidate;
 
@@ -107,8 +102,8 @@ std::filesystem::path getExecutablePath() {
   return asset_only_candidate;
 }
 
-[[nodiscard]] std::filesystem::path resolveProjectRoot(
-    const std::filesystem::path& parExecutableDirectory) {
+[[nodiscard]] std::filesystem::path
+resolveProjectRoot(const std::filesystem::path& parExecutableDirectory) {
   std::filesystem::path root = searchRootUpwards(std::filesystem::current_path());
   if (!root.empty() && isProjectRoot(root)) {
     return root;
@@ -128,13 +123,13 @@ std::filesystem::path getExecutablePath() {
   return canonicalOrAbsolute(std::filesystem::current_path());
 }
 
-}  // namespace
+} // namespace
 
 namespace kage::platform {
 
 RuntimePaths::RuntimePaths(std::filesystem::path parExecutablePath)
-    : m_project_root(resolveProjectRoot(
-          canonicalOrAbsolute(std::move(parExecutablePath)).parent_path())),
+    : m_project_root(
+          resolveProjectRoot(canonicalOrAbsolute(std::move(parExecutablePath)).parent_path())),
       m_asset_directory(m_project_root / "assets"),
       m_model_directory(m_asset_directory / "models") {}
 
@@ -154,18 +149,18 @@ const std::filesystem::path& RuntimePaths::getModelDirectory() const {
   return m_model_directory;
 }
 
-std::filesystem::path RuntimePaths::getProjectPath(
-    const std::filesystem::path& parRelativePath) const {
+std::filesystem::path
+RuntimePaths::getProjectPath(const std::filesystem::path& parRelativePath) const {
   return m_project_root / parRelativePath;
 }
 
-std::filesystem::path RuntimePaths::getAssetPath(
-    const std::filesystem::path& parRelativePath) const {
+std::filesystem::path
+RuntimePaths::getAssetPath(const std::filesystem::path& parRelativePath) const {
   return m_asset_directory / parRelativePath;
 }
 
-std::filesystem::path RuntimePaths::getTexturePath(
-    const std::filesystem::path& parRelativePath) const {
+std::filesystem::path
+RuntimePaths::getTexturePath(const std::filesystem::path& parRelativePath) const {
   return getAssetPath(std::filesystem::path("textures") / parRelativePath);
 }
 
@@ -181,4 +176,4 @@ std::filesystem::path RuntimePaths::getLocalSessionPath() const {
   return getProjectPath(LOCAL_SESSION_PATH);
 }
 
-}  // namespace kage::platform
+} // namespace kage::platform

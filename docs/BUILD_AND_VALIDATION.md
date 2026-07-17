@@ -90,7 +90,7 @@ cmake --build --preset ci-linux
 xvfb-run -a ctest --preset ci-linux
 ```
 
-`ci-linux` requires Git LFS objects, Clang, Xvfb, Mesa, and ffmpeg.
+`ci-linux` requires Git LFS objects, GCC, Xvfb, Mesa, and ffmpeg.
 `ci-sanitize` runs the deterministic headless tests under ASan/UBSan.
 
 ## 6. Complete regression matrix

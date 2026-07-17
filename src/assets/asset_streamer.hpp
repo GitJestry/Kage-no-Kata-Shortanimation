@@ -16,14 +16,10 @@
 
 namespace kage::assets {
 
-enum class AssetLoadPriority : int {
-  Selected = 0,
-  Visible = 1,
-  Background = 2
-};
+enum class AssetLoadPriority : int { Selected = 0, Visible = 1, Background = 2 };
 
 class AssetStreamer final {
- public:
+public:
   struct Result final {
     std::size_t asset_index = 0;
     std::optional<ModelAsset> document;
@@ -43,7 +39,7 @@ class AssetStreamer final {
   [[nodiscard]] std::optional<Result> poll();
   [[nodiscard]] std::size_t getPendingCount() const;
 
- private:
+private:
   struct Request final {
     std::size_t asset_index = 0;
     std::filesystem::path path;
@@ -65,4 +61,4 @@ class AssetStreamer final {
   bool m_stopping = false;
 };
 
-}  // namespace kage::assets
+} // namespace kage::assets

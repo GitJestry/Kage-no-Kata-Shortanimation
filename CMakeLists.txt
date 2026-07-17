@@ -39,6 +39,13 @@ function(kage_apply_project_options TARGET_NAME)
   endif()
 endfunction()
 
+if(MSVC)
+  # getenv is used only to inspect PATH through the portable C API.
+  set_property(SOURCE src/film/film_exporter.cpp APPEND PROPERTY COMPILE_OPTIONS /wd4996)
+  # The GLM vector indices in this translation unit are bounded to [0, 3].
+  set_property(SOURCE src/render/gpu_mesh.cpp APPEND PROPERTY COMPILE_OPTIONS /wd4267)
+endif()
+
 set(FRAMEWORK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/framework-src")
 set(FRAMEWORK_BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/framework-build")
 FetchContent_Populate(

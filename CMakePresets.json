@@ -41,7 +41,7 @@
       "binaryDir": "${sourceDir}/build/ci-linux",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_COMPILER": "g++",
         "KAGE_ENABLE_OPENGL_TESTS": "ON"
       }
     },
@@ -51,7 +51,7 @@
       "binaryDir": "${sourceDir}/build/ci-sanitize",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_COMPILER": "g++",
         "KAGE_ENABLE_SANITIZERS": "ON"
       }
     },

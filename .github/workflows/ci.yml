@@ -70,7 +70,7 @@ jobs:
         with:
           lfs: true
       - name: Install build, Mesa, and export tools
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build git-lfs xvfb libgl1-mesa-dev xorg-dev ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y g++ ninja-build git-lfs xvfb libgl1-mesa-dev xorg-dev ffmpeg
       - uses: actions/cache@v4
         with:
           path: .cache/fetchcontent
@@ -105,7 +105,7 @@ jobs:
         with:
           lfs: false
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libgl1-mesa-dev xorg-dev
+        run: sudo apt-get update && sudo apt-get install -y g++ ninja-build libgl1-mesa-dev xorg-dev
       - uses: actions/cache@v4
         with:
           path: .cache/fetchcontent

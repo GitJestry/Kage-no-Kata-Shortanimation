@@ -11,8 +11,7 @@ namespace kage::assets {
 
 AssetStreamer::AssetStreamer(std::size_t parWorkerCount) {
   m_workers.reserve(std::max<std::size_t>(parWorkerCount, 1));
-  for (std::size_t index = 0; index < std::max<std::size_t>(parWorkerCount, 1);
-       ++index) {
+  for (std::size_t index = 0; index < std::max<std::size_t>(parWorkerCount, 1); ++index) {
     m_workers.emplace_back([this] { worker(); });
   }
 }
@@ -30,41 +29,34 @@ AssetStreamer::~AssetStreamer() {
   }
 }
 
-void AssetStreamer::request(std::size_t parAssetIndex,
-                            std::filesystem::path parPath,
+void AssetStreamer::request(std::size_t parAssetIndex, std::filesystem::path parPath,
                             AssetLoadPriority parPriority) {
   std::lock_guard lock(m_mutex);
-  const auto existing = std::find_if(
-      m_requests.begin(), m_requests.end(), [&](const Request& request) {
-        return request.asset_index == parAssetIndex;
-      });
+  const auto existing =
+      std::find_if(m_requests.begin(), m_requests.end(),
+                   [&](const Request& request) { return request.asset_index == parAssetIndex; });
   if (existing != m_requests.end()) {
     existing->priority = std::min(existing->priority, parPriority);
     return;
   }
   const std::uint64_t generation = ++m_generations[parAssetIndex];
   m_requests.push_back(
-      {parAssetIndex, std::move(parPath), parPriority, m_next_sequence++,
-       generation});
+      {parAssetIndex, std::move(parPath), parPriority, m_next_sequence++, generation});
   m_condition.notify_one();
 }
 
 bool AssetStreamer::cancel(std::size_t parAssetIndex) {
   std::lock_guard lock(m_mutex);
   const std::size_t queued_before = m_requests.size();
-  std::erase_if(m_requests, [&](const Request& request) {
-    return request.asset_index == parAssetIndex;
-  });
+  std::erase_if(m_requests,
+                [&](const Request& request) { return request.asset_index == parAssetIndex; });
   const std::size_t results_before = m_results.size();
-  std::erase_if(m_results, [&](const Result& result) {
-    return result.asset_index == parAssetIndex;
-  });
-  const bool active = std::find(m_active_requests.begin(),
-                                m_active_requests.end(), parAssetIndex) !=
-                      m_active_requests.end();
+  std::erase_if(m_results,
+                [&](const Result& result) { return result.asset_index == parAssetIndex; });
+  const bool active = std::find(m_active_requests.begin(), m_active_requests.end(),
+                                parAssetIndex) != m_active_requests.end();
   ++m_generations[parAssetIndex];
-  return active || queued_before != m_requests.size() ||
-         results_before != m_results.size();
+  return active || queued_before != m_requests.size() || results_before != m_results.size();
 }
 
 std::optional<AssetStreamer::Result> AssetStreamer::poll() {
@@ -91,14 +83,13 @@ void AssetStreamer::worker() {
       if (m_stopping) {
         return;
       }
-      const auto next = std::min_element(
-          m_requests.begin(), m_requests.end(),
-          [](const Request& left, const Request& right) {
-            if (left.priority != right.priority) {
-              return left.priority < right.priority;
-            }
-            return left.sequence < right.sequence;
-          });
+      const auto next = std::min_element(m_requests.begin(), m_requests.end(),
+                                         [](const Request& left, const Request& right) {
+                                           if (left.priority != right.priority) {
+                                             return left.priority < right.priority;
+                                           }
+                                           return left.sequence < right.sequence;
+                                         });
       request = std::move(*next);
       m_requests.erase(next);
       m_active_requests.push_back(request.asset_index);
@@ -113,9 +104,8 @@ void AssetStreamer::worker() {
     } catch (const std::exception& error) {
       result.error = error.what();
     }
-    result.cpu_ms = std::chrono::duration<float, std::milli>(
-                        std::chrono::steady_clock::now() - begin)
-                        .count();
+    result.cpu_ms =
+        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - begin).count();
     {
       std::lock_guard lock(m_mutex);
       std::erase(m_active_requests, request.asset_index);
@@ -126,4 +116,4 @@ void AssetStreamer::worker() {
   }
 }
 
-}  // namespace kage::assets
+} // namespace kage::assets
