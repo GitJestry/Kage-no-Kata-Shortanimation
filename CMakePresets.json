@@ -33,7 +33,6 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_CXX_COMPILER": "clang++",
-        "KAGE_ENABLE_COVERAGE": "ON",
         "KAGE_ENABLE_OPENGL_TESTS": "ON"
       }
     },

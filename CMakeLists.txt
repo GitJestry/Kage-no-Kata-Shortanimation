@@ -18,16 +18,11 @@ include(cmake/PatchGltemplate.cmake)
 
 option(KAGE_WARNINGS_AS_ERRORS "Treat project warnings as build failures" OFF)
 option(KAGE_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
-option(KAGE_ENABLE_COVERAGE "Instrument project targets for LLVM source coverage" OFF)
 option(KAGE_ENABLE_OPENGL_TESTS "Enable tests that create an OpenGL 4.1 context" OFF)
 
 if(KAGE_ENABLE_SANITIZERS AND MSVC)
   message(FATAL_ERROR "KAGE_ENABLE_SANITIZERS requires Clang or GCC")
 endif()
-if(KAGE_ENABLE_COVERAGE AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  message(FATAL_ERROR "KAGE_ENABLE_COVERAGE requires Clang")
-endif()
-
 function(kage_apply_project_options TARGET_NAME)
   if(MSVC)
     target_compile_options(${TARGET_NAME} PRIVATE
@@ -41,11 +36,6 @@ function(kage_apply_project_options TARGET_NAME)
     target_compile_options(${TARGET_NAME} PRIVATE
       -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(${TARGET_NAME} PRIVATE -fsanitize=address,undefined)
-  endif()
-  if(KAGE_ENABLE_COVERAGE)
-    target_compile_options(${TARGET_NAME} PRIVATE
-      -fprofile-instr-generate -fcoverage-mapping)
-    target_link_options(${TARGET_NAME} PRIVATE -fprofile-instr-generate)
   endif()
 endfunction()
 

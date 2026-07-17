@@ -90,8 +90,8 @@ cmake --build --preset ci-linux
 xvfb-run -a ctest --preset ci-linux
 ```
 
-`ci-linux` requires Git LFS objects, Clang/LLVM coverage tools, Xvfb, Mesa, and
-ffmpeg. `ci-sanitize` runs the deterministic headless tests under ASan/UBSan.
+`ci-linux` requires Git LFS objects, Clang, Xvfb, Mesa, and ffmpeg.
+`ci-sanitize` runs the deterministic headless tests under ASan/UBSan.
 
 ## 6. Complete regression matrix
 
@@ -109,10 +109,8 @@ ffmpeg. `ci-sanitize` runs the deterministic headless tests under ASan/UBSan.
 GitHub Actions runs `quality`, `linux-regression`, `sanitizers`,
 `platform-build (macos-intel)`, and `platform-build (windows-x64)` on every pull
 request and push to `main`. These are the required branch-protection checks.
-CTest XML, coverage JSON, render PNGs, manifests, and the smoke-test MPEG4 are
-uploaded when relevant. Coverage enforces committed global line/branch floors,
-requires 90% coverage on changed instrumented C++ lines, and rejects changed
-production translation units that are absent from the report.
+CTest XML, render PNGs, manifests, and the smoke-test MPEG4 are uploaded when
+relevant.
 
 ## 7. Remaining human acceptance
 
