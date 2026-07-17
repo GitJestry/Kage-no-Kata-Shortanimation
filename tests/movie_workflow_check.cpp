@@ -26,12 +26,10 @@ using kage::test::fail;
 }
 
 [[nodiscard]] bool placeClip(MovieTimeline& parTimeline, std::string_view parName,
-                             TimelineTarget parTarget,
-                             CapturedTargetBaseState parBase,
+                             TimelineTarget parTarget, CapturedTargetBaseState parBase,
                              SequenceClipPayload parPayload) {
   TimelineEditService edits(parTimeline);
-  const auto sequence = edits.createSequence(std::string(parName), parTarget,
-                                             std::move(parBase));
+  const auto sequence = edits.createSequence(std::string(parName), parTarget, std::move(parBase));
   return sequence && edits.appendClipToLane(*sequence, 10, std::move(parPayload)) &&
          edits.placeSequence(*sequence, 0);
 }
@@ -62,14 +60,13 @@ using kage::test::fail;
   clip.id = 7001;
   clip.name = "ArmAction";
   asset.animation_clips.push_back(std::move(clip));
-  const std::size_t index = assets.registerModelAsset(
-      "Animated", "assets/models/animated.glb", std::move(asset));
+  const std::size_t index =
+      assets.registerModelAsset("Animated", "assets/models/animated.glb", std::move(asset));
   scene::StaticMeshComponent mesh;
   mesh.asset_library_index = index;
   world.setStaticMesh(entity, mesh);
   MovieTimeline timeline;
-  return placeClip(timeline, "Missing animation",
-                   {TimelineTargetKind::RiggedEntity, entity},
+  return placeClip(timeline, "Missing animation", {TimelineTargetKind::RiggedEntity, entity},
                    CapturedEntityBaseState{}, RigAnimationClip{.clip_id = 9001}) &&
          validateMovieTimelineWithWorld(timeline, world, true, &assets).hasErrors();
 }
@@ -157,24 +154,21 @@ using kage::test::fail;
     return false;
   }
   editor::setMovieAuthoringCursor(session, playback, 0, MAX_FILM_FRAMES + 1);
-  if (session.authoring_cursor_frame != MAX_FILM_FRAMES ||
-      playback.playhead_frame != 0.0 || playback.previewing) {
+  if (session.authoring_cursor_frame != MAX_FILM_FRAMES || playback.playhead_frame != 0.0 ||
+      playback.previewing) {
     return false;
   }
 
   editor::selectMovieSequence(session, camera_sequence);
   playback.previewing = true;
-  const TargetSequence* selected =
-      editor::selectedMovieTargetSequence(session, timeline);
-  if (selected == nullptr || selected->id != camera_sequence.id ||
-      !isCameraSequence(*selected) ||
+  const TargetSequence* selected = editor::selectedMovieTargetSequence(session, timeline);
+  if (selected == nullptr || selected->id != camera_sequence.id || !isCameraSequence(*selected) ||
       editor::moviePreviewDuration(session, timeline) != 90) {
     return false;
   }
   editor::selectMovieSequence(session, rig_sequence);
   selected = editor::selectedMovieTargetSequence(session, timeline);
-  if (selected == nullptr || selected->id != rig_sequence.id ||
-      isCameraSequence(*selected) ||
+  if (selected == nullptr || selected->id != rig_sequence.id || isCameraSequence(*selected) ||
       editor::moviePreviewDuration(session, timeline) != 30) {
     return false;
   }
@@ -190,9 +184,8 @@ using kage::test::fail;
       session.authoring_cursor_frame != 15) {
     return false;
   }
-  if (editor::toggleMoviePlayback(session, timeline, playback) ||
-      playback.playing || !playback.previewing ||
-      !editor::toggleMoviePlayback(session, timeline, playback) ||
+  if (editor::toggleMoviePlayback(session, timeline, playback) || playback.playing ||
+      !playback.previewing || !editor::toggleMoviePlayback(session, timeline, playback) ||
       !playback.playing) {
     return false;
   }
@@ -214,8 +207,7 @@ using kage::test::fail;
   }
   FilmPlayback ending{29.0, true, true, false};
   ending.update(1.0f / static_cast<float>(FILM_FPS), 30);
-  const bool stopped_at_end =
-      !ending.playing && ending.previewing && ending.playhead_frame == 29.0;
+  const bool stopped_at_end = !ending.playing && ending.previewing && ending.playhead_frame == 29.0;
   ending.playing = true;
   ending.looping = true;
   ending.update(2.0f / static_cast<float>(FILM_FPS), 30);
@@ -234,8 +226,8 @@ using kage::test::fail;
   }
 
   MovieTimeline empty_timeline;
-  if (editor::toggleMoviePlayback(session, empty_timeline, playback) ||
-      playback.playing || playback.previewing || playback.playhead_frame != 0.0) {
+  if (editor::toggleMoviePlayback(session, empty_timeline, playback) || playback.playing ||
+      playback.previewing || playback.playhead_frame != 0.0) {
     return false;
   }
   return true;
@@ -253,18 +245,15 @@ using kage::test::fail;
       !scene->world.findEntity(created->entity)->camera) {
     return false;
   }
-  const TargetSequence* sequence =
-      scene->movie_timeline.findSequence(created->sequence_id);
-  const SequenceInstance* instance =
-      scene->movie_timeline.findInstance(created->instance_id);
+  const TargetSequence* sequence = scene->movie_timeline.findSequence(created->sequence_id);
+  const SequenceInstance* instance = scene->movie_timeline.findInstance(created->instance_id);
   editor::EditorSession selection;
   editor::selectCreatedFilmCamera(selection, created->entity, created->sequence_id,
                                   created->instance_id);
   return sequence != nullptr && instance != nullptr &&
          sequence->target == TimelineTarget{TimelineTargetKind::Camera, created->entity} &&
          sequence->clips.size() == 2 && instance->sequence_id == sequence->id &&
-         instance->start_frame == 0 &&
-         selection.movie_selection.target == sequence->target &&
+         instance->start_frame == 0 && selection.movie_selection.target == sequence->target &&
          selection.movie_selection.sequence_id == sequence->id &&
          selection.movie_selection.clip_id == 0 &&
          selection.movie_selection.instance_id == instance->id;
@@ -284,13 +273,13 @@ using kage::test::fail;
   CapturedEntityBaseState second_base;
   second_base.transform.translation = {3.0f, 1.0f, 8.0f};
   second_base.camera = CapturedCameraState{70.0f, 0.2f, 600.0f};
-  const auto first = edits.createSequence(
-      "First", {TimelineTargetKind::Camera, first_camera}, first_base);
-  const auto second = edits.createSequence(
-      "Second", {TimelineTargetKind::Camera, second_camera}, second_base);
+  const auto first =
+      edits.createSequence("First", {TimelineTargetKind::Camera, first_camera}, first_base);
+  const auto second =
+      edits.createSequence("Second", {TimelineTargetKind::Camera, second_camera}, second_base);
   if (!first || !second || !edits.appendClipToLane(*first, 10, MovementClip{}) ||
-      !edits.appendClipToLane(*second, 10, MovementClip{}) ||
-      !edits.placeSequence(*first, 0) || !edits.placeSequence(*second, 10)) {
+      !edits.appendClipToLane(*second, 10, MovementClip{}) || !edits.placeSequence(*first, 0) ||
+      !edits.placeSequence(*second, 10)) {
     return false;
   }
   FilmPlayback playback;
@@ -300,12 +289,10 @@ using kage::test::fail;
   if (!requiresFilmFrameState(true, -1.0, playback) ||
       requiresFilmFrameState(true, -1.0, FilmPlayback{}) ||
       requiresFilmFrameState(false, 10.0, FilmPlayback{}) ||
-      !requiresFilmFrameState(true, 10.0, FilmPlayback{}) ||
-      !preview.camera || !exported.camera ||
+      !requiresFilmFrameState(true, 10.0, FilmPlayback{}) || !preview.camera || !exported.camera ||
       preview.camera->source_entity != second_camera ||
       exported.camera->source_entity != second_camera ||
-      !close(preview.camera->vertical_fov_degrees,
-             exported.camera->vertical_fov_degrees)) {
+      !close(preview.camera->vertical_fov_degrees, exported.camera->vertical_fov_degrees)) {
     return false;
   }
   camera::Camera editor_camera;
@@ -324,18 +311,16 @@ using kage::test::fail;
   FilmFrameState non_camera_state;
   const engine::FilmViewportCamera non_camera_view =
       engine::resolveFilmViewportCamera(editor_camera, world, &non_camera_state, false);
-  return camera_view.consumes_film_state && !camera_view.black_output &&
-         camera_view.camera &&
+  return camera_view.consumes_film_state && !camera_view.black_output && camera_view.camera &&
          close(camera_view.camera->position.x, second_base.transform.translation.x) &&
          !engine::shouldShowEditorOverlays(true, camera_view, true) &&
          !stopped_view.consumes_film_state && stopped_view.camera &&
          stopped_view.camera->position == editor_camera.position &&
          engine::shouldShowEditorOverlays(true, stopped_view, true) &&
-         black_view.consumes_film_state && black_view.black_output &&
-         !black_view.camera && orphan_camera_view.consumes_film_state &&
-         orphan_camera_view.black_output && !orphan_camera_view.camera &&
-         non_camera_view.consumes_film_state && non_camera_view.camera &&
-         non_camera_view.camera->position == editor_camera.position &&
+         black_view.consumes_film_state && black_view.black_output && !black_view.camera &&
+         orphan_camera_view.consumes_film_state && orphan_camera_view.black_output &&
+         !orphan_camera_view.camera && non_camera_view.consumes_film_state &&
+         non_camera_view.camera && non_camera_view.camera->position == editor_camera.position &&
          engine::shouldShowEditorOverlays(true, non_camera_view, false);
 }
 
@@ -356,12 +341,12 @@ using kage::test::fail;
   const math::ScreenPoint authored_pixel =
       math::projectPoint(glm::vec3(0.0f), view_projection, viewport);
   return evaluated_pixel.valid && authored_pixel.valid &&
-         render::pickViewportEntityBounds(world, &camera, &state,
-                                          evaluated_pixel.pixel, viewport, 0.35f) == actor &&
-         !render::pickViewportEntityBounds(world, &camera, &state,
-                                            authored_pixel.pixel, viewport, 0.35f) &&
-         !render::pickViewportEntityBounds(world, nullptr, &state,
-                                            evaluated_pixel.pixel, viewport, 0.35f);
+         render::pickViewportEntityBounds(world, &camera, &state, evaluated_pixel.pixel, viewport,
+                                          0.35f) == actor &&
+         !render::pickViewportEntityBounds(world, &camera, &state, authored_pixel.pixel, viewport,
+                                           0.35f) &&
+         !render::pickViewportEntityBounds(world, nullptr, &state, evaluated_pixel.pixel, viewport,
+                                           0.35f);
 }
 
 [[nodiscard]] bool testBakeFailures() {
@@ -383,14 +368,15 @@ using kage::test::fail;
   return true;
 }
 
-}  // namespace
+} // namespace
 
 int main() {
   if (!testTargetClassification()) {
     return fail("valid Movie target classification failed");
   }
   if (!testSelectionAndPreviewState()) {
-    return fail("target, sequence, clip, instance, scrub, playback, Stop, or empty-timeline workflow failed");
+    return fail("target, sequence, clip, instance, scrub, playback, Stop, or empty-timeline "
+                "workflow failed");
   }
   if (!testFilmCameraCreation()) {
     return fail("Film Camera creation failed");
