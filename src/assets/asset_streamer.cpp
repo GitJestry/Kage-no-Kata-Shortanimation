@@ -13,18 +13,21 @@ AssetStreamer::AssetStreamer(std::size_t parWorkerCount) {
   m_workers.reserve(std::max<std::size_t>(parWorkerCount, 1));
   for (std::size_t index = 0; index < std::max<std::size_t>(parWorkerCount, 1);
        ++index) {
-    m_workers.emplace_back(
-        [this](std::stop_token stop_token) { worker(stop_token); });
+    m_workers.emplace_back([this] { worker(); });
   }
 }
 
 AssetStreamer::~AssetStreamer() {
-  for (std::jthread& worker_thread : m_workers) {
-    worker_thread.request_stop();
+  {
+    std::lock_guard lock(m_mutex);
+    m_stopping = true;
   }
   m_condition.notify_all();
-  // Join before the request/result queues begin member destruction.
-  m_workers.clear();
+  for (std::thread& worker_thread : m_workers) {
+    if (worker_thread.joinable()) {
+      worker_thread.join();
+    }
+  }
 }
 
 void AssetStreamer::request(std::size_t parAssetIndex,
@@ -79,14 +82,13 @@ std::size_t AssetStreamer::getPendingCount() const {
   return m_requests.size() + m_results.size() + m_active_requests.size();
 }
 
-void AssetStreamer::worker(std::stop_token parStopToken) {
-  while (!parStopToken.stop_requested()) {
+void AssetStreamer::worker() {
+  while (true) {
     Request request;
     {
       std::unique_lock lock(m_mutex);
-      m_condition.wait(lock, parStopToken,
-                       [this] { return !m_requests.empty(); });
-      if (parStopToken.stop_requested()) {
+      m_condition.wait(lock, [this] { return m_stopping || !m_requests.empty(); });
+      if (m_stopping) {
         return;
       }
       const auto next = std::min_element(

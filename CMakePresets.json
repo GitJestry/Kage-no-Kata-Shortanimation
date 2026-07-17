@@ -17,8 +17,17 @@
       }
     },
     {
-      "name": "ci-quality",
+      "name": "ci-ubuntu",
+      "hidden": true,
       "inherits": "ci-base",
+      "cacheVariables": {
+        "GLFW_BUILD_WAYLAND": "OFF",
+        "GLFW_BUILD_X11": "ON"
+      }
+    },
+    {
+      "name": "ci-quality",
+      "inherits": "ci-ubuntu",
       "binaryDir": "${sourceDir}/build/ci-quality",
       "cacheVariables": {
         "BUILD_TESTING": "OFF",
@@ -28,7 +37,7 @@
     },
     {
       "name": "ci-linux",
-      "inherits": "ci-base",
+      "inherits": "ci-ubuntu",
       "binaryDir": "${sourceDir}/build/ci-linux",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
@@ -38,7 +47,7 @@
     },
     {
       "name": "ci-sanitize",
-      "inherits": "ci-base",
+      "inherits": "ci-ubuntu",
       "binaryDir": "${sourceDir}/build/ci-sanitize",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -57,17 +66,20 @@
     {
       "name": "ci-windows",
       "inherits": "ci-base",
-      "binaryDir": "${sourceDir}/build/ci-windows",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/ci-windows"
     }
   ],
   "buildPresets": [
     { "name": "ci-linux", "configurePreset": "ci-linux" },
     { "name": "ci-sanitize", "configurePreset": "ci-sanitize" },
     { "name": "ci-macos", "configurePreset": "ci-macos" },
-    { "name": "ci-windows", "configurePreset": "ci-windows" }
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows",
+      "configuration": "Release"
+    }
   ],
   "testPresets": [
     {
@@ -94,7 +106,8 @@
     {
       "name": "ci-windows",
       "inherits": "ci-test-base",
-      "configurePreset": "ci-windows"
+      "configurePreset": "ci-windows",
+      "configuration": "Release"
     }
   ]
 }

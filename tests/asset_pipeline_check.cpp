@@ -165,12 +165,18 @@ void writeText(const std::filesystem::path& parPath, const std::string& parText)
         return false;
       }
       if (loaded_fixture && rejected_missing) {
-        return true;
+        break;
       }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
-  return false;
+  if (!loaded_fixture || !rejected_missing) {
+    return false;
+  }
+
+  kage::assets::AssetStreamer cancellable(1);
+  cancellable.request(9, parRoot / "cancelled.glb", kage::assets::AssetLoadPriority::Background);
+  return cancellable.cancel(9);
 }
 
 } // namespace
