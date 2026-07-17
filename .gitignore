@@ -4,6 +4,8 @@ cmake-build-*/
 out/
 .kage_local/
 .kage_cache/
+.cache/
+test-artifacts/
 
 _deps/
 CMakeFiles/
@@ -31,3 +33,4 @@ Thumbs.db
 *.dylib
 *.so
 *.exe
+*.profraw

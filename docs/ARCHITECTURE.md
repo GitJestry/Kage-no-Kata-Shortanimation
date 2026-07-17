@@ -94,7 +94,7 @@ Those operations are delegated to `TimelineEditService`.
 
 ```mermaid
 sequenceDiagram
-    participant Catalog as Asset Catalog v2
+    participant Catalog as Asset Catalog
     participant Registry as AssetRegistry
     participant Streamer as AssetStreamer workers
     participant Loader as GltfAssetLoader
@@ -296,10 +296,12 @@ making the editor unusable.
 
 ## 10. Verification architecture
 
-Headless system tests cover film semantics, atomic editing, persistence
-round-trips, World-state immutability, lighting extraction, preview state, and
-Bake validation. GPU appearance, full asset loading, UI interaction, and
-encoding use the manual workflow in
-[Build and Validation](BUILD_AND_VALIDATION.md). The source and validation
-evidence attached to each feature is maintained in
+The reusable `kage_engine_lib` target is shared by the application and every
+check, so tests execute the same production implementation. Headless checks
+cover domain, math, scene/editor, asset, animation/lighting, persistence, and
+failure behavior. The Linux CI harness adds Mesa OpenGL 4.1 render probes,
+application startup, and a one-frame production ffmpeg export. macOS and Windows
+jobs enforce supported-platform compilation and deterministic tests. See
+[Build and Validation](BUILD_AND_VALIDATION.md) for the matrix and the small
+remaining human acceptance boundary. Feature evidence is maintained in
 [Project Scope and Evidence](PROJECT_SCOPE_AND_EVIDENCE.md).

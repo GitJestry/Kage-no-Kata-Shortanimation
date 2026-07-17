@@ -1,0 +1,167 @@
+name: Engine CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD^' }}
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+      - name: Install quality tools
+        run: sudo apt-get update && sudo apt-get install -y clang clang-format clang-tidy ninja-build libgl1-mesa-dev xorg-dev
+      - uses: actions/cache@v4
+        with:
+          path: .cache/fetchcontent
+          key: fetchcontent-quality-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+      - name: Check formatting
+        shell: bash
+        run: |
+          mapfile -d '' candidates < <(git diff --name-only -z --diff-filter=ACMR "$BASE_REF"...HEAD -- src tests)
+          files=()
+          for file in "${candidates[@]}"; do
+            case "$file" in
+              *.cpp|*.hpp) files+=("$file") ;;
+            esac
+          done
+          if (( ${#files[@]} )); then
+            printf '%s\0' "${files[@]}" | xargs -0 clang-format --dry-run --Werror
+          fi
+      - name: Configure
+        run: cmake --preset ci-quality
+      - name: Static analysis
+        shell: bash
+        run: |
+          mapfile -d '' candidates < <(git diff --name-only -z --diff-filter=ACMR "$BASE_REF"...HEAD -- src)
+          files=()
+          for file in "${candidates[@]}"; do
+            if [[ "$file" == src/*.cpp && "$file" != "src/assets/tinygltf_implementation.cpp" ]]; then
+              files+=("$file")
+            fi
+          done
+          if (( ${#files[@]} )); then
+            printf '%s\0' "${files[@]}" | xargs -0 clang-tidy -p build/ci-quality
+          fi
+
+  linux-regression:
+    name: linux-regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      - name: Install build, Mesa, LLVM, and export tools
+        run: sudo apt-get update && sudo apt-get install -y clang llvm ninja-build git-lfs xvfb libgl1-mesa-dev xorg-dev ffmpeg
+      - uses: actions/cache@v4
+        with:
+          path: .cache/fetchcontent
+          key: fetchcontent-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+      - name: Reject unresolved LFS pointers
+        run: git lfs fsck
+      - name: Configure and build complete suite
+        run: cmake --preset ci-linux && cmake --build --preset ci-linux
+      - name: Run complete regression suite
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/build/ci-linux/profiles/%p.profraw
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: mkdir -p build/ci-linux/profiles && xvfb-run -a ctest --preset ci-linux --output-junit build/ci-linux/ctest.xml
+      - name: Verify production export metadata
+        run: |
+          metadata=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate -of csv=p=0 build/ci-linux/test-artifacts/render-smoke.mp4)
+          [[ "$metadata" == "h264,3840,2160,yuv420p,30/1" ]]
+      - name: Build coverage report
+        run: |
+          llvm-profdata merge -sparse build/ci-linux/profiles/*.profraw -o build/ci-linux/coverage.profdata
+          primary=build/ci-linux/application_smoke_check
+          llvm-cov export "$primary" -instr-profile=build/ci-linux/coverage.profdata -ignore-filename-regex='(/build/|/_deps/|/tests/)' > build/ci-linux/coverage.json
+          python3 ci/check_coverage.py build/ci-linux/coverage.json ci/coverage-thresholds.json "$BASE_REF"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-regression-results
+          path: |
+            build/ci-linux/ctest.xml
+            build/ci-linux/coverage.json
+            build/ci-linux/test-artifacts/
+          if-no-files-found: warn
+
+  sanitizers:
+    name: sanitizers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libgl1-mesa-dev xorg-dev
+      - uses: actions/cache@v4
+        with:
+          path: .cache/fetchcontent
+          key: fetchcontent-sanitize-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+      - name: Configure, build, and test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: cmake --preset ci-sanitize && cmake --build --preset ci-sanitize && ctest --preset ci-sanitize --output-junit build/ci-sanitize/ctest.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sanitizer-results
+          path: build/ci-sanitize/ctest.xml
+          if-no-files-found: warn
+
+  platform-build:
+    name: platform-build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-intel
+            runner: macos-15-intel
+            preset: ci-macos
+          - platform: windows-x64
+            runner: windows-2022
+            preset: ci-windows
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/cache@v4
+        with:
+          path: .cache/fetchcontent
+          key: fetchcontent-${{ matrix.platform }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test deterministic suite
+        run: ctest --preset ${{ matrix.preset }} --output-junit build/${{ matrix.preset }}/ctest.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.platform }}-results
+          path: build/${{ matrix.preset }}/ctest.xml
+          if-no-files-found: warn

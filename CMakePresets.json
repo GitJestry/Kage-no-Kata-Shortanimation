@@ -1,0 +1,101 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 26,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "ci-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "FETCHCONTENT_BASE_DIR": "${sourceDir}/.cache/fetchcontent",
+        "KAGE_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "ci-quality",
+      "inherits": "ci-base",
+      "binaryDir": "${sourceDir}/build/ci-quality",
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "ci-linux",
+      "inherits": "ci-base",
+      "binaryDir": "${sourceDir}/build/ci-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "KAGE_ENABLE_COVERAGE": "ON",
+        "KAGE_ENABLE_OPENGL_TESTS": "ON"
+      }
+    },
+    {
+      "name": "ci-sanitize",
+      "inherits": "ci-base",
+      "binaryDir": "${sourceDir}/build/ci-sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "KAGE_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "ci-macos",
+      "inherits": "ci-base",
+      "binaryDir": "${sourceDir}/build/ci-macos",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ci-windows",
+      "inherits": "ci-base",
+      "binaryDir": "${sourceDir}/build/ci-windows",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "ci-linux", "configurePreset": "ci-linux" },
+    { "name": "ci-sanitize", "configurePreset": "ci-sanitize" },
+    { "name": "ci-macos", "configurePreset": "ci-macos" },
+    { "name": "ci-windows", "configurePreset": "ci-windows" }
+  ],
+  "testPresets": [
+    {
+      "name": "ci-test-base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    {
+      "name": "ci-linux",
+      "inherits": "ci-test-base",
+      "configurePreset": "ci-linux"
+    },
+    {
+      "name": "ci-sanitize",
+      "inherits": "ci-test-base",
+      "configurePreset": "ci-sanitize"
+    },
+    {
+      "name": "ci-macos",
+      "inherits": "ci-test-base",
+      "configurePreset": "ci-macos"
+    },
+    {
+      "name": "ci-windows",
+      "inherits": "ci-test-base",
+      "configurePreset": "ci-windows"
+    }
+  ]
+}

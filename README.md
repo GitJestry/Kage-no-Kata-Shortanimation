@@ -25,7 +25,7 @@ git lfs pull
 Configure, build, and run:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DKAGE_ENABLE_COVERAGE=OFF
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/kage_engine
