@@ -154,8 +154,8 @@ using kage::test::fail;
 [[nodiscard]] bool testAnimationEvaluation() {
   assets::ModelAsset asset;
   asset.animation_clips = {
-      {.id = 10, .name = "First"},
-      {.id = 20, .name = "Second"},
+      {.id = 10, .name = "First", .duration_seconds = 0.0f, .samplers = {}, .channels = {}},
+      {.id = 20, .name = "Second", .duration_seconds = 0.0f, .samplers = {}, .channels = {}},
   };
   if (animation::resolveAnimationClipIndex(asset, {.clip_id = 20}) != 1 ||
       animation::resolveAnimationClipIndex(asset, {.clip_id = 999})) {

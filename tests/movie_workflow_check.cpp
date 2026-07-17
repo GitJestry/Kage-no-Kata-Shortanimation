@@ -58,7 +58,10 @@ using kage::test::fail;
   world.setRig(entity, scene::RigComponent{});
   assets::AssetRegistry assets;
   assets::ModelAsset asset;
-  asset.animation_clips.push_back({.id = 7001, .name = "ArmAction"});
+  assets::AnimationClip clip;
+  clip.id = 7001;
+  clip.name = "ArmAction";
+  asset.animation_clips.push_back(std::move(clip));
   const std::size_t index = assets.registerModelAsset(
       "Animated", "assets/models/animated.glb", std::move(asset));
   scene::StaticMeshComponent mesh;
