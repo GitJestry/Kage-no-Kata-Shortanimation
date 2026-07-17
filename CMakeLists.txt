@@ -40,10 +40,16 @@ function(kage_apply_project_options TARGET_NAME)
 endfunction()
 
 if(MSVC)
-  # getenv is used only to inspect PATH through the portable C API.
-  set_property(SOURCE src/film/film_exporter.cpp APPEND PROPERTY COMPILE_OPTIONS /wd4996)
+  # getenv is used only to inspect PATH; C4702 originates in the pinned framework header.
+  set_property(SOURCE src/film/film_exporter.cpp APPEND
+    PROPERTY COMPILE_OPTIONS /wd4996 /wd4702)
   # The GLM vector indices in this translation unit are bounded to [0, 3].
   set_property(SOURCE src/render/gpu_mesh.cpp APPEND PROPERTY COMPILE_OPTIONS /wd4267)
+endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  # Timeline labels are bounded by the authored film duration.
+  set_property(SOURCE src/editor/timeline_view_helpers.cpp APPEND
+    PROPERTY COMPILE_OPTIONS -Wno-format-truncation)
 endif()
 
 set(FRAMEWORK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/framework-src")

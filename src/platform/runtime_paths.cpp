@@ -81,7 +81,7 @@ std::filesystem::path getExecutablePath() {
 }
 
 [[nodiscard]] std::filesystem::path searchRootUpwards(std::filesystem::path parStart) {
-  parStart = canonicalOrAbsolute(std::move(parStart));
+  parStart = canonicalOrAbsolute(parStart);
   std::filesystem::path asset_only_candidate;
 
   while (!parStart.empty()) {
@@ -127,9 +127,8 @@ resolveProjectRoot(const std::filesystem::path& parExecutableDirectory) {
 
 namespace kage::platform {
 
-RuntimePaths::RuntimePaths(std::filesystem::path parExecutablePath)
-    : m_project_root(
-          resolveProjectRoot(canonicalOrAbsolute(std::move(parExecutablePath)).parent_path())),
+RuntimePaths::RuntimePaths(const std::filesystem::path& parExecutablePath)
+    : m_project_root(resolveProjectRoot(canonicalOrAbsolute(parExecutablePath).parent_path())),
       m_asset_directory(m_project_root / "assets"),
       m_model_directory(m_asset_directory / "models") {}
 
