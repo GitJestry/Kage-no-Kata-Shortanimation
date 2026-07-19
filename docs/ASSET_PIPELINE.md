@@ -9,7 +9,7 @@ Expected layout:
 - `assets/models/` — model GLBs;
 - `assets/animations/` — compatible external animation GLBs;
 - `assets/textures/environments/` — HDR/LDR panoramas;
-- `projects/kage_no_kata_assets.kage.json` — tracked Asset Catalog v2.
+- `projects/kage_no_kata_assets.kage.json` — tracked Asset Catalog.
 
 Imported files become normal project assets; there is no separate runtime
 “imported” format.
@@ -21,8 +21,7 @@ Imported files become normal project assets; there is no separate runtime
 - Use Principled BSDF inputs supported by glTF.
 - Export armatures, skins, inverse bind matrices, and the intended actions for
   rigged characters.
-- Use clear action names. The submitted Samurai base model provides
-  `ReadyIdle` and `ArmAction`.
+- Use clear action names for every exported animation.
 
 ## Catalog and stable identity
 
@@ -31,9 +30,8 @@ entities persist the stable ID. During load, the registry resolves it to a
 compact asset-library index used by streaming, GPU caches, rendering, and
 picking.
 
-The current loader accepts Catalog schema v2 only. A missing catalog may trigger
-the intended project-directory scan; an existing malformed or incompatible
-catalog is an error.
+A missing catalog may trigger the intended project-directory scan; an existing
+malformed or incompatible catalog is an error.
 
 ## Model import
 
