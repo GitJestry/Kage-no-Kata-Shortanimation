@@ -17,20 +17,16 @@ namespace {
     std::span<const kage::assets::EnvironmentAsset> parEnvironments,
     const std::filesystem::path& parRegistryProjectRoot) {
   kage::assets::ProjectAssetCatalog catalog;
-  const std::filesystem::path project_root = parRegistryProjectRoot;
   const auto project_relative = [&](const std::filesystem::path& parPath) {
     std::error_code error_code;
     const std::filesystem::path relative =
-        std::filesystem::relative(parPath, project_root, error_code);
+        std::filesystem::relative(parPath, parRegistryProjectRoot, error_code);
     return error_code ? parPath : relative;
   };
   for (const kage::assets::AssetRegistry::AssetLibraryEntry& asset :
        parRegistry.getAssetLibrary()) {
-    kage::assets::ProjectAssetEntry entry;
-    entry.id = asset.id;
-    entry.label = asset.label;
-    entry.model_path = project_relative(asset.path);
-    entry.source_path = project_relative(asset.source_path);
+    kage::assets::ProjectAssetEntry entry{
+        asset.id, asset.label, project_relative(asset.path), {}};
     for (const kage::assets::AssetRegistry::AnimationPackEntry& pack :
          asset.animation_packs) {
       entry.animation_packs.push_back(
@@ -39,11 +35,20 @@ namespace {
     catalog.assets.push_back(std::move(entry));
   }
   for (const kage::assets::EnvironmentAsset& environment : parEnvironments) {
-    kage::assets::EnvironmentAsset entry = environment;
-    entry.path = project_relative(entry.path);
-    catalog.environments.push_back(std::move(entry));
+    catalog.environments.push_back(
+        {environment.id, environment.label, project_relative(environment.path),
+         environment.hdr});
   }
   return catalog;
+}
+
+void saveCatalog(
+    const kage::assets::AssetRegistry& parRegistry,
+    std::span<const kage::assets::EnvironmentAsset> parEnvironments,
+    const kage::platform::RuntimePaths& parPaths) {
+  kage::assets::saveProjectAssetCatalog(
+      parPaths.getProjectAssetCatalogPath(),
+      buildCatalog(parRegistry, parEnvironments, parPaths.getProjectRoot()));
 }
 
 }  // namespace
@@ -52,10 +57,9 @@ namespace kage::engine {
 
 std::size_t EngineCore::registerStaticAsset(
     assets::AssetId parAssetId, std::string parLabel,
-    std::filesystem::path parPath, std::filesystem::path parSourcePath) {
-  return m_asset_registry.registerStaticAsset(
-      parAssetId, std::move(parLabel), std::move(parPath),
-      std::move(parSourcePath));
+    std::filesystem::path parPath) {
+  return m_asset_registry.registerStaticAsset(parAssetId, std::move(parLabel),
+                                              std::move(parPath));
 }
 
 void EngineCore::loadProjectAssetCatalog(
@@ -64,8 +68,7 @@ void EngineCore::loadProjectAssetCatalog(
       assets::loadProjectAssetCatalog(parCatalogPath);
   for (const assets::ProjectAssetEntry& entry : catalog.assets) {
     const std::size_t index =
-        registerStaticAsset(entry.id, entry.label, entry.model_path,
-                            entry.source_path);
+        registerStaticAsset(entry.id, entry.label, entry.model_path);
     assets::AssetRegistry::AssetLibraryEntry* asset =
         m_asset_registry.getAssetLibraryEntry(index);
     if (asset != nullptr) {
@@ -113,65 +116,9 @@ std::optional<std::size_t> EngineCore::importModelAsset(
 
   const std::size_t asset_index =
       registerModelAsset(std::move(parLabel), destination, std::move(document));
-  assets::AssetRegistry::AssetLibraryEntry* asset =
-      m_asset_registry.getAssetLibraryEntry(asset_index);
-  if (asset != nullptr) {
-    asset->source_path = parSourcePath;
-  }
-  assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
-                                  buildCatalog(m_asset_registry,
-                                               m_environment_assets,
-                                               m_runtime_paths.getProjectRoot()));
+  saveCatalog(m_asset_registry, m_environment_assets, m_runtime_paths);
   markProjectDirty();
   return asset_index;
-}
-
-bool EngineCore::importAnimationForEntity(
-    scene::EntityId parEntity, const std::filesystem::path& parSourcePath,
-    std::string parLabel, std::string& parError) {
-  parError.clear();
-  const scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->static_mesh.has_value()) {
-    parError = "select a rigged mesh entity first";
-    return false;
-  }
-  if (!std::filesystem::exists(parSourcePath)) {
-    parError = "file does not exist";
-    return false;
-  }
-  if (!assets::hasGltfExtension(parSourcePath)) {
-    parError = "only .glb and .gltf animation files can be imported";
-    return false;
-  }
-  if (parLabel.empty()) {
-    parLabel = assets::defaultAssetLabelFromPath(parSourcePath);
-  }
-
-  const assets::AssetRegistry::AssetLibraryEntry* base_asset =
-      m_asset_registry.getAssetLibraryEntry(
-          entity->static_mesh->asset_library_index);
-  if (base_asset == nullptr) {
-    parError = "selected entity has no asset catalog entry";
-    return false;
-  }
-
-  const std::filesystem::path destination = assets::copyIntoProjectAssets(
-      parSourcePath, m_runtime_paths.getAnimationDirectory(),
-      m_runtime_paths.getAssetDirectory(), parError);
-  if (destination.empty()) {
-    return false;
-  }
-
-  if (!m_asset_registry.addAnimationPack(base_asset->id, parLabel, destination,
-                                         parError)) {
-    return false;
-  }
-  assets::saveProjectAssetCatalog(m_runtime_paths.getProjectAssetCatalogPath(),
-                                  buildCatalog(m_asset_registry,
-                                               m_environment_assets,
-                                               m_runtime_paths.getProjectRoot()));
-  markProjectDirty();
-  return true;
 }
 
 std::optional<assets::AssetId> EngineCore::importPanorama(
@@ -202,10 +149,7 @@ std::optional<assets::AssetId> EngineCore::importPanorama(
         {id, std::move(parLabel), destination,
          assets::hasHdrExtension(destination)});
   }
-  assets::saveProjectAssetCatalog(
-      m_runtime_paths.getProjectAssetCatalogPath(),
-      buildCatalog(m_asset_registry, m_environment_assets,
-                   m_runtime_paths.getProjectRoot()));
+  saveCatalog(m_asset_registry, m_environment_assets, m_runtime_paths);
   render::EnvironmentSettings settings = m_render_settings.scene.environment;
   settings.asset_id = id;
   settings.visible = true;

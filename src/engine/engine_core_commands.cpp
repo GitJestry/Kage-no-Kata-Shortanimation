@@ -1,49 +1,39 @@
 #include "engine/engine_core.hpp"
 
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
+#include "engine/film_camera_creation.hpp"
+#include "render/viewport_picking.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
 
-constexpr float ENTITY_HANDLE_EXTENT = 0.35f;
+namespace {
+
+template <typename Edit>
+void editEntity(kage::engine::EngineCore& parEngine,
+                kage::scene::EntityId parEntity, Edit&& parEdit) {
+  kage::scene::EntityRecord* entity =
+      parEngine.getWorld().findEntity(parEntity);
+  if (entity != nullptr && parEdit(*entity)) {
+    parEngine.markProjectDirty();
+  }
+}
+
+}  // namespace
 
 namespace kage::engine {
 
 std::size_t EngineCore::createScene(std::string parName) {
   const std::size_t index = m_scene_manager.createScene(std::move(parName));
-  scene::SceneManager::SceneRecord* scene = m_scene_manager.getScene(index);
-  if (scene != nullptr) {
-    createDefaultSceneEntities(*scene);
-  }
   markProjectDirty();
   return index;
 }
 
-std::size_t EngineCore::createLocalScene(std::string parName) {
-  const std::size_t index =
-      m_scene_manager.createScene(std::move(parName), true);
-  scene::SceneManager::SceneRecord* scene = m_scene_manager.getScene(index);
-  if (scene != nullptr) {
-    createDefaultSceneEntities(*scene);
-  }
-  m_local_session_dirty = true;
-  return index;
-}
-
 bool EngineCore::deleteScene(std::size_t parSceneIndex) {
-  const scene::SceneManager::SceneRecord* scene =
-      m_scene_manager.getScene(parSceneIndex);
-  const bool local_only = scene != nullptr && scene->local_only;
   const bool deleted = m_scene_manager.deleteScene(parSceneIndex);
   if (deleted) {
     rebuildAssetInstanceCounts();
-    if (local_only) {
-      m_local_session_dirty = true;
-    } else {
-      markProjectDirty();
-    }
+    markProjectDirty();
   }
   return deleted;
 }
@@ -57,15 +47,8 @@ void EngineCore::setActiveScene(std::size_t parSceneIndex) {
 }
 
 void EngineCore::renameScene(std::size_t parSceneIndex, std::string parName) {
-  const scene::SceneManager::SceneRecord* scene =
-      m_scene_manager.getScene(parSceneIndex);
-  const bool local_only = scene != nullptr && scene->local_only;
   m_scene_manager.renameScene(parSceneIndex, std::move(parName));
-  if (local_only) {
-    m_local_session_dirty = true;
-  } else {
-    m_project_dirty = true;
-  }
+  m_project_dirty = true;
 }
 
 scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,
@@ -81,20 +64,18 @@ scene::EntityId EngineCore::instantiateAssetAt(std::size_t parAssetIndex,
     requestAssetLoad(parAssetIndex);
   }
 
-  scene::EntityId entity = getActiveScene().world.createEntity(
+  scene::World& world = getActiveScene().world;
+  scene::EntityId entity = world.createEntity(
       m_asset_registry.reserveInstanceName(parAssetIndex));
-  scene::StaticMeshComponent static_mesh;
-  static_mesh.mesh_handle = asset->mesh_handle;
-  static_mesh.asset_library_index = parAssetIndex;
-  static_mesh.local_bounds =
-      document != nullptr ? document->static_model.bounds
-                          : math::makeAssetPlaceholderBounds();
-  getActiveScene().world.setStaticMesh(entity, static_mesh);
+  scene::StaticMeshComponent static_mesh{
+      parAssetIndex, document != nullptr ? document->static_model.bounds
+                                         : math::makeAssetPlaceholderBounds()};
+  world.setStaticMesh(entity, static_mesh);
   if (document != nullptr && !document->skins.empty()) {
     scene::RigComponent rig;
     rig.primitive_skin_matrices.resize(
         document->primitive_skin_bindings.size());
-    getActiveScene().world.setRig(entity, std::move(rig));
+    world.setRig(entity, std::move(rig));
   }
   setEntityPosition(entity, parPosition);
   selectEntity(entity);
@@ -113,12 +94,10 @@ scene::EntityId EngineCore::createCameraEntityAt(
         m_camera_system.getEditorCamera().orientation;
   }
 
-  scene::CameraComponent camera;
-  camera.active = false;
-  camera.vertical_fov_degrees =
-      m_camera_system.getEditorCamera().vertical_fov_degrees;
-  camera.near_plane = m_camera_system.getEditorCamera().near_plane;
-  camera.far_plane = m_camera_system.getEditorCamera().far_plane;
+  const camera::Camera& editor_camera = m_camera_system.getEditorCamera();
+  const scene::CameraComponent camera{editor_camera.vertical_fov_degrees,
+                                      editor_camera.near_plane,
+                                      editor_camera.far_plane};
   getActiveScene().world.setCamera(entity, camera);
   selectEntity(entity);
   markProjectDirty();
@@ -134,12 +113,29 @@ scene::EntityId EngineCore::createPointLightEntityAt(
     record->transform.transform.translation = parPosition;
   }
 
-  scene::LightComponent light;
-  light.type = scene::LightType::Point;
-  getActiveScene().world.setLight(entity, light);
+  getActiveScene().world.setLight(entity, {});
   selectEntity(entity);
   markProjectDirty();
   return entity;
+}
+
+std::expected<EngineCore::CreateFilmCameraResult, std::string>
+EngineCore::createFilmCameraFromView(film::FilmFrame parStartFrame) {
+  const camera::Camera& editor_camera = m_camera_system.getEditorCamera();
+  math::Transform transform;
+  transform.translation = editor_camera.position;
+  transform.rotation = editor_camera.orientation;
+  const film::CapturedCameraState camera{
+      editor_camera.vertical_fov_degrees, editor_camera.near_plane,
+      editor_camera.far_plane};
+  const auto created = createFilmCameraAtomically(
+      getActiveScene(), transform, camera, parStartFrame);
+  if (!created.has_value()) {
+    return std::unexpected(created.error());
+  }
+  markProjectDirty();
+  return CreateFilmCameraResult{created->entity, created->sequence_id,
+                                created->instance_id};
 }
 
 bool EngineCore::deleteEntity(scene::EntityId parEntity) {
@@ -186,9 +182,9 @@ void EngineCore::frameEntity(scene::EntityId parEntity) {
   } else {
     math::Bounds3 point_bounds;
     point_bounds.includePoint(entity->transform.transform.translation -
-                              glm::vec3(ENTITY_HANDLE_EXTENT));
+                              glm::vec3(render::VIEWPORT_ENTITY_HANDLE_EXTENT));
     point_bounds.includePoint(entity->transform.transform.translation +
-                              glm::vec3(ENTITY_HANDLE_EXTENT));
+                              glm::vec3(render::VIEWPORT_ENTITY_HANDLE_EXTENT));
     m_camera_system.frameBounds(point_bounds);
   }
   m_camera_system.getEditorCamera().far_plane = far_plane;
@@ -226,68 +222,54 @@ void EngineCore::frameWorld() {
 
 void EngineCore::setEntityName(scene::EntityId parEntity,
                                std::string parName) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || parName.empty()) {
-    return;
-  }
-
-  entity->name.name = std::move(parName);
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (parName.empty()) return false;
+    entity.name.name = std::move(parName);
+    return true;
+  });
 }
 
 void EngineCore::setEntityPosition(scene::EntityId parEntity,
                                    const glm::vec3& parPosition) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  entity->transform.transform.translation = parPosition;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    entity.transform.transform.translation = parPosition;
+    return true;
+  });
 }
 
 void EngineCore::setEntityTransform(scene::EntityId parEntity,
                                     const math::Transform& parTransform) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr) {
-    return;
-  }
-
-  entity->transform.transform = parTransform;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    entity.transform.transform = parTransform;
+    return true;
+  });
 }
 
 void EngineCore::setEntityCamera(scene::EntityId parEntity,
                                  const scene::CameraComponent& parCamera) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->camera.has_value()) {
-    return;
-  }
-
-  entity->camera = parCamera;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (!entity.camera) return false;
+    entity.camera = parCamera;
+    return true;
+  });
 }
 
 void EngineCore::setStaticMeshVisible(scene::EntityId parEntity,
                                       bool parVisible) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->static_mesh.has_value()) {
-    return;
-  }
-
-  entity->static_mesh->visible = parVisible;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (!entity.static_mesh) return false;
+    entity.static_mesh->visible = parVisible;
+    return true;
+  });
 }
 
 void EngineCore::setLight(scene::EntityId parEntity,
                           const scene::LightComponent& parLight) {
-  scene::EntityRecord* entity = getActiveScene().world.findEntity(parEntity);
-  if (entity == nullptr || !entity->light.has_value()) {
-    return;
-  }
-
-  entity->light = parLight;
-  markProjectDirty();
+  editEntity(*this, parEntity, [&](scene::EntityRecord& entity) {
+    if (!entity.light) return false;
+    entity.light = parLight;
+    return true;
+  });
 }
 
 void EngineCore::setSunLightSettings(
@@ -368,12 +350,16 @@ void EngineCore::setFloorGridVisible(bool parVisible) {
 }
 
 void EngineCore::setFloorGridRadius(int parRadius) {
-  m_render_settings.viewport.floor_grid_radius = std::clamp(parRadius, 8, 1000);
+  m_render_settings.viewport.floor_grid_radius = std::clamp(
+      parRadius, render::MIN_FLOOR_GRID_RADIUS,
+      render::MAX_FLOOR_GRID_RADIUS);
   m_local_session_dirty = true;
 }
 
 void EngineCore::setEditorViewDistance(float parFarPlane) {
-  const float far_plane = std::clamp(parFarPlane, 5.0f, 5000.0f);
+  const float far_plane = std::clamp(
+      parFarPlane, render::MIN_EDITOR_VIEW_DISTANCE,
+      render::MAX_EDITOR_VIEW_DISTANCE);
   m_camera_system.getEditorCamera().far_plane = far_plane;
   markLocalSessionDirty();
 }

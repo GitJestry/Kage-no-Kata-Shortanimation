@@ -1,6 +1,7 @@
 #include "editor/file_browser_dialog.hpp"
 
 #include "assets/asset_path.hpp"
+#include "platform/runtime_paths.hpp"
 
 #include <imgui.h>
 
@@ -10,16 +11,7 @@
 
 namespace {
 
-[[nodiscard]] std::filesystem::path canonicalOrAbsolute(
-    const std::filesystem::path& parPath) {
-  std::error_code error_code;
-  const std::filesystem::path canonical_path =
-      std::filesystem::weakly_canonical(parPath, error_code);
-  if (!error_code) {
-    return canonical_path;
-  }
-  return std::filesystem::absolute(parPath);
-}
+using kage::platform::canonicalOrAbsolute;
 
 [[nodiscard]] std::filesystem::path fallbackDirectory() {
   return canonicalOrAbsolute(std::filesystem::current_path());

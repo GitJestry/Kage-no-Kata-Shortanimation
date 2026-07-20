@@ -5,7 +5,6 @@
 #include <glm/glm.hpp>
 
 #include <algorithm>
-#include <array>
 #include <limits>
 
 namespace kage::math {
@@ -49,16 +48,7 @@ struct ScreenBounds final {
     return screen_bounds;
   }
 
-  const glm::vec3 min = parBounds.min;
-  const glm::vec3 max = parBounds.max;
-  const std::array<glm::vec3, 8> corners = {
-      glm::vec3(min.x, min.y, min.z), glm::vec3(max.x, min.y, min.z),
-      glm::vec3(min.x, max.y, min.z), glm::vec3(max.x, max.y, min.z),
-      glm::vec3(min.x, min.y, max.z), glm::vec3(max.x, min.y, max.z),
-      glm::vec3(min.x, max.y, max.z), glm::vec3(max.x, max.y, max.z),
-  };
-
-  for (const glm::vec3& corner : corners) {
+  for (const glm::vec3& corner : boundsCorners(parBounds)) {
     const ScreenPoint point =
         projectPoint(corner, parViewProjection, parViewportSize);
     if (!point.valid) {

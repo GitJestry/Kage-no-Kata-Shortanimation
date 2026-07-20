@@ -29,10 +29,6 @@ class Animator final {
       const assets::ModelAsset& parAsset, std::size_t parSkinIndex,
       const SkeletonPose& parPose,
       const glm::mat4& parInverseMeshTransform = glm::mat4(1.0f));
-  [[nodiscard]] static std::vector<glm::mat4> buildPrimitiveSkinMatrices(
-      const assets::ModelAsset& parAsset,
-      const assets::StaticPrimitive& parPrimitive,
-      const SkeletonPose& parPose);
 
  private:
   [[nodiscard]] static SkeletonPose makePoseFromLocals(

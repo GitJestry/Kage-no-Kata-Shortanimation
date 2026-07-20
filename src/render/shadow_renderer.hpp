@@ -16,6 +16,12 @@ struct ShadowCaster final {
   std::span<const std::vector<glm::mat4>> skin_matrices;
 };
 
+struct ShadowRenderSettings final {
+  int sun_resolution = 2048;
+  float sun_half_extent = 70.0f;
+  bool render_point_shadows = false;
+};
+
 struct ShadowFrame final {
   bool sun_enabled = false;
   bool reused = false;
@@ -36,16 +42,16 @@ class ShadowRenderer final {
 
   [[nodiscard]] const ShadowFrame& render(
       std::span<const ShadowCaster> parCasters, const camera::Camera& parCamera,
-      const lighting::LightingState& parLighting, int parSunResolution,
-      bool parRenderPointShadows);
+      const lighting::LightingState& parLighting,
+      const ShadowRenderSettings& parSettings);
 
  private:
   [[nodiscard]] std::size_t getInputHash(
       std::span<const ShadowCaster> parCasters, const camera::Camera& parCamera,
-      const lighting::LightingState& parLighting, int parSunResolution,
-      bool parRenderPointShadows) const;
+      const lighting::LightingState& parLighting,
+      const ShadowRenderSettings& parSettings) const;
   void createResources();
-  void resizeSunDepth(int parResolution);
+  [[nodiscard]] bool resizeSunDepth(int parResolution);
   void drawCasters(std::span<const ShadowCaster> parCasters,
                    const glm::mat4& parViewProjection,
                    const glm::vec3* parPointPosition = nullptr,
@@ -57,6 +63,9 @@ class ShadowRenderer final {
   int m_sun_resolution = 0;
   std::size_t m_last_input_hash = 0;
   bool m_has_cached_frame = false;
+  bool m_sun_depth_valid = false;
+  bool m_reported_sun_allocation_error = false;
+  bool m_reported_sun_framebuffer_error = false;
 };
 
 }  // namespace kage::render

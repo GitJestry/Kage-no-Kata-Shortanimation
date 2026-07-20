@@ -57,9 +57,7 @@ void drawLightingPanel(engine::EngineCore& parEngine) {
 
   int active_lights = sun.enabled && sun.intensity > 0.0f ? 1 : 0;
   for (const scene::EntityRecord& entity : parEngine.getWorld().getEntities()) {
-    if (!entity.alive || !entity.light.has_value() ||
-        entity.light->type != scene::LightType::Point ||
-        !entity.light->enabled) {
+    if (!entity.alive || !entity.light.has_value() || !entity.light->enabled) {
       continue;
     }
     ++active_lights;
@@ -68,9 +66,6 @@ void drawLightingPanel(engine::EngineCore& parEngine) {
   ImGui::BeginChild("ActiveLightList", ImVec2(0.0f, 84.0f), true);
   for (const scene::EntityRecord& entity : parEngine.getWorld().getEntities()) {
     if (!entity.alive || !entity.light.has_value()) {
-      continue;
-    }
-    if (entity.light->type != scene::LightType::Point) {
       continue;
     }
     ImGui::Text("%s  Point  %.2f", entity.name.name.c_str(),

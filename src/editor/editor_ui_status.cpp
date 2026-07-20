@@ -15,10 +15,7 @@ constexpr float STATUS_HEIGHT = kage::editor::UI_STATUS_HEIGHT;
 namespace kage::editor {
 
 void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
-                                      const glm::vec2& parViewportSize,
-                                      float parDeltaSeconds,
-                                      unsigned int parFrameCount) {
-  static_cast<void>(parViewportSize);
+                                      float parDeltaSeconds) {
   const UiWorkArea area = getUiWorkArea();
   const ImVec2 size(DIAGNOSTICS_WIDTH, 184.0f);
   const ImVec2 position = clampPanelPosition(
@@ -62,20 +59,11 @@ void EditorUi::drawRuntimeDiagnostics(engine::EngineCore& parEngine,
               static_cast<double>(performance.estimated_texture_bytes) /
                   (1024.0 * 1024.0),
               performance.streaming_work_items);
-  static_cast<void>(parFrameCount);
   trackCurrentPanel();
   ImGui::End();
 }
 
-void EditorUi::drawStatusStrip(
-    engine::EngineCore& parEngine,
-    const PlacementController& parPlacementController,
-    const GizmoController& parGizmoController,
-    const glm::vec2& parViewportSize) {
-  static_cast<void>(parViewportSize);
-  static_cast<void>(parEngine);
-  static_cast<void>(parPlacementController);
-  static_cast<void>(parGizmoController);
+void EditorUi::drawStatusStrip() {
   const UiWorkArea area = getUiWorkArea();
   ImGui::SetNextWindowPos(
       ImVec2(area.position.x, area.position.y + area.size.y - STATUS_HEIGHT),

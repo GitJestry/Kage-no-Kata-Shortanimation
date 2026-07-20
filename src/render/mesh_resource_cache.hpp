@@ -11,10 +11,10 @@ namespace kage::render {
 
 class MeshResourceCache final {
  public:
-  void uploadStaticMesh(assets::AssetRegistry::StaticMeshHandle parHandle,
+  void uploadStaticMesh(std::size_t parAssetIndex,
                         const assets::StaticModel& parModel);
   [[nodiscard]] const GpuMesh* getStaticMesh(
-      assets::AssetRegistry::StaticMeshHandle parHandle) const;
+      std::size_t parAssetIndex) const;
   void clear();
   [[nodiscard]] std::size_t getEstimatedTextureBytes() const;
 
