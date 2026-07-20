@@ -114,6 +114,11 @@ resolveProjectRoot(const std::filesystem::path& parExecutableDirectory) {
     return executable_root;
   }
 
+  std::filesystem::path source_root = canonicalOrAbsolute(std::filesystem::path(KAGE_SOURCE_ROOT));
+  if (isProjectRoot(source_root)) {
+    return source_root;
+  }
+
   if (!root.empty()) {
     return root;
   }

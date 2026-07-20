@@ -16,6 +16,8 @@ include(CTest)
 include(cmake/Sources.cmake)
 include(cmake/PatchGltemplate.cmake)
 
+file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" KAGE_SOURCE_ROOT)
+
 option(KAGE_WARNINGS_AS_ERRORS "Treat project warnings as build failures" OFF)
 option(KAGE_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(KAGE_ENABLE_OPENGL_TESTS "Enable tests that create an OpenGL 4.1 context" OFF)
@@ -97,6 +99,8 @@ target_include_directories(kage_engine_lib SYSTEM PUBLIC
   "${FRAMEWORK_SOURCE_DIR}/src"
   "${FRAMEWORK_BINARY_DIR}/src")
 target_link_libraries(kage_engine_lib PUBLIC framework tinygltf meshoptimizer)
+target_compile_definitions(kage_engine_lib PRIVATE
+  "KAGE_SOURCE_ROOT=\"${KAGE_SOURCE_ROOT}\"")
 kage_apply_project_options(kage_engine_lib)
 
 add_executable(${PROJECT_NAME} src/main.cpp)
