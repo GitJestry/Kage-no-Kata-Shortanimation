@@ -17,14 +17,13 @@ PaintbrushController::PaintbrushController(PaintCallback parPaintCallback)
 void PaintbrushController::setPaintCallback(PaintCallback parPaintCallback) {
   m_paint_callback = std::move(parPaintCallback);
 }
-bool PaintbrushController::processInput(
-    const glm::vec3& parWorldPosition,
-    const kage::input::EditorInputSnapshot& parInput,
-    const PaintbrushSettings& parSettings,
-    const std::vector<std::size_t>& parSelectedAssetIndices) {
-  
-  const bool wants_paint = parInput.left_mouse_pressed || parInput.left_mouse_down ||
-                           parInput.left_mouse_released;
+bool PaintbrushController::processInput(const glm::vec3& parWorldPosition,
+                                        const kage::input::EditorInputSnapshot& parInput,
+                                        const PaintbrushSettings& parSettings,
+                                        const std::vector<std::size_t>& parSelectedAssetIndices) {
+
+  const bool wants_paint =
+      parInput.left_mouse_pressed || parInput.left_mouse_down || parInput.left_mouse_released;
   if (!wants_paint) {
     return false;
   }
@@ -52,20 +51,20 @@ bool PaintbrushController::processInput(
 
       // Define spacing (e.g., a spacing parameter, or default to 50% of brush size)
       // Note: adjust 'brush_spacing' according to what exists in your PaintbrushSettings
-      const float stamp_spacing = (parSettings.brush_spacing > 0.0f) 
-                                  ? parSettings.brush_spacing 
-                                  : static_cast<float>(parSettings.brush_size) * 0.5f;
+      const float stamp_spacing = (parSettings.brush_spacing > 0.0f)
+                                      ? parSettings.brush_spacing
+                                      : static_cast<float>(parSettings.brush_size) * 0.5f;
 
       // If we've dragged far enough, deposit stamps along the vector
       while (m_distance_accumulator >= stamp_spacing) {
         // Interpolate along the movement segment to find the exact stamp coordinate
         float t = 1.0f - (m_distance_accumulator / distance_moved);
         t = glm::clamp(t, 0.0f, 1.0f);
-        
+
         glm::vec3 stamp_pos = glm::mix(m_last_world_position, parWorldPosition, t);
-        
+
         paintStampAt(stamp_pos, parSettings, parSelectedAssetIndices);
-        
+
         // Consume the distance chunk
         m_distance_accumulator -= stamp_spacing;
       }
@@ -88,17 +87,16 @@ void PaintbrushController::resetStroke() {
   m_last_stamp_position = glm::vec3(0.0f);
 }
 
-bool PaintbrushController::paintStampAt(
-    const glm::vec3& parPosition,
-    const PaintbrushSettings& parSettings,
-    const std::vector<std::size_t>& parSelectedAssetIndices) {
+bool PaintbrushController::paintStampAt(const glm::vec3& parPosition,
+                                        const PaintbrushSettings& parSettings,
+                                        const std::vector<std::size_t>& parSelectedAssetIndices) {
   if (parSelectedAssetIndices.empty() || !m_paint_callback) {
     return false;
   }
 
   const std::uint64_t seed = m_stroke_seed + static_cast<std::uint64_t>(m_stamp_index);
-  const auto scatter_results = PaintbrushScatterGenerator::generate(
-      parSettings, parPosition, parSelectedAssetIndices, seed);
+  const auto scatter_results =
+      PaintbrushScatterGenerator::generate(parSettings, parPosition, parSelectedAssetIndices, seed);
   ++m_stamp_index;
 
   for (const auto& result : scatter_results) {
@@ -108,9 +106,7 @@ bool PaintbrushController::paintStampAt(
 }
 
 void PaintbrushController::paintPathSegment(
-    const glm::vec3& parFrom,
-    const glm::vec3& parTo,
-    const PaintbrushSettings& parSettings,
+    const glm::vec3& parFrom, const glm::vec3& parTo, const PaintbrushSettings& parSettings,
     const std::vector<std::size_t>& parSelectedAssetIndices) {
   if (parSelectedAssetIndices.empty()) {
     return;
@@ -146,4 +142,4 @@ float PaintbrushController::getStampSpacing(int parBrushSize) {
   return std::max(kMinimumStampDistance, static_cast<float>(parBrushSize) * 0.5f);
 }
 
-}  // namespace kage::editor
+} // namespace kage::editor

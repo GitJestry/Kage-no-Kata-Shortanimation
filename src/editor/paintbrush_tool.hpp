@@ -11,17 +11,17 @@
 namespace kage::editor {
 
 class PaintbrushTool final {
- public:
+public:
   void drawUi(engine::EngineCore& parEngine);
 
   [[nodiscard]] bool isEnabled() const;
   [[nodiscard]] const PaintbrushSettings& getSettings() const;
   [[nodiscard]] std::vector<std::size_t> getSelectedAssetIndices() const;
 
- private:
+private:
   bool m_enabled = false;
   PaintbrushSettings m_settings;
   std::vector<bool> m_selected_assets;
 };
 
-}  // namespace kage::editor
+} // namespace kage::editor

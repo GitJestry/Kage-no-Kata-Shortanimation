@@ -10,8 +10,8 @@
 namespace kage::editor {
 namespace {
 
-[[nodiscard]] std::string getAssetCapabilityLabel(
-    const kage::assets::AssetRegistry::AssetLibraryEntry& parAsset) {
+[[nodiscard]] std::string
+getAssetCapabilityLabel(const kage::assets::AssetRegistry::AssetLibraryEntry& parAsset) {
   if (!parAsset.document.has_value()) {
     return "model";
   }
@@ -26,7 +26,7 @@ namespace {
   return label;
 }
 
-}  // namespace
+} // namespace
 
 void PaintbrushTool::drawUi(engine::EngineCore& parEngine) {
   ImGui::Checkbox("Enable paintbrush", &m_enabled);
@@ -50,8 +50,7 @@ void PaintbrushTool::drawUi(engine::EngineCore& parEngine) {
   ImGui::TextDisabled("Choose meshes to scatter as procedural foliage");
   for (std::size_t asset_index = 0; asset_index < library.size(); ++asset_index) {
     const auto& asset = library[asset_index];
-    const std::string label = asset.label + "  (" +
-                              getAssetCapabilityLabel(asset) + ")";
+    const std::string label = asset.label + "  (" + getAssetCapabilityLabel(asset) + ")";
     bool selected = m_selected_assets[asset_index];
     ImGui::PushID(static_cast<int>(asset_index));
     if (ImGui::Checkbox(label.c_str(), &selected)) {
@@ -66,15 +65,14 @@ void PaintbrushTool::drawUi(engine::EngineCore& parEngine) {
   ImGui::Checkbox("Randomize scale", &m_settings.randomize_scale);
   ImGui::Checkbox("Randomize rotation", &m_settings.randomize_rotation);
 
-  const std::size_t selected_count = static_cast<std::size_t>(std::count(
-      m_selected_assets.begin(), m_selected_assets.end(), true));
+  const std::size_t selected_count = static_cast<std::size_t>(
+      std::count(m_selected_assets.begin(), m_selected_assets.end(), true));
   if (selected_count == 0) {
     ImGui::TextDisabled("Select at least one mesh to enable painting");
   } else {
     ImGui::TextDisabled("%zu mesh(es) selected", selected_count);
   }
 }
-
 
 bool PaintbrushTool::isEnabled() const {
   return m_enabled;
@@ -87,8 +85,7 @@ const PaintbrushSettings& PaintbrushTool::getSettings() const {
 std::vector<std::size_t> PaintbrushTool::getSelectedAssetIndices() const {
   std::vector<std::size_t> selected_assets;
   selected_assets.reserve(m_selected_assets.size());
-  for (std::size_t asset_index = 0; asset_index < m_selected_assets.size();
-       ++asset_index) {
+  for (std::size_t asset_index = 0; asset_index < m_selected_assets.size(); ++asset_index) {
     if (m_selected_assets[asset_index]) {
       selected_assets.push_back(asset_index);
     }
@@ -96,4 +93,4 @@ std::vector<std::size_t> PaintbrushTool::getSelectedAssetIndices() const {
   return selected_assets;
 }
 
-}  // namespace kage::editor
+} // namespace kage::editor

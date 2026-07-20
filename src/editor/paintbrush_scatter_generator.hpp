@@ -17,12 +17,10 @@ struct PaintbrushScatterResult final {
 };
 
 class PaintbrushScatterGenerator final {
- public:
-  static std::vector<PaintbrushScatterResult> generate(
-      const PaintbrushSettings& parSettings,
-      const glm::vec3& parCenter,
-      const std::vector<std::size_t>& parSelectedAssetIndices,
-      std::uint64_t parSeed);
+public:
+  static std::vector<PaintbrushScatterResult>
+  generate(const PaintbrushSettings& parSettings, const glm::vec3& parCenter,
+           const std::vector<std::size_t>& parSelectedAssetIndices, std::uint64_t parSeed);
 };
 
-}  // namespace kage::editor
+} // namespace kage::editor
