@@ -6,8 +6,8 @@
 #include "editor/text_buffer.hpp"
 #include "editor/ui_layout.hpp"
 
-#include <imgui.h>
 #include <glm/gtc/quaternion.hpp>
+#include <imgui.h>
 
 #include <algorithm>
 #include <array>
@@ -29,26 +29,22 @@ using kage::editor::getUiWorkArea;
 using kage::editor::UiWorkArea;
 
 void requestEntityDeletionConfirmation(kage::editor::ConfirmationDialog& parDialog,
-                         kage::engine::EngineCore& parEngine,
-                         kage::scene::EntityId parEntity,
-                         std::string parEntityName) {
+                                       kage::engine::EngineCore& parEngine,
+                                       kage::scene::EntityId parEntity,
+                                       std::string const& parEntityName) {
   kage::editor::ConfirmationDialog::Request request;
   request.title = "Delete Entity";
-  request.message = "Delete \"" + parEntityName + "\" (id " +
-                    std::to_string(parEntity.value) +
+  request.message = "Delete \"" + parEntityName + "\" (id " + std::to_string(parEntity.value) +
                     ")? This cannot be undone.";
   request.confirm_text = "Delete";
   request.cancel_text = "Cancel";
   request.destructive = true;
-  request.on_confirm = [&parEngine, parEntity]() {
-    parEngine.deleteEntity(parEntity);
-  };
+  request.on_confirm = [&parEngine, parEntity]() { parEngine.deleteEntity(parEntity); };
   parDialog.request(std::move(request));
 }
 
 void drawVector3(const char* parLabel, const glm::vec3& parValue) {
-  ImGui::Text("%s: %.3f, %.3f, %.3f", parLabel, parValue.x, parValue.y,
-              parValue.z);
+  ImGui::Text("%s: %.3f, %.3f, %.3f", parLabel, parValue.x, parValue.y, parValue.z);
 }
 
 bool drawPositionRotation(glm::vec3& parPosition, glm::quat& parRotation) {
@@ -56,8 +52,7 @@ bool drawPositionRotation(glm::vec3& parPosition, glm::quat& parRotation) {
   ImGui::SetNextItemWidth(-1.0f);
   bool changed = ImGui::DragFloat3("##PositionXYZ", &parPosition.x, 0.05f);
 
-  glm::vec3 rotation_degrees =
-      glm::degrees(glm::eulerAngles(parRotation));
+  glm::vec3 rotation_degrees = glm::degrees(glm::eulerAngles(parRotation));
   ImGui::TextDisabled("Rotation  X        Y        Z");
   ImGui::SetNextItemWidth(-1.0f);
   if (ImGui::DragFloat3("##RotationXYZ", &rotation_degrees.x, 0.5f)) {
@@ -67,15 +62,12 @@ bool drawPositionRotation(glm::vec3& parPosition, glm::quat& parRotation) {
   return changed;
 }
 
-template <typename Camera>
-bool drawCameraLens(Camera& parCamera) {
+template <typename Camera> bool drawCameraLens(Camera& parCamera) {
   bool changed = false;
-  changed |= ImGui::DragFloat("Field of view", &parCamera.vertical_fov_degrees,
-                              0.2f, 10.0f, 120.0f);
-  changed |= ImGui::DragFloat("Near", &parCamera.near_plane, 0.001f, 0.001f,
-                              10.0f);
-  changed |= ImGui::DragFloat("Far", &parCamera.far_plane, 0.5f, 1.0f,
-                              5000.0f);
+  changed |=
+      ImGui::DragFloat("Field of view", &parCamera.vertical_fov_degrees, 0.2f, 10.0f, 120.0f);
+  changed |= ImGui::DragFloat("Near", &parCamera.near_plane, 0.001f, 0.001f, 10.0f);
+  changed |= ImGui::DragFloat("Far", &parCamera.far_plane, 0.5f, 1.0f, 5000.0f);
   return changed;
 }
 
@@ -83,17 +75,14 @@ bool drawTransformControls(kage::engine::EngineCore& parEngine,
                            const kage::scene::EntityRecord& parEntity,
                            kage::math::Transform& parTransform) {
   bool changed = false;
-  changed |= drawPositionRotation(parTransform.translation,
-                                  parTransform.rotation);
+  changed |= drawPositionRotation(parTransform.translation, parTransform.rotation);
 
   ImGui::TextDisabled("Scale     X        Y        Z");
   ImGui::SetNextItemWidth(-1.0f);
-  changed |= ImGui::DragFloat3("##ScaleXYZ", &parTransform.scale.x, 0.02f,
-                               0.001f, 100.0f);
+  changed |= ImGui::DragFloat3("##ScaleXYZ", &parTransform.scale.x, 0.02f, 0.001f, 100.0f);
 
   if (ImGui::Button("Ground Position")) {
-    const kage::math::Bounds3 bounds =
-        parEngine.getEntityWorldBounds(parEntity.id);
+    const kage::math::Bounds3 bounds = parEngine.getEntityWorldBounds(parEntity.id);
     if (bounds.is_valid && parEntity.static_mesh.has_value()) {
       parTransform.translation.y -= bounds.min.y;
     } else {
@@ -114,8 +103,8 @@ bool drawTransformControls(kage::engine::EngineCore& parEngine,
   return changed;
 }
 
-[[nodiscard]] std::string getAssetCapabilityLabel(
-    const kage::assets::AssetRegistry::AssetLibraryEntry& parAsset) {
+[[nodiscard]] std::string
+getAssetCapabilityLabel(const kage::assets::AssetRegistry::AssetLibraryEntry& parAsset) {
   if (!parAsset.document.has_value()) {
     return "model";
   }
@@ -130,16 +119,26 @@ bool drawTransformControls(kage::engine::EngineCore& parEngine,
   return label;
 }
 
-}  // namespace
+} // namespace
 
 namespace kage::editor {
 
-void EditorUi::draw(engine::EngineCore& parEngine,
-                    EditorSession& parSession,
+bool EditorUi::isPaintbrushEnabled() const {
+  return m_paintbrush_tool.isEnabled();
+}
+
+std::vector<std::size_t> EditorUi::getPaintbrushSelectedAssetIndices() const {
+  return m_paintbrush_tool.getSelectedAssetIndices();
+}
+
+const PaintbrushSettings& EditorUi::getPaintbrushSettings() const {
+  return m_paintbrush_tool.getSettings();
+}
+
+void EditorUi::draw(engine::EngineCore& parEngine, EditorSession& parSession,
                     PlacementController& parPlacementController,
                     SelectionController& parSelectionController,
-                    GizmoController& parGizmoController,
-                    ConfirmationDialog& parConfirmationDialog,
+                    GizmoController& parGizmoController, ConfirmationDialog& parConfirmationDialog,
                     float parDeltaSeconds) {
   applyStyle();
   beginPanelTracking();
@@ -150,8 +149,7 @@ void EditorUi::draw(engine::EngineCore& parEngine,
   drawTopBar(parEngine, parSession);
   const bool world_edit = parSession.workspace == Workspace::WorldEdit;
   if (world_edit && m_panel_visible) {
-    drawLeftPanel(parEngine, parPlacementController, parSelectionController,
-                  parConfirmationDialog);
+    drawLeftPanel(parEngine, parPlacementController, parSelectionController, parConfirmationDialog);
   } else if (world_edit) {
     drawHiddenPanelButton();
   }
@@ -167,8 +165,7 @@ void EditorUi::draw(engine::EngineCore& parEngine,
   if (parSession.workspace == Workspace::Movie) {
     std::vector<UiPanelRect> movie_rects =
         drawMovieEditorPanel(parEngine, parSession, parSession.movie_layout);
-    m_panel_rects.insert(m_panel_rects.end(), movie_rects.begin(),
-                         movie_rects.end());
+    m_panel_rects.insert(m_panel_rects.end(), movie_rects.begin(), movie_rects.end());
   }
 
   if (world_edit) {
@@ -183,33 +180,28 @@ void EditorUi::computeMovieEditorLayout(EditorSession& parSession) {
   }
   const UiWorkArea area = getUiWorkArea();
   parSession.movie_layout = kage::editor::computeMovieEditorLayout(
-      glm::vec2(area.position.x, area.position.y),
-      glm::vec2(area.size.x, area.size.y), parSession.film_editor_height);
+      glm::vec2(area.position.x, area.position.y), glm::vec2(area.size.x, area.size.y),
+      parSession.film_editor_height);
   parSession.film_editor_height =
-      parSession.movie_layout.timeline.max.y -
-      parSession.movie_layout.timeline.min.y;
+      parSession.movie_layout.timeline.max.y - parSession.movie_layout.timeline.min.y;
   m_movie_layout_computed = true;
 }
 
-void EditorUi::drawTopBar(engine::EngineCore& parEngine,
-                          EditorSession& parSession) {
+void EditorUi::drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession) {
   const UiWorkArea area = getUiWorkArea();
   constexpr float WORKSPACE_WIDTH = 206.0f;
   ImGui::SetNextWindowPos(
-      ImVec2(area.position.x + (area.size.x - WORKSPACE_WIDTH) * 0.5f,
-             area.position.y + 12.0f),
+      ImVec2(area.position.x + (area.size.x - WORKSPACE_WIDTH) * 0.5f, area.position.y + 12.0f),
       ImGuiCond_Always);
   ImGui::SetNextWindowSize(ImVec2(WORKSPACE_WIDTH, 0.0f), ImGuiCond_Always);
   ImGui::SetNextWindowBgAlpha(0.92f);
   ImGui::Begin("WorkspaceStrip", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                   ImGuiWindowFlags_AlwaysAutoResize |
-                   ImGuiWindowFlags_NoSavedSettings);
+                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
   const auto workspace_button = [&](const char* label, Workspace workspace) {
     const bool active = parSession.workspace == workspace;
     if (active) {
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(0.18f, 0.42f, 0.68f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.42f, 0.68f, 1.0f));
     }
     if (ImGui::Button(label, ImVec2(87.0f, 24.0f)) && !active) {
       parSession.workspace = workspace;
@@ -236,21 +228,15 @@ void EditorUi::drawTopBar(engine::EngineCore& parEngine,
     mode_left = movie_layout.viewport.min.x;
     mode_right = movie_layout.viewport.max.x;
   }
-  const float mode_x =
-      std::max(mode_right - WIDTH - 12.0f, mode_left + 12.0f);
-  const float workspace_right =
-      area.position.x + (area.size.x + WORKSPACE_WIDTH) * 0.5f;
-  const float mode_y = mode_x < workspace_right + 12.0f
-                           ? area.position.y + 58.0f
-                           : area.position.y + 12.0f;
-  ImGui::SetNextWindowPos(ImVec2(
-                              mode_x, mode_y),
-                          ImGuiCond_Always);
+  const float mode_x = std::max(mode_right - WIDTH - 12.0f, mode_left + 12.0f);
+  const float workspace_right = area.position.x + (area.size.x + WORKSPACE_WIDTH) * 0.5f;
+  const float mode_y =
+      mode_x < workspace_right + 12.0f ? area.position.y + 58.0f : area.position.y + 12.0f;
+  ImGui::SetNextWindowPos(ImVec2(mode_x, mode_y), ImGuiCond_Always);
   ImGui::SetNextWindowBgAlpha(0.88f);
   ImGui::Begin("ViewportModeStrip", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                   ImGuiWindowFlags_AlwaysAutoResize |
-                   ImGuiWindowFlags_NoSavedSettings);
+                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
   trackCurrentPanel();
   struct ModeButton {
     const char* label;
@@ -258,13 +244,10 @@ void EditorUi::drawTopBar(engine::EngineCore& parEngine,
     render::ViewportMode mode;
   };
   constexpr std::array<ModeButton, 4> MODES{{
-      {"Bounds", "Bounds only: fastest navigation",
-       render::ViewportMode::Bounds},
+      {"Bounds", "Bounds only: fastest navigation", render::ViewportMode::Bounds},
       {"Solid", "Untextured solid viewport", render::ViewportMode::Solid},
-      {"Material", "Material preview",
-       render::ViewportMode::Material},
-      {"Final", "Full material and lighting preview",
-       render::ViewportMode::Final},
+      {"Material", "Material preview", render::ViewportMode::Material},
+      {"Final", "Full material and lighting preview", render::ViewportMode::Final},
   }};
   for (std::size_t index = 0; index < MODES.size(); ++index) {
     if (index != 0) {
@@ -272,8 +255,7 @@ void EditorUi::drawTopBar(engine::EngineCore& parEngine,
     }
     const bool active = parEngine.getViewportMode() == MODES[index].mode;
     if (active) {
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(0.18f, 0.42f, 0.68f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.42f, 0.68f, 1.0f));
     }
     if (ImGui::SmallButton(MODES[index].label)) {
       parEngine.setViewportMode(MODES[index].mode);
@@ -335,25 +317,19 @@ void EditorUi::beginPanelTracking() {
 void EditorUi::trackCurrentPanel() {
   const ImVec2 min = ImGui::GetWindowPos();
   const ImVec2 size = ImGui::GetWindowSize();
-  m_panel_rects.push_back(
-      {glm::vec2(min.x, min.y), glm::vec2(min.x + size.x, min.y + size.y)});
+  m_panel_rects.push_back({glm::vec2(min.x, min.y), glm::vec2(min.x + size.x, min.y + size.y)});
 }
 
-void EditorUi::clampCurrentPanel(const char* parPanelName,
-                                 bool parKeepAboveStatusStrip) {
+void EditorUi::clampCurrentPanel(const char* parPanelName, bool parKeepAboveStatusStrip) {
   const UiWorkArea area = getUiWorkArea();
-  const ImVec2 size = clampPanelSize(area, ImGui::GetWindowSize(),
-                                    parKeepAboveStatusStrip);
-  if (size.x != ImGui::GetWindowSize().x ||
-      size.y != ImGui::GetWindowSize().y) {
+  const ImVec2 size = clampPanelSize(area, ImGui::GetWindowSize(), parKeepAboveStatusStrip);
+  if (size.x != ImGui::GetWindowSize().x || size.y != ImGui::GetWindowSize().y) {
     ImGui::SetWindowSize(parPanelName, size, ImGuiCond_Always);
   }
 
-  const ImVec2 position = clampPanelPosition(
-      area, ImGui::GetWindowPos(), ImGui::GetWindowSize(),
-      parKeepAboveStatusStrip);
-  if (position.x != ImGui::GetWindowPos().x ||
-      position.y != ImGui::GetWindowPos().y) {
+  const ImVec2 position = clampPanelPosition(area, ImGui::GetWindowPos(), ImGui::GetWindowSize(),
+                                             parKeepAboveStatusStrip);
+  if (position.x != ImGui::GetWindowPos().x || position.y != ImGui::GetWindowPos().y) {
     ImGui::SetWindowPos(parPanelName, position, ImGuiCond_Always);
   }
 }
@@ -362,8 +338,7 @@ void EditorUi::drawHiddenPanelButton(bool parInspector) {
   const UiWorkArea area = getUiWorkArea();
   const ImVec2 position = parInspector
                               ? ImVec2(area.position.x + area.size.x - 132.0f,
-                                       area.position.y + area.size.y -
-                                           STATUS_HEIGHT - 52.0f)
+                                       area.position.y + area.size.y - STATUS_HEIGHT - 52.0f)
                               : area.position;
   ImGui::SetNextWindowPos(position, ImGuiCond_Always);
   if (!parInspector) {
@@ -371,8 +346,7 @@ void EditorUi::drawHiddenPanelButton(bool parInspector) {
   }
   ImGui::Begin(parInspector ? "InspectorFold" : "EditorPanelToggle", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                   (parInspector ? ImGuiWindowFlags_AlwaysAutoResize
-                                 : ImGuiWindowFlags_NoResize) |
+                   (parInspector ? ImGuiWindowFlags_AlwaysAutoResize : ImGuiWindowFlags_NoResize) |
                    ImGuiWindowFlags_NoSavedSettings);
   if (ImGui::Button(parInspector ? "Inspector" : "Editor",
                     ImVec2(parInspector ? 104.0f : 92.0f, 24.0f))) {
@@ -389,11 +363,9 @@ void EditorUi::drawLeftPanel(engine::EngineCore& parEngine,
   const UiWorkArea area = getUiWorkArea();
   const float panel_height = std::max(320.0f, area.size.y - STATUS_HEIGHT);
   ImGui::SetNextWindowPos(area.position, ImGuiCond_Always);
-  ImGui::SetNextWindowSize(
-      ImVec2(LEFT_PANEL_WIDTH, panel_height),
-      ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSizeConstraints(
-      ImVec2(280.0f, panel_height), ImVec2(area.size.x, panel_height));
+  ImGui::SetNextWindowSize(ImVec2(LEFT_PANEL_WIDTH, panel_height), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(280.0f, panel_height),
+                                      ImVec2(area.size.x, panel_height));
   if (!ImGui::Begin("Editor", &m_panel_visible,
                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove)) {
     trackCurrentPanel();
@@ -406,6 +378,9 @@ void EditorUi::drawLeftPanel(engine::EngineCore& parEngine,
   drawOutliner(parEngine, parSelectionController, parConfirmationDialog);
   if (ImGui::CollapsingHeader("Add")) {
     drawCreationPalette(parEngine, parPlacementController);
+  }
+  if (ImGui::CollapsingHeader("Paintbrush")) {
+    drawPaintbrushPalette(parEngine);
   }
   if (ImGui::CollapsingHeader("World")) {
     drawWorldControls(parEngine);
@@ -420,15 +395,12 @@ void EditorUi::drawSceneControls(engine::EngineCore& parEngine,
                                  ConfirmationDialog& parConfirmationDialog) {
   const auto scenes = parEngine.getScenes();
   const std::size_t active_scene = parEngine.getActiveSceneIndex();
-  const char* scene_name = active_scene < scenes.size()
-                               ? scenes[active_scene].name.c_str()
-                               : "No scene";
+  const char* scene_name =
+      active_scene < scenes.size() ? scenes[active_scene].name.c_str() : "No scene";
   ImGui::SetNextItemWidth(-86.0f);
   if (ImGui::BeginCombo("##Scene", scene_name)) {
-    for (std::size_t scene_index = 0; scene_index < scenes.size();
-         ++scene_index) {
-      if (ImGui::Selectable(scenes[scene_index].name.c_str(),
-                            scene_index == active_scene)) {
+    for (std::size_t scene_index = 0; scene_index < scenes.size(); ++scene_index) {
+      if (ImGui::Selectable(scenes[scene_index].name.c_str(), scene_index == active_scene)) {
         parEngine.setActiveScene(scene_index);
         m_scene_name_buffer_index = static_cast<std::size_t>(-1);
       }
@@ -447,16 +419,13 @@ void EditorUi::drawSceneControls(engine::EngineCore& parEngine,
   }
   refreshSceneNameBuffer(parEngine);
   ImGui::SetNextItemWidth(160.0f);
-  if (ImGui::InputText("Scene name", m_scene_name_buffer.data(),
-                       m_scene_name_buffer.size())) {
-    parEngine.renameScene(parEngine.getActiveSceneIndex(),
-                          m_scene_name_buffer.data());
+  if (ImGui::InputText("Scene name", m_scene_name_buffer.data(), m_scene_name_buffer.size())) {
+    parEngine.renameScene(parEngine.getActiveSceneIndex(), m_scene_name_buffer.data());
   }
   if (scenes.size() > 1 && ImGui::SmallButton("Delete current scene")) {
     ConfirmationDialog::Request request;
     request.title = "Delete Scene";
-    request.message = "Delete scene \"" + std::string(scene_name) +
-                      "\"? This cannot be undone.";
+    request.message = "Delete scene \"" + std::string(scene_name) + "\"? This cannot be undone.";
     request.confirm_text = "Delete";
     request.cancel_text = "Cancel";
     request.destructive = true;
@@ -468,9 +437,8 @@ void EditorUi::drawSceneControls(engine::EngineCore& parEngine,
   }
 }
 
-void EditorUi::drawCreationPalette(
-    engine::EngineCore& parEngine,
-    PlacementController& parPlacementController) {
+void EditorUi::drawCreationPalette(engine::EngineCore& parEngine,
+                                   PlacementController& parPlacementController) {
   ImGui::TextUnformatted("Create");
   if (ImGui::Button("Camera", ImVec2(-1.0f, 0.0f))) {
     parPlacementController.beginCamera(parEngine);
@@ -483,13 +451,10 @@ void EditorUi::drawCreationPalette(
                                    ? library[m_selected_asset_index].label.c_str()
                                    : "Choose model";
   if (ImGui::BeginCombo("Model", selected_asset)) {
-    for (std::size_t asset_index = 0; asset_index < library.size();
-         ++asset_index) {
+    for (std::size_t asset_index = 0; asset_index < library.size(); ++asset_index) {
       const auto& asset = library[asset_index];
-      const std::string label = asset.label + "  (" +
-          getAssetCapabilityLabel(asset) + ")";
-      if (ImGui::Selectable(label.c_str(),
-                            asset_index == m_selected_asset_index)) {
+      const std::string label = asset.label + "  (" + getAssetCapabilityLabel(asset) + ")";
+      if (ImGui::Selectable(label.c_str(), asset_index == m_selected_asset_index)) {
         m_selected_asset_index = asset_index;
         parPlacementController.beginStaticAsset(parEngine, asset_index);
       }
@@ -497,14 +462,15 @@ void EditorUi::drawCreationPalette(
     ImGui::EndCombo();
   }
   if (ImGui::Button("Import Model...", ImVec2(-1.0f, 0.0f))) {
-    m_model_import_browser.open("Import Model",
-                                parEngine.getRuntimePaths().getModelDirectory());
+    m_model_import_browser.open("Import Model", parEngine.getRuntimePaths().getModelDirectory());
   }
   if (!m_model_import_error.empty()) {
     ImGui::TextWrapped("Import error: %s", m_model_import_error.c_str());
   }
 }
-
+void EditorUi::drawPaintbrushPalette(engine::EngineCore& parEngine) {
+  m_paintbrush_tool.drawUi(parEngine);
+}
 void EditorUi::drawWorldControls(engine::EngineCore& parEngine) {
   ImGui::TextUnformatted("World");
   if (ImGui::Button("Frame World", ImVec2(-1.0f, 0.0f))) {
@@ -516,8 +482,7 @@ void EditorUi::drawWorldControls(engine::EngineCore& parEngine) {
     parEngine.setSkyPreset(static_cast<render::SkyPreset>(sky_preset));
   }
 
-  render::EnvironmentSettings environment =
-      parEngine.getEnvironmentSettings();
+  render::EnvironmentSettings environment = parEngine.getEnvironmentSettings();
   const auto environments = parEngine.getEnvironmentAssets();
   const char* selected_environment = "None";
   for (const assets::EnvironmentAsset& asset : environments) {
@@ -545,35 +510,33 @@ void EditorUi::drawWorldControls(engine::EngineCore& parEngine) {
   ImGui::InputText("Panorama label", m_panorama_import_label_buffer.data(),
                    m_panorama_import_label_buffer.size());
   if (ImGui::Button("Import Panorama", ImVec2(-1.0f, 0.0f))) {
-    m_panorama_import_browser.open(
-        "Import Panorama", parEngine.getRuntimePaths().getTexturePath(""),
-        FileBrowserFilter::Panorama);
+    m_panorama_import_browser.open("Import Panorama",
+                                   parEngine.getRuntimePaths().getTexturePath(""),
+                                   FileBrowserFilter::Panorama);
   }
   if (!m_panorama_import_error.empty()) {
     ImGui::TextWrapped("%s", m_panorama_import_error.c_str());
   }
   switch (parEngine.getEnvironmentLoadState()) {
-    case render::EnvironmentLoadState::None:
-      break;
-    case render::EnvironmentLoadState::Loading:
-      ImGui::TextDisabled("Loading panorama...");
-      break;
-    case render::EnvironmentLoadState::Ready:
-      ImGui::TextDisabled("Panorama ready");
-      break;
-    case render::EnvironmentLoadState::Error:
-      ImGui::TextWrapped("Panorama error: %s",
-                         parEngine.getEnvironmentError().c_str());
-      break;
+  case render::EnvironmentLoadState::None:
+    break;
+  case render::EnvironmentLoadState::Loading:
+    ImGui::TextDisabled("Loading panorama...");
+    break;
+  case render::EnvironmentLoadState::Ready:
+    ImGui::TextDisabled("Panorama ready");
+    break;
+  case render::EnvironmentLoadState::Error:
+    ImGui::TextWrapped("Panorama error: %s", parEngine.getEnvironmentError().c_str());
+    break;
   }
+  environment_changed |= ImGui::Checkbox("Panorama visible", &environment.visible);
   environment_changed |=
-      ImGui::Checkbox("Panorama visible", &environment.visible);
-  environment_changed |= ImGui::DragFloat(
-      "Panorama intensity", &environment.intensity, 0.02f, 0.0f, 20.0f);
-  environment_changed |= ImGui::DragFloat(
-      "Panorama yaw", &environment.yaw_degrees, 0.5f, -360.0f, 360.0f);
+      ImGui::DragFloat("Panorama intensity", &environment.intensity, 0.02f, 0.0f, 20.0f);
+  environment_changed |=
+      ImGui::DragFloat("Panorama yaw", &environment.yaw_degrees, 0.5f, -360.0f, 360.0f);
   if (environment_changed) {
-    parEngine.setEnvironmentSettings(std::move(environment));
+    parEngine.setEnvironmentSettings(environment);
   }
 
   bool floor_visible = parEngine.isFloorGridVisible();
@@ -581,14 +544,12 @@ void EditorUi::drawWorldControls(engine::EngineCore& parEngine) {
     parEngine.setFloorGridVisible(floor_visible);
   }
   int grid_radius = parEngine.getFloorGridRadius();
-  if (ImGui::DragInt("Grid radius", &grid_radius, 1.0f,
-                     render::MIN_FLOOR_GRID_RADIUS,
+  if (ImGui::DragInt("Grid radius", &grid_radius, 1.0f, render::MIN_FLOOR_GRID_RADIUS,
                      render::MAX_FLOOR_GRID_RADIUS)) {
     parEngine.setFloorGridRadius(grid_radius);
   }
   float view_distance = parEngine.getEditorViewDistance();
-  if (ImGui::DragFloat("View distance", &view_distance, 2.0f,
-                       render::MIN_EDITOR_VIEW_DISTANCE,
+  if (ImGui::DragFloat("View distance", &view_distance, 2.0f, render::MIN_EDITOR_VIEW_DISTANCE,
                        render::MAX_EDITOR_VIEW_DISTANCE)) {
     parEngine.setEditorViewDistance(view_distance);
   }
@@ -604,8 +565,7 @@ void EditorUi::drawOutliner(engine::EngineCore& parEngine,
   }
   ImGui::BeginChild("WorldHierarchyScroll", ImVec2(0.0f, 220.0f), true);
   if (ImGui::BeginTable("WorldHierarchyTable", 3,
-                        ImGuiTableFlags_RowBg |
-                            ImGuiTableFlags_SizingStretchProp)) {
+                        ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
     ImGui::TableSetupColumn("Entity");
     ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 68.0f);
     ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 38.0f);
@@ -623,15 +583,13 @@ void EditorUi::drawOutliner(engine::EngineCore& parEngine,
       if (ImGui::Selectable(entity.name.name.c_str(), selected,
                             ImGuiSelectableFlags_SpanAllColumns |
                                 ImGuiSelectableFlags_AllowDoubleClick)) {
-        const bool frame_entity =
-            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
-        parSelectionController.selectFromOutliner(parEngine, entity.id,
-                                                  frame_entity);
+        const bool frame_entity = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+        parSelectionController.selectFromOutliner(parEngine, entity.id, frame_entity);
       }
       if (ImGui::BeginPopupContextItem("EntityActions")) {
         if (ImGui::MenuItem("Delete")) {
-          requestEntityDeletionConfirmation(parConfirmationDialog, parEngine,
-                                              entity.id, entity.name.name);
+          requestEntityDeletionConfirmation(parConfirmationDialog, parEngine, entity.id,
+                                            entity.name.name);
         }
         ImGui::EndPopup();
       }
@@ -650,10 +608,9 @@ void EditorUi::drawOutliner(engine::EngineCore& parEngine,
     ImGui::BeginDisabled();
   }
   pushDestructiveButtonStyle();
-  if (ImGui::Button("Delete Selected", ImVec2(-1.0f, 28.0f)) &&
-      selected != nullptr) {
-    requestEntityDeletionConfirmation(parConfirmationDialog, parEngine,
-                                       selected->id, selected->name.name);
+  if (ImGui::Button("Delete Selected", ImVec2(-1.0f, 28.0f)) && selected != nullptr) {
+    requestEntityDeletionConfirmation(parConfirmationDialog, parEngine, selected->id,
+                                      selected->name.name);
   }
   popDestructiveButtonStyle();
   if (selected == nullptr) {
@@ -661,32 +618,27 @@ void EditorUi::drawOutliner(engine::EngineCore& parEngine,
   }
 }
 
-void EditorUi::drawInspector(engine::EngineCore& parEngine,
-                             GizmoController& parGizmoController,
+void EditorUi::drawInspector(engine::EngineCore& parEngine, GizmoController& parGizmoController,
                              ConfirmationDialog& parConfirmationDialog) {
   const UiWorkArea area = getUiWorkArea();
-  const ImVec2 size = clampPanelSize(
-      area, ImVec2(INSPECTOR_WIDTH, INSPECTOR_HEIGHT), true);
-  const ImVec2 position = clampPanelPosition(
-      area,
-      ImVec2(area.position.x + area.size.x - size.x,
-             area.position.y + area.size.y - STATUS_HEIGHT - size.y),
-      size, true);
-  ImGui::SetNextWindowPos(
-      position, ImGuiCond_Always);
+  const ImVec2 size = clampPanelSize(area, ImVec2(INSPECTOR_WIDTH, INSPECTOR_HEIGHT), true);
+  const ImVec2 position =
+      clampPanelPosition(area,
+                         ImVec2(area.position.x + area.size.x - size.x,
+                                area.position.y + area.size.y - STATUS_HEIGHT - size.y),
+                         size, true);
+  ImGui::SetNextWindowPos(position, ImGuiCond_Always);
   ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-  const bool inspector_open =
-      ImGui::Begin("Inspector", &m_inspector_visible,
-                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
-                       ImGuiWindowFlags_NoResize);
+  const bool inspector_open = ImGui::Begin("Inspector", &m_inspector_visible,
+                                           ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
+                                               ImGuiWindowFlags_NoResize);
   if (!inspector_open) {
     trackCurrentPanel();
     ImGui::End();
     return;
   }
 
-  scene::EntityRecord* entity =
-      parEngine.getWorld().findEntity(parEngine.getSelectedEntity());
+  scene::EntityRecord* entity = parEngine.getWorld().findEntity(parEngine.getSelectedEntity());
   if (entity == nullptr) {
     camera::Camera& camera = parEngine.getCameraSystem().getEditorCamera();
     ImGui::TextUnformatted("Editor Camera");
@@ -715,31 +667,28 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
   refreshEntityNameBuffer(*entity);
   ImGui::Text("ID %u  |  %s", entity->id.value, getEntityTypeLabel(*entity));
   ImGui::SetNextItemWidth(-1.0f);
-  if (ImGui::InputText("Name", m_entity_name_buffer.data(),
-                       m_entity_name_buffer.size())) {
+  if (ImGui::InputText("Name", m_entity_name_buffer.data(), m_entity_name_buffer.size())) {
     parEngine.setEntityName(entity->id, m_entity_name_buffer.data());
   }
   pushDestructiveButtonStyle();
   if (ImGui::Button("Delete", ImVec2(-1.0f, 0.0f))) {
     requestEntityDeletionConfirmation(parConfirmationDialog, parEngine, entity->id,
-                        entity->name.name);
+                                      entity->name.name);
   }
   popDestructiveButtonStyle();
 
   if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
     int gizmo_mode = static_cast<int>(parGizmoController.getMode());
     if (ImGui::Combo("Gizmo", &gizmo_mode, "Move\0Scale\0Rotate\0")) {
-      parGizmoController.setMode(
-          static_cast<GizmoController::TransformMode>(gizmo_mode));
+      parGizmoController.setMode(static_cast<GizmoController::TransformMode>(gizmo_mode));
     }
     int axis_space = static_cast<int>(parGizmoController.getAxisSpace());
     if (ImGui::Combo("Axis space", &axis_space, "Local\0World\0")) {
-      parGizmoController.setAxisSpace(
-          static_cast<GizmoController::AxisSpace>(axis_space));
-      parEngine.setGizmoAxisSpace(
-          parGizmoController.getAxisSpace() == GizmoController::AxisSpace::World
-              ? render::GizmoAxisSpace::World
-              : render::GizmoAxisSpace::Local);
+      parGizmoController.setAxisSpace(static_cast<GizmoController::AxisSpace>(axis_space));
+      parEngine.setGizmoAxisSpace(parGizmoController.getAxisSpace() ==
+                                          GizmoController::AxisSpace::World
+                                      ? render::GizmoAxisSpace::World
+                                      : render::GizmoAxisSpace::Local);
     }
     math::Transform edited_transform = entity->transform.transform;
     if (drawTransformControls(parEngine, *entity, edited_transform)) {
@@ -759,31 +708,25 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
     }
     drawVector3("Local bounds", entity->static_mesh->local_bounds.getSize());
     const assets::StaticModel* source =
-        parEngine.getStaticMeshSource(
-            entity->static_mesh->asset_library_index);
+        parEngine.getStaticMeshSource(entity->static_mesh->asset_library_index);
     if (source != nullptr) {
-      int material_debug_mode =
-          static_cast<int>(parEngine.getMaterialDebugMode());
+      int material_debug_mode = static_cast<int>(parEngine.getMaterialDebugMode());
       if (ImGui::Combo("Material view", &material_debug_mode,
                        "Lit\0Base Color\0Normal\0Roughness\0Metallic\0UV\0")) {
-        parEngine.setMaterialDebugMode(
-            static_cast<render::MaterialDebugMode>(material_debug_mode));
+        parEngine.setMaterialDebugMode(static_cast<render::MaterialDebugMode>(material_debug_mode));
       }
-      ImGui::Text("Source: %s",
-                  source->source_path.filename().string().c_str());
+      ImGui::Text("Source: %s", source->source_path.filename().string().c_str());
       ImGui::Text("Primitives: %zu", source->stats.primitive_count);
       ImGui::Text("Vertices: %zu", source->stats.vertex_count);
       ImGui::Text("Materials: %zu", source->stats.material_count);
       ImGui::Text("Textures: %zu", source->stats.texture_count);
       if (entity->rig.has_value()) {
-        ImGui::Text("Rig: skins %zu, joints %zu, clips %zu",
-                    source->stats.skin_count, source->stats.joint_count,
-                    source->stats.animation_count);
+        ImGui::Text("Rig: skins %zu, joints %zu, clips %zu", source->stats.skin_count,
+                    source->stats.joint_count, source->stats.animation_count);
         ImGui::TextDisabled("Playback is controlled in the Movie Editor");
       }
       if (!source->import_warning.empty()) {
-        ImGui::TextWrapped("Import warning: %s",
-                           source->import_warning.c_str());
+        ImGui::TextWrapped("Import warning: %s", source->import_warning.c_str());
       }
     }
   }
@@ -804,10 +747,8 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
     changed |= ImGui::Checkbox("Enabled", &light.enabled);
     changed |= ImGui::Checkbox("Cast shadows", &light.casts_shadows);
     changed |= ImGui::ColorEdit3("Color", &light.color.x);
-    changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.02f, 0.0f,
-                                50.0f);
-    changed |= ImGui::DragFloat("Range", &light.range, 0.1f, 0.1f,
-                                200.0f);
+    changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.02f, 0.0f, 50.0f);
+    changed |= ImGui::DragFloat("Range", &light.range, 0.1f, 0.1f, 200.0f);
     if (changed) {
       parEngine.setLight(entity->id, light);
     }
@@ -819,8 +760,7 @@ void EditorUi::drawInspector(engine::EngineCore& parEngine,
 
 void EditorUi::drawImportDialogs(engine::EngineCore& parEngine,
                                  PlacementController& parPlacementController) {
-  if (const std::optional<std::filesystem::path> path =
-          m_model_import_browser.draw()) {
+  if (const std::optional<std::filesystem::path> path = m_model_import_browser.draw()) {
     const std::optional<std::size_t> imported_index =
         parEngine.importModelAsset(*path, {}, m_model_import_error);
     if (imported_index.has_value()) {
@@ -830,11 +770,9 @@ void EditorUi::drawImportDialogs(engine::EngineCore& parEngine,
     }
   }
 
-  if (const std::optional<std::filesystem::path> path =
-          m_panorama_import_browser.draw()) {
-    if (parEngine.importPanorama(*path,
-                                 m_panorama_import_label_buffer.data(),
-                                 m_panorama_import_error)
+  if (const std::optional<std::filesystem::path> path = m_panorama_import_browser.draw()) {
+    if (parEngine
+            .importPanorama(*path, m_panorama_import_label_buffer.data(), m_panorama_import_error)
             .has_value()) {
       m_panorama_import_error.clear();
       m_panorama_import_label_buffer.fill('\0');
@@ -866,8 +804,7 @@ void EditorUi::refreshEntityNameBuffer(const scene::EntityRecord& parEntity) {
   m_entity_name_buffer_id = parEntity.id.value;
 }
 
-const char* EditorUi::getEntityTypeLabel(
-    const scene::EntityRecord& parEntity) const {
+const char* EditorUi::getEntityTypeLabel(const scene::EntityRecord& parEntity) const {
   if (parEntity.camera.has_value()) {
     return "Camera";
   }
@@ -881,4 +818,4 @@ const char* EditorUi::getEntityTypeLabel(
   return "Entity";
 }
 
-}  // namespace kage::editor
+} // namespace kage::editor

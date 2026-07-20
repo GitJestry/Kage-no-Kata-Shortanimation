@@ -1,26 +1,26 @@
 #pragma once
 
-#include "assets/asset_registry.hpp"
 #include "animation/animation_system.hpp"
+#include "assets/asset_registry.hpp"
 #include "camera/camera.hpp"
 #include "film/film_frame_state.hpp"
 #include "lighting/light.hpp"
 #include "math/transform.hpp"
 #include "render/debug_primitive_renderer.hpp"
-#include "render/mesh_resource_cache.hpp"
-#include "render/mesh_renderer.hpp"
-#include "render/viewport_policy.hpp"
-#include "render/viewport_rect.hpp"
 #include "render/environment_renderer.hpp"
 #include "render/film_framebuffer.hpp"
 #include "render/frame_time_history.hpp"
+#include "render/mesh_renderer.hpp"
+#include "render/mesh_resource_cache.hpp"
 #include "render/shadow_renderer.hpp"
+#include "render/viewport_policy.hpp"
+#include "render/viewport_rect.hpp"
 #include "scene/scene_manager.hpp"
 
 #include <glm/glm.hpp>
 
-#include <cstddef>
 #include <array>
+#include <cstddef>
 #include <optional>
 #include <span>
 #include <unordered_map>
@@ -33,18 +33,9 @@ inline constexpr int MAX_FLOOR_GRID_RADIUS = 1000;
 inline constexpr float MIN_EDITOR_VIEW_DISTANCE = 5.0f;
 inline constexpr float MAX_EDITOR_VIEW_DISTANCE = 5000.0f;
 
-enum class SkyPreset {
-  ClearDay,
-  MountainDawn,
-  WarmDusk,
-  DarkStudio,
-  DarkVoid
-};
+enum class SkyPreset { ClearDay, MountainDawn, WarmDusk, DarkStudio, DarkVoid };
 
-enum class GizmoAxisSpace {
-  Local,
-  World
-};
+enum class GizmoAxisSpace { Local, World };
 
 struct EditorViewportSettings final {
   ViewportMode mode = ViewportMode::Solid;
@@ -110,12 +101,7 @@ struct GizmoGuide final {
 };
 
 struct PlacementGhost final {
-  enum class Kind {
-    None,
-    StaticAsset,
-    Camera,
-    PointLight
-  };
+  enum class Kind { None, StaticAsset, Camera, PointLight };
 
   Kind kind = Kind::None;
   std::size_t asset_library_index = scene::INVALID_ASSET_LIBRARY_INDEX;
@@ -123,37 +109,34 @@ struct PlacementGhost final {
   glm::vec3 light_color{1.0f, 0.94f, 0.84f};
   float light_intensity = 1.0f;
   float opacity = 0.38f;
+  bool paintbrush_active = false;
+  glm::vec3 paintbrush_position{0.0f};
+  float paintbrush_radius = 1.0f;
+  int paintbrush_density = 16;
 
   [[nodiscard]] bool isActive() const;
 };
 
 class WorldRenderer final {
- public:
+public:
   ~WorldRenderer();
-  void requestEnvironment(assets::AssetId parAsset,
-                          const std::filesystem::path& parPanoramaPath);
+  void requestEnvironment(assets::AssetId parAsset, const std::filesystem::path& parPanoramaPath);
   [[nodiscard]] EnvironmentLoadState getEnvironmentState() const;
   [[nodiscard]] const std::string& getEnvironmentError() const;
   void render(const scene::SceneManager::SceneRecord& parScene,
-              const MeshResourceCache& parMeshResources,
-              const ViewportView& parView,
-              const lighting::LightingState& parLighting,
-              const PlacementGhost& parGhost,
-              const GizmoGuide& parGizmoGuide,
-              const EditorRenderSettings& parSettings,
-              const ViewportRect& parViewport,
-              PerformanceSnapshot& parSnapshot);
+              const MeshResourceCache& parMeshResources, const ViewportView& parView,
+              const lighting::LightingState& parLighting, const PlacementGhost& parGhost,
+              const GizmoGuide& parGizmoGuide, const EditorRenderSettings& parSettings,
+              const ViewportRect& parViewport, PerformanceSnapshot& parSnapshot);
 
   [[nodiscard]] static glm::vec3 getClearColor(SkyPreset parPreset);
-  [[nodiscard]] std::optional<scene::EntityId> pickEntity(
-      const scene::SceneManager::SceneRecord& parScene,
-      const MeshResourceCache& parMeshResources,
-      const camera::Camera& parCamera,
-      const glm::vec2& parCursorPixel,
-      const glm::vec2& parViewportSize,
-      const film::FilmFrameState* parFilmState = nullptr);
+  [[nodiscard]] std::optional<scene::EntityId>
+  pickEntity(const scene::SceneManager::SceneRecord& parScene,
+             const MeshResourceCache& parMeshResources, const camera::Camera& parCamera,
+             const glm::vec2& parCursorPixel, const glm::vec2& parViewportSize,
+             const film::FilmFrameState* parFilmState = nullptr);
 
- private:
+private:
   MeshRenderer m_mesh_renderer;
   EnvironmentRenderer m_environment_renderer;
   FilmFramebuffer m_film_framebuffer;
@@ -176,4 +159,4 @@ inline bool PlacementGhost::isActive() const {
   return kind != Kind::None;
 }
 
-}  // namespace kage::render
+} // namespace kage::render

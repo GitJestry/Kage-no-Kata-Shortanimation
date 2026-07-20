@@ -1,11 +1,12 @@
 #pragma once
 
+#include "editor/confirmation_dialog.hpp"
+#include "editor/editor_session.hpp"
+#include "editor/file_browser_dialog.hpp"
+#include "editor/gizmo_controller.hpp"
+#include "editor/paintbrush_tool.hpp"
 #include "editor/placement_controller.hpp"
 #include "editor/selection_controller.hpp"
-#include "editor/gizmo_controller.hpp"
-#include "editor/confirmation_dialog.hpp"
-#include "editor/file_browser_dialog.hpp"
-#include "editor/editor_session.hpp"
 #include "editor/ui_panel_rect.hpp"
 #include "engine/engine_core.hpp"
 
@@ -19,58 +20,53 @@
 namespace kage::editor {
 
 class EditorUi final {
- public:
-  void draw(engine::EngineCore& parEngine,
-            EditorSession& parSession,
+public:
+  void draw(engine::EngineCore& parEngine, EditorSession& parSession,
             PlacementController& parPlacementController,
-            SelectionController& parSelectionController,
-            GizmoController& parGizmoController,
-            ConfirmationDialog& parConfirmationDialog,
-            float parDeltaSeconds);
+            SelectionController& parSelectionController, GizmoController& parGizmoController,
+            ConfirmationDialog& parConfirmationDialog, float parDeltaSeconds);
   [[nodiscard]] bool isCursorOverPanel(const glm::vec2& parUiCursor) const;
 
- private:
+  [[nodiscard]] bool isPaintbrushEnabled() const;
+  [[nodiscard]] std::vector<std::size_t> getPaintbrushSelectedAssetIndices() const;
+  [[nodiscard]] const PaintbrushSettings& getPaintbrushSettings() const;
+
+private:
   void applyStyle();
   void beginPanelTracking();
   void computeMovieEditorLayout(EditorSession& parSession);
   void trackCurrentPanel();
-  void clampCurrentPanel(const char* parPanelName,
-                         bool parKeepAboveStatusStrip);
+  void clampCurrentPanel(const char* parPanelName, bool parKeepAboveStatusStrip);
   void drawHiddenPanelButton(bool parInspector = false);
   void drawTopBar(engine::EngineCore& parEngine, EditorSession& parSession);
-  void drawLeftPanel(engine::EngineCore& parEngine,
-                     PlacementController& parPlacementController,
+  void drawLeftPanel(engine::EngineCore& parEngine, PlacementController& parPlacementController,
                      SelectionController& parSelectionController,
                      ConfirmationDialog& parConfirmationDialog);
-  void drawSceneControls(engine::EngineCore& parEngine,
-                         ConfirmationDialog& parConfirmationDialog);
+  void drawSceneControls(engine::EngineCore& parEngine, ConfirmationDialog& parConfirmationDialog);
   void drawCreationPalette(engine::EngineCore& parEngine,
                            PlacementController& parPlacementController);
+  void drawPaintbrushPalette(engine::EngineCore& parEngine);
   void drawWorldControls(engine::EngineCore& parEngine);
-  void drawOutliner(engine::EngineCore& parEngine,
-                    SelectionController& parSelectionController,
+  void drawOutliner(engine::EngineCore& parEngine, SelectionController& parSelectionController,
                     ConfirmationDialog& parConfirmationDialog);
-  void drawInspector(engine::EngineCore& parEngine,
-                     GizmoController& parGizmoController,
+  void drawInspector(engine::EngineCore& parEngine, GizmoController& parGizmoController,
                      ConfirmationDialog& parConfirmationDialog);
-  void drawRuntimeDiagnostics(engine::EngineCore& parEngine,
-                              float parDeltaSeconds);
+  void drawRuntimeDiagnostics(engine::EngineCore& parEngine, float parDeltaSeconds);
   void drawStatusStrip();
   void drawImportDialogs(engine::EngineCore& parEngine,
                          PlacementController& parPlacementController);
   void refreshSceneNameBuffer(engine::EngineCore& parEngine);
   void refreshEntityNameBuffer(const scene::EntityRecord& parEntity);
 
-  [[nodiscard]] const char* getEntityTypeLabel(
-      const scene::EntityRecord& parEntity) const;
+  [[nodiscard]] const char* getEntityTypeLabel(const scene::EntityRecord& parEntity) const;
 
   std::array<char, 128> m_scene_name_buffer{};
   std::array<char, 128> m_entity_name_buffer{};
   std::array<char, 128> m_panorama_import_label_buffer{};
   std::size_t m_scene_name_buffer_index = static_cast<std::size_t>(-1);
-  std::uint32_t m_entity_name_buffer_id =
-      std::numeric_limits<std::uint32_t>::max();
+  std::uint32_t m_entity_name_buffer_id = std::numeric_limits<std::uint32_t>::max();
   std::size_t m_selected_asset_index = 0;
+  PaintbrushTool m_paintbrush_tool;
   std::string m_model_import_error;
   std::string m_panorama_import_error;
   FileBrowserDialog m_model_import_browser;
@@ -82,4 +78,4 @@ class EditorUi final {
   std::vector<UiPanelRect> m_panel_rects;
 };
 
-}  // namespace kage::editor
+} // namespace kage::editor
