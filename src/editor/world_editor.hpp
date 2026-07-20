@@ -1,8 +1,8 @@
 #pragma once
 
+#include "editor/confirmation_dialog.hpp"
 #include "editor/editor_session.hpp"
 #include "editor/editor_ui.hpp"
-#include "editor/confirmation_dialog.hpp"
 #include "editor/gizmo_controller.hpp"
 #include "editor/paintbrush_controller.hpp"
 #include "editor/placement_controller.hpp"
@@ -16,20 +16,19 @@
 namespace kage::editor {
 
 class WorldEditor final {
- public:
+public:
   explicit WorldEditor(engine::EngineCore& parEngine);
   ~WorldEditor();
 
   WorldEditor(const WorldEditor&) = delete;
   WorldEditor& operator=(const WorldEditor&) = delete;
 
-  void update(float parDeltaSeconds,
-              const input::EditorInputSnapshot& parInput);
+  void update(float parDeltaSeconds, const input::EditorInputSnapshot& parInput);
   void render(const glm::vec2& parViewportSize);
   void buildImGui(float parDeltaSeconds);
   bool cancelActiveOperation();
 
- private:
+private:
   void registerDefaultAssets();
   void applyCameraMovement(const input::EditorInputSnapshot& parInput,
                            bool parCameraSequencePreview);
@@ -50,4 +49,4 @@ class WorldEditor final {
   render::ViewportRect m_viewport;
 };
 
-}  // namespace kage::editor
+} // namespace kage::editor

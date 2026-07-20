@@ -6,15 +6,15 @@
 
 #include <glm/glm.hpp>
 
-#include <functional>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace kage::editor {
 
 class PaintbrushController final {
- public:
+public:
   using PaintCallback = std::function<void(std::size_t, const kage::math::Transform&)>;
 
   explicit PaintbrushController(PaintCallback parPaintCallback = {});
@@ -26,12 +26,10 @@ class PaintbrushController final {
                     const std::vector<std::size_t>& parSelectedAssetIndices);
   void resetStroke();
 
- private:
-  bool paintStampAt(const glm::vec3& parPosition,
-                    const PaintbrushSettings& parSettings,
+private:
+  bool paintStampAt(const glm::vec3& parPosition, const PaintbrushSettings& parSettings,
                     const std::vector<std::size_t>& parSelectedAssetIndices);
-  void paintPathSegment(const glm::vec3& parFrom,
-                        const glm::vec3& parTo,
+  void paintPathSegment(const glm::vec3& parFrom, const glm::vec3& parTo,
                         const PaintbrushSettings& parSettings,
                         const std::vector<std::size_t>& parSelectedAssetIndices);
   static float getStampSpacing(int parBrushSize);
@@ -46,4 +44,4 @@ class PaintbrushController final {
   float m_distance_accumulator = 0.0f;
 };
 
-}  // namespace kage::editor
+} // namespace kage::editor
