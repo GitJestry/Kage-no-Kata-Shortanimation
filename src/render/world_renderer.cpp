@@ -143,48 +143,8 @@ void addCone(std::vector<kage::render::DebugVertex>& parVertices, const glm::vec
                        addTriangle(parVertices, base, current, previous, parColor);
                      });
 }
-
-void addSolidSphere(std::vector<kage::render::DebugVertex>& parVertices, const glm::vec3& parCenter,
-                    float parRadius, const glm::vec4& parColor) {
-  const std::array<glm::vec3, 6> points = {
-      glm::vec3(0.0f, parRadius, 0.0f), glm::vec3(0.0f, -parRadius, 0.0f),
-      glm::vec3(parRadius, 0.0f, 0.0f), glm::vec3(-parRadius, 0.0f, 0.0f),
-      glm::vec3(0.0f, 0.0f, parRadius), glm::vec3(0.0f, 0.0f, -parRadius),
-  };
-  constexpr std::array<std::array<int, 3>, 8> FACES = {{
-      {{0, 2, 4}},
-      {{0, 4, 3}},
-      {{0, 3, 5}},
-      {{0, 5, 2}},
-      {{1, 4, 2}},
-      {{1, 3, 4}},
-      {{1, 5, 3}},
-      {{1, 2, 5}},
-  }};
-  for (const auto& face : FACES) {
-    addTriangle(parVertices, parCenter + points[face[0]], parCenter + points[face[1]],
-                parCenter + points[face[2]], parColor);
-  }
-}
-
-void addMovementPathSegment(std::vector<kage::render::DebugVertex>& parVertices,
-                            const kage::film::ResolvedMovementSpline& parSegment,
-                            const glm::vec3& parColor) {
-  constexpr int SEGMENT_COUNT = 32;
-  glm::vec3 previous = parSegment.start.translation;
-  for (int segment = 1; segment <= SEGMENT_COUNT; ++segment) {
-    const float t = static_cast<float>(segment) / static_cast<float>(SEGMENT_COUNT);
-    const glm::vec3 current =
-        kage::math::cubicBezier(parSegment.start.translation, parSegment.control_1,
-                                parSegment.control_2, parSegment.end.translation, t);
-    addLine(parVertices, previous, current, parColor);
-    previous = current;
-  }
-}
-
-void addHalfSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
-                   const glm::vec3& parCenter, float parRadius, int parSegmentCount,
-                   const glm::vec4& parColor) {
+void addHalfSphere(std::vector<kage::render::DebugVertex>& parVertices, const glm::vec3& parCenter,
+                   float parRadius, int parSegmentCount, const glm::vec4& parColor) {
   if (parSegmentCount < 2 || parRadius <= 0.0f) {
     return;
   }
@@ -226,14 +186,49 @@ void addHalfSphere(std::vector<kage::render::SolidGizmoVertex>& parVertices,
     }
   }
 }
+void addSolidSphere(std::vector<kage::render::DebugVertex>& parVertices, const glm::vec3& parCenter,
+                    float parRadius, const glm::vec4& parColor) {
+  const std::array<glm::vec3, 6> points = {
+      glm::vec3(0.0f, parRadius, 0.0f), glm::vec3(0.0f, -parRadius, 0.0f),
+      glm::vec3(parRadius, 0.0f, 0.0f), glm::vec3(-parRadius, 0.0f, 0.0f),
+      glm::vec3(0.0f, 0.0f, parRadius), glm::vec3(0.0f, 0.0f, -parRadius),
+  };
+  constexpr std::array<std::array<int, 3>, 8> FACES = {{
+      {{0, 2, 4}},
+      {{0, 4, 3}},
+      {{0, 3, 5}},
+      {{0, 5, 2}},
+      {{1, 4, 2}},
+      {{1, 3, 4}},
+      {{1, 5, 3}},
+      {{1, 2, 5}},
+  }};
+  for (const auto& face : FACES) {
+    addTriangle(parVertices, parCenter + points[face[0]], parCenter + points[face[1]],
+                parCenter + points[face[2]], parColor);
+  }
+}
 
-void addFloorGrid(std::vector<kage::render::LineVertex>& parVertices,
-void addMovementPathOverlay(
-    std::vector<kage::render::DebugVertex>& parLines,
-    std::vector<kage::render::DebugVertex>& parSolid,
-    const kage::film::ResolvedMovementSegment& parPath,
-    const kage::camera::Camera& parCamera,
-    const glm::vec2& parViewportSize) {
+void addMovementPathSegment(std::vector<kage::render::DebugVertex>& parVertices,
+                            const kage::film::ResolvedMovementSpline& parSegment,
+                            const glm::vec3& parColor) {
+  constexpr int SEGMENT_COUNT = 32;
+  glm::vec3 previous = parSegment.start.translation;
+  for (int segment = 1; segment <= SEGMENT_COUNT; ++segment) {
+    const float t = static_cast<float>(segment) / static_cast<float>(SEGMENT_COUNT);
+    const glm::vec3 current =
+        kage::math::cubicBezier(parSegment.start.translation, parSegment.control_1,
+                                parSegment.control_2, parSegment.end.translation, t);
+    addLine(parVertices, previous, current, parColor);
+    previous = current;
+  }
+}
+
+void addMovementPathOverlay(std::vector<kage::render::DebugVertex>& parLines,
+                            std::vector<kage::render::DebugVertex>& parSolid,
+                            const kage::film::ResolvedMovementSegment& parPath,
+                            const kage::camera::Camera& parCamera,
+                            const glm::vec2& parViewportSize) {
   const auto markerRadius = [&](const glm::vec3& parPosition) {
     return std::clamp(
         kage::camera::getWorldLengthForPixels(parCamera, parPosition, parViewportSize, 10.0f),
@@ -253,9 +248,8 @@ void addMovementPathOverlay(
                  markerRadius(parPath.movement.end.translation), MOVEMENT_POINT_FILL);
 }
 
-void addCircle(std::vector<kage::render::DebugVertex>& parVertices,
-               const glm::vec3& parCenter, const glm::vec3& parAxisA,
-               const glm::vec3& parAxisB, float parRadius,
+void addCircle(std::vector<kage::render::DebugVertex>& parVertices, const glm::vec3& parCenter,
+               const glm::vec3& parAxisA, const glm::vec3& parAxisB, float parRadius,
                const glm::vec3& parColor) {
   constexpr int SEGMENT_COUNT = 48;
   forEachRingSegment(parCenter, parAxisA, parAxisB, parRadius, SEGMENT_COUNT,
@@ -285,8 +279,7 @@ void addFloorGrid(std::vector<kage::render::DebugVertex>& parVertices,
 }
 
 void addFloorContactCue(std::vector<kage::render::DebugVertex>& parVertices,
-                        const kage::math::Bounds3& parBounds,
-                        const glm::vec3& parOrigin) {
+                        const kage::math::Bounds3& parBounds, const glm::vec3& parOrigin) {
   if (!parBounds.is_valid) {
     addLine(parVertices, parOrigin, glm::vec3(parOrigin.x, 0.0f, parOrigin.z),
             SELECTED_CONTACT_COLOR);
@@ -313,8 +306,7 @@ void addFloorContactCue(std::vector<kage::render::DebugVertex>& parVertices,
 
 void addTransformAxes(std::vector<kage::render::DebugVertex>& parVertices,
                       std::vector<kage::render::DebugVertex>& parSolid,
-                      const kage::math::Transform& parTransform,
-                      float parLength,
+                      const kage::math::Transform& parTransform, float parLength,
                       kage::render::GizmoAxisSpace parAxisSpace) {
   const glm::vec3 position = parTransform.translation;
   const glm::quat rotation = parAxisSpace == kage::render::GizmoAxisSpace::World
@@ -357,8 +349,7 @@ void addOriginCore(std::vector<kage::render::DebugVertex>& parVertices,
 void addLightGizmo(std::vector<kage::render::DebugVertex>& parVertices,
                    std::vector<kage::render::DebugVertex>& parSolid,
                    const kage::math::Transform& parTransform,
-                   const kage::scene::LightComponent& parLight,
-                   const glm::vec3& parCameraRight,
+                   const kage::scene::LightComponent& parLight, const glm::vec3& parCameraRight,
                    const glm::vec3& parCameraUp) {
   const glm::vec3 position = parTransform.translation;
   const glm::vec3 color = glm::clamp(parLight.color, glm::vec3(0.0f), glm::vec3(1.0f));
@@ -371,8 +362,7 @@ void addLightGizmo(std::vector<kage::render::DebugVertex>& parVertices,
 void addSunOverlay(std::vector<kage::render::DebugVertex>& parVertices,
                    std::vector<kage::render::DebugVertex>& parSolid,
                    std::vector<kage::render::DebugVertex>& parGlow,
-                   const kage::camera::Camera& parCamera,
-                   const glm::vec2& parViewportSize,
+                   const kage::camera::Camera& parCamera, const glm::vec2& parViewportSize,
                    const kage::lighting::DirectionalLight& parSun) {
   if (!parSun.enabled || parSun.intensity <= 0.0f) {
     return;
@@ -410,9 +400,9 @@ void addSunOverlay(std::vector<kage::render::DebugVertex>& parVertices,
   }
 }
 
-[[nodiscard]] std::optional<glm::vec3> findNearestMeshCenter(
-    const kage::scene::SceneManager::SceneRecord& parScene,
-    const glm::vec3& parPosition) {
+[[nodiscard]] std::optional<glm::vec3>
+findNearestMeshCenter(const kage::scene::SceneManager::SceneRecord& parScene,
+                      const glm::vec3& parPosition) {
   std::optional<glm::vec3> result;
   float best_distance_squared = std::numeric_limits<float>::max();
   for (const kage::scene::EntityRecord& entity : parScene.world.getEntities()) {
@@ -769,13 +759,6 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
     if (parSettings.viewport.floor_grid_visible) {
       addFloorGrid(m_grid_line_vertices, camera.position, parSettings.viewport.floor_grid_radius);
     }
-    if (parGhost.paintbrush_active) {
-      const glm::vec3 hemisphere_center =
-          glm::vec3(parGhost.paintbrush_position.x, 0.0f, parGhost.paintbrush_position.z);
-      addHalfSphere(m_solid_vertices, hemisphere_center, parGhost.paintbrush_radius,
-                    std::max(10, parGhost.paintbrush_density), glm::vec4(1.0f, 1.0f, 1.0f, 0.16f));
-    }
-
     if (parGhost.kind == PlacementGhost::Kind::StaticAsset &&
         parMeshResources.getStaticMesh(parGhost.asset_library_index) == nullptr) {
       addCube(m_solid_vertices, parGhost.transform.translation + glm::vec3(0.0f, 0.5f, 0.0f), 1.0f,
@@ -847,6 +830,12 @@ void WorldRenderer::render(const scene::SceneManager::SceneRecord& parScene,
                   color);
         }
       }
+    }
+    if (parGhost.paintbrush_active) {
+      const glm::vec3 hemisphere_center =
+          glm::vec3(parGhost.paintbrush_position.x, 0.0f, parGhost.paintbrush_position.z);
+      addHalfSphere(m_solid_vertices, hemisphere_center, parGhost.paintbrush_radius,
+                    std::max(10, parGhost.paintbrush_density), glm::vec4(1.0f, 1.0f, 1.0f, 0.16f));
     }
     if (parGizmoGuide.active) {
       const glm::vec3 axis = glm::normalize(parGizmoGuide.axis);

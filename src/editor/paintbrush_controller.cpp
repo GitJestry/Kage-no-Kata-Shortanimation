@@ -22,14 +22,24 @@ bool PaintbrushController::processInput(const glm::vec3& parWorldPosition,
                                         const PaintbrushSettings& parSettings,
                                         const std::vector<std::size_t>& parSelectedAssetIndices) {
 
-  const bool wants_paint =
-      parInput.left_mouse_pressed || parInput.left_mouse_down || parInput.left_mouse_released;
-  if (!wants_paint) {
+  // Early out if no assets are selected to paint with
+  if (parSelectedAssetIndices.empty()) {
+    m_stroke_active = false;
+    return false;
+  }
+
+  // Determine active painting state
+  const bool is_starting_stroke = parInput.left_mouse_pressed;
+  const bool is_continuing_stroke = m_stroke_active && parInput.left_mouse_down;
+
+  // If the user isn't clicking or dragging, release stroke state and let other tools use the input
+  if (!is_starting_stroke && !is_continuing_stroke) {
+    m_stroke_active = false;
     return false;
   }
 
   // 1. STROKE START
-  if (parInput.left_mouse_pressed) {
+  if (is_starting_stroke) {
     m_stroke_active = true;
     m_last_world_position = parWorldPosition;
     m_last_stamp_position = parWorldPosition;
@@ -37,46 +47,35 @@ bool PaintbrushController::processInput(const glm::vec3& parWorldPosition,
     m_stroke_seed = m_next_stroke_seed++;
     m_distance_accumulator = 0.0f; // Reset accumulator on new click
 
-    if (!parSelectedAssetIndices.empty()) {
-      paintStampAt(parWorldPosition, parSettings, parSelectedAssetIndices);
-    }
+    paintStampAt(parWorldPosition, parSettings, parSelectedAssetIndices);
   }
-
   // 2. STROKE ACTIVE & DRAGGING
-  if (m_stroke_active && parInput.left_mouse_down) {
-    if (!parSelectedAssetIndices.empty()) {
-      // Calculate how far the cursor traveled in world space this frame
-      const float distance_moved = glm::distance(m_last_world_position, parWorldPosition);
-      m_distance_accumulator += distance_moved;
+  else if (is_continuing_stroke) {
+    const float distance_moved = glm::distance(m_last_stamp_position, parWorldPosition);
+    m_distance_accumulator += distance_moved;
 
-      // Define spacing (e.g., a spacing parameter, or default to 50% of brush size)
-      // Note: adjust 'brush_spacing' according to what exists in your PaintbrushSettings
-      const float stamp_spacing = (parSettings.brush_spacing > 0.0f)
-                                      ? parSettings.brush_spacing
-                                      : static_cast<float>(parSettings.brush_size) * 0.5f;
+    const float stamp_spacing = (parSettings.brush_spacing > 0.0f)
+                                    ? parSettings.brush_spacing
+                                    : static_cast<float>(parSettings.brush_size) * 0.5f;
 
-      // If we've dragged far enough, deposit stamps along the vector
-      while (m_distance_accumulator >= stamp_spacing) {
-        // Interpolate along the movement segment to find the exact stamp coordinate
-        float t = 1.0f - (m_distance_accumulator / distance_moved);
-        t = glm::clamp(t, 0.0f, 1.0f);
+    // Delegate segment interpolation to paintPathSegment or step along the path
+    if (stamp_spacing > 0.0f && m_distance_accumulator >= stamp_spacing) {
+      // Option A: Use paintPathSegment if available
+      paintPathSegment(m_last_stamp_position, parWorldPosition, parSettings,
+                       parSelectedAssetIndices);
 
-        glm::vec3 stamp_pos = glm::mix(m_last_world_position, parWorldPosition, t);
-
-        paintStampAt(stamp_pos, parSettings, parSelectedAssetIndices);
-
-        // Consume the distance chunk
-        m_distance_accumulator -= stamp_spacing;
-      }
+      // Option B: Step distance directly from m_last_stamp_position if doing inline:
+      // while (m_distance_accumulator >= stamp_spacing) {
+      //   m_distance_accumulator -= stamp_spacing;
+      //   m_last_stamp_position += glm::normalize(parWorldPosition - m_last_stamp_position) *
+      //   stamp_spacing; paintStampAt(m_last_stamp_position, parSettings, parSelectedAssetIndices);
+      // }
     }
+
     m_last_world_position = parWorldPosition;
   }
 
-  // 3. STROKE END
-  if (parInput.left_mouse_released) {
-    m_stroke_active = false;
-  }
-
+  // Return true ONLY when we actively handled paint input on this frame to block gizmos/selection
   return true;
 }
 
