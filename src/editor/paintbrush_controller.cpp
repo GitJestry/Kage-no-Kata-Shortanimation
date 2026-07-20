@@ -55,7 +55,7 @@ bool PaintbrushController::processInput(const glm::vec3& parWorldPosition,
     m_distance_accumulator += distance_moved;
 
     const float stamp_spacing = (parSettings.brush_spacing > 0.0f)
-                                    ? parSettings.brush_spacing
+                                    ? static_cast<float>(parSettings.brush_spacing)
                                     : static_cast<float>(parSettings.brush_size) * 0.5f;
 
     // Delegate segment interpolation to paintPathSegment or step along the path

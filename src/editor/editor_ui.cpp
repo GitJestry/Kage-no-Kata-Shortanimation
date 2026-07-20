@@ -30,7 +30,8 @@ using kage::editor::UiWorkArea;
 
 void requestEntityDeletionConfirmation(kage::editor::ConfirmationDialog& parDialog,
                                        kage::engine::EngineCore& parEngine,
-                                       kage::scene::EntityId parEntity, std::string parEntityName) {
+                                       kage::scene::EntityId parEntity,
+                                       std::string const& parEntityName) {
   kage::editor::ConfirmationDialog::Request request;
   request.title = "Delete Entity";
   request.message = "Delete \"" + parEntityName + "\" (id " + std::to_string(parEntity.value) +
@@ -535,7 +536,7 @@ void EditorUi::drawWorldControls(engine::EngineCore& parEngine) {
   environment_changed |=
       ImGui::DragFloat("Panorama yaw", &environment.yaw_degrees, 0.5f, -360.0f, 360.0f);
   if (environment_changed) {
-    parEngine.setEnvironmentSettings(std::move(environment));
+    parEngine.setEnvironmentSettings(environment);
   }
 
   bool floor_visible = parEngine.isFloorGridVisible();
