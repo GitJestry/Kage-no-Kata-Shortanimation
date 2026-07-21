@@ -190,6 +190,18 @@
       "glb": "assets/animations/samurai_walk_no_sword.glb",
       "id": 7096597221674936408,
       "label": "samurai_walk_no_sword"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/castle.glb",
+      "id": 4008933042764895359,
+      "label": "castle"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/lush_green_mountains.glb",
+      "id": 18278465621716212864,
+      "label": "lush_green_mountains"
     }
   ],
   "environments": [
