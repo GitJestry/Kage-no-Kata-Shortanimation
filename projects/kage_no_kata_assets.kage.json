@@ -13,12 +13,7 @@
       "label": "torii_gate"
     },
     {
-      "animation_packs": [
-        {
-          "label": "samurai_bow",
-          "path": "assets/animations/samurai_bow.glb"
-        }
-      ],
+      "animation_packs": [],
       "glb": "assets/models/samurai.glb",
       "id": 6983023483631705405,
       "label": "Samurai"
@@ -133,15 +128,9 @@
     },
     {
       "animation_packs": [],
-      "glb": "assets/animations/tameshigiri_cut.glb",
+      "glb": "assets/models/tameshigiri.glb",
       "id": 8253487953852997897,
-      "label": "tameshigiri_cut"
-    },
-    {
-      "animation_packs": [],
-      "glb": "assets/animations/samurai_bow.glb",
-      "id": 11811458950055476859,
-      "label": "samurai_bow"
+      "label": "Tameshigiri"
     },
     {
       "animation_packs": [],
@@ -184,12 +173,6 @@
       "glb": "assets/models/dead_tree.glb",
       "id": 10781047090392282204,
       "label": "dead_tree"
-    },
-    {
-      "animation_packs": [],
-      "glb": "assets/animations/samurai_walk_no_sword.glb",
-      "id": 7096597221674936408,
-      "label": "samurai_walk_no_sword"
     },
     {
       "animation_packs": [],

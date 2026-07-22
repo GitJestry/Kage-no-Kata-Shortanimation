@@ -19,7 +19,7 @@ using SequenceInstanceId = std::uint64_t;
 using SequenceClipId = std::uint64_t;
 
 inline constexpr FilmFrame FILM_FPS = 30;
-inline constexpr FilmFrame MAX_FILM_FRAMES = 3600;
+inline constexpr FilmFrame MAX_FILM_FRAMES = 5400;
 
 enum class TimelineTargetKind { RiggedEntity, Camera, PointLight, Sun };
 
@@ -56,8 +56,7 @@ struct CapturedSunBaseState final {
   float intensity = 1.0f;
 };
 
-using CapturedTargetBaseState =
-    std::variant<CapturedEntityBaseState, CapturedSunBaseState>;
+using CapturedTargetBaseState = std::variant<CapturedEntityBaseState, CapturedSunBaseState>;
 
 enum class MovementStartMode { PreviousEndpoint, ExplicitPosition };
 
@@ -107,8 +106,7 @@ struct PropertyClip final {
   glm::vec4 end_value{0.0f};
 };
 
-using SequenceClipPayload =
-    std::variant<MovementClip, RigAnimationClip, PropertyClip>;
+using SequenceClipPayload = std::variant<MovementClip, RigAnimationClip, PropertyClip>;
 
 [[nodiscard]] int laneFor(const SequenceClipPayload& parPayload);
 
@@ -176,8 +174,8 @@ struct ResolvedMovementSegment final {
   // Presence means eligible; enabled remains authored state.
   std::optional<ResolvedMovementTransition> transition_before;
 };
-[[nodiscard]] std::vector<ResolvedMovementSegment> resolveMovementSegments(
-    const TargetSequence& parSequence);
+[[nodiscard]] std::vector<ResolvedMovementSegment>
+resolveMovementSegments(const TargetSequence& parSequence);
 
 struct FilmPlayback final {
   double playhead_frame = 0.0;
@@ -191,11 +189,9 @@ struct FilmPlayback final {
 
 // Preview and export both consume the immutable movie state even while normal
 // playback is stopped.  This keeps camera preview independent from playback.
-[[nodiscard]] inline bool requiresFilmFrameState(
-    bool parMovieWorkspace, double parFilmFrame,
-    const FilmPlayback& parPlayback) {
-  return parMovieWorkspace &&
-         (parFilmFrame >= 0.0 || parPlayback.previewing);
+[[nodiscard]] inline bool requiresFilmFrameState(bool parMovieWorkspace, double parFilmFrame,
+                                                 const FilmPlayback& parPlayback) {
+  return parMovieWorkspace && (parFilmFrame >= 0.0 || parPlayback.previewing);
 }
 
 struct TimelineDiagnostic final {
@@ -212,16 +208,16 @@ struct TimelineValidation final {
   [[nodiscard]] const TimelineDiagnostic* firstError() const;
 };
 
-[[nodiscard]] std::optional<FilmFrameState> evaluateTargetSequencePreview(
-    const MovieTimeline& parTimeline, TargetSequenceId parSequenceId,
-    FilmFrame parFrame);
+[[nodiscard]] std::optional<FilmFrameState>
+evaluateTargetSequencePreview(const MovieTimeline& parTimeline, TargetSequenceId parSequenceId,
+                              FilmFrame parFrame);
 [[nodiscard]] FilmFrameState evaluateMovieTimeline(const MovieTimeline& parTimeline,
-                                                    FilmFrame parFrame);
-[[nodiscard]] TimelineValidation validateMovieTimeline(
-    const MovieTimeline& parTimeline, bool parForBake = false);
+                                                   FilmFrame parFrame);
+[[nodiscard]] TimelineValidation validateMovieTimeline(const MovieTimeline& parTimeline,
+                                                       bool parForBake = false);
 
 [[nodiscard]] bool isCameraSequence(const TargetSequence& parSequence);
-[[nodiscard]] bool isPayloadCompatibleWithTarget(
-    TimelineTargetKind parTargetKind, const SequenceClipPayload& parPayload);
+[[nodiscard]] bool isPayloadCompatibleWithTarget(TimelineTargetKind parTargetKind,
+                                                 const SequenceClipPayload& parPayload);
 
-}  // namespace kage::film
+} // namespace kage::film

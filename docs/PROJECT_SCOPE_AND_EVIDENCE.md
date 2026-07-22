@@ -175,8 +175,6 @@ work.
 
 | Evidence type | Record |
 | --- | --- |
-| Blender source and export | The version-controlled Blender source is `assets/source_blender/samurai_rig/samurai.blend` and must be included in the submission package. The runtime Samurai GLB is `assets/models/samurai.glb`; the external bow action is registered at `assets/animations/samurai_bow.glb`. |
-| Runtime integration | `projects/kage_no_kata_assets.kage.json` registers the Samurai and its animation pack; the runtime imports the rig and makes the authored clips available to the Movie workflow. |
 | Validation and demonstration | The rigged Samurai deforms and plays the authored actions in the editor; the final result is illustrated in `docs/images/rigging-animation.png`. |
 | Film use and presentation | Record the final film shots/time ranges that use the Samurai animations and demonstrate the rig plus animation workflow during the presentation. |
 
