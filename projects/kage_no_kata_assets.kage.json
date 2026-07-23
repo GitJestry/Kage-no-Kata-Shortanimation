@@ -13,12 +13,7 @@
       "label": "torii_gate"
     },
     {
-      "animation_packs": [
-        {
-          "label": "samurai_bow",
-          "path": "assets/animations/samurai_bow.glb"
-        }
-      ],
+      "animation_packs": [],
       "glb": "assets/models/samurai.glb",
       "id": 6983023483631705405,
       "label": "Samurai"
@@ -130,6 +125,66 @@
       "glb": "assets/models/well.glb",
       "id": 5339675516668367279,
       "label": "well"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/tameshigiri.glb",
+      "id": 8253487953852997897,
+      "label": "Tameshigiri"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/grass_ground.glb",
+      "id": 13187443769479360847,
+      "label": "grass_ground"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/grass2.glb",
+      "id": 7135924721841359311,
+      "label": "grass2"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/grass1.glb",
+      "id": 13583189534996095886,
+      "label": "grass1"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/grass3.glb",
+      "id": 5676324180517855968,
+      "label": "grass3"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/japanese_maple_tree.glb",
+      "id": 13392449161052423257,
+      "label": "japanese_maple_tree"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/terrain.glb",
+      "id": 17786511403258743974,
+      "label": "terrain"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/dead_tree.glb",
+      "id": 10781047090392282204,
+      "label": "dead_tree"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/castle.glb",
+      "id": 4008933042764895359,
+      "label": "castle"
+    },
+    {
+      "animation_packs": [],
+      "glb": "assets/models/lush_green_mountains.glb",
+      "id": 18278465621716212864,
+      "label": "lush_green_mountains"
     }
   ],
   "environments": [
